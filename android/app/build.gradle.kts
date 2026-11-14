@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -38,6 +40,27 @@ android {
         }
     }
 
+    // Release key: android/key.properties (local) or the CI secrets
+    // (ANDROID_KEYSTORE_PATH / _PASSWORD, ANDROID_KEY_ALIAS / _PASSWORD).
+    // Without one, release builds use the debug key (fine for testing; but
+    // phones only update an app signed with the same key).
+    val keyProps = Properties().apply {
+        val f = rootProject.file("key.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    fun signing(name: String, env: String): String? = keyProps.getProperty(name) ?: System.getenv(env)
+    val releaseStore = signing("storeFile", "ANDROID_KEYSTORE_PATH")
+    signingConfigs {
+        if (releaseStore != null && file(releaseStore).exists()) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = signing("storePassword", "ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = signing("keyAlias", "ANDROID_KEY_ALIAS")
+                keyPassword = signing("keyPassword", "ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // yt-dlp + Python + FFmpeg add ~49 MB per CPU type, so debug builds
@@ -52,9 +75,7 @@ android {
             }
         }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 }
