@@ -17,6 +17,7 @@ import '../../../data/models/video_meta.dart';
 import '../../../data/models/yt_info.dart';
 import '../../../services/stream_proxy.dart';
 import '../../../services/youtube_account_service.dart';
+import '../../../data/providers/youtube/account_feed.dart';
 import '../../settings/views/youtube_sign_in_page.dart';
 import '../../../data/models/youtube_stream.dart';
 import '../../../routes/app_pages.dart';
@@ -31,16 +32,19 @@ import '../../../data/providers/ytdlp/ytdlp_bridge.dart';
 import '../../../services/ytdlp_service.dart';
 import '../views/widgets/format_sheet.dart';
 
-/// A home-feed category. YouTube has no public "trending" API, so each
-/// category is backed by a search query.
+/// A home-feed category: a search query (signed out — YouTube has no
+/// public "trending" API), or one of the signed-in account's own feeds.
 class FeedCategory {
-  const FeedCategory(this.label, this.query, this.icon);
+  const FeedCategory(this.label, this.query, this.icon, {this.load});
 
   final String label;
 
   /// null = personalised ("For you"): built from search history.
   final String? query;
   final IconData icon;
+
+  /// Signed in: loads the account's feed instead of searching.
+  final Future<FeedPage?> Function()? load;
 }
 
 class YoutubeController extends GetxController {
@@ -71,8 +75,9 @@ class YoutubeController extends GetxController {
     FeedCategory('Comedy', 'funny videos', Icons.sentiment_very_satisfied_rounded),
   ];
 
-  /// "For you" always first; the rest from remote config when provided.
-  static List<FeedCategory> get categories {
+  /// Signed out: "For you" first; the rest from remote config when
+  /// provided.
+  static List<FeedCategory> get _searchCategories {
     final remote = RemoteConfigService.to.feedCategories;
     if (remote.isEmpty) return _builtInCategories;
     return [
@@ -81,13 +86,61 @@ class YoutubeController extends GetxController {
     ];
   }
 
+  /// The feed's categories: the search-based ones, or — signed in to
+  /// YouTube — Home, Subscriptions and the account's own categories.
+  final categories = <FeedCategory>[].obs;
+
+  late final AccountFeed _account = AccountFeed(YoutubeAccountService.to.cookies);
+
+  List<FeedCategory> get _accountCategories => [
+        FeedCategory('Home', null, Icons.home_rounded, load: _accountHome),
+        FeedCategory('Subscriptions', null, Icons.subscriptions_rounded, load: _account.subscriptions),
+      ];
+
+  /// The account's Home; its first answer also brings the account's
+  /// categories. No recommendations (watch history off) → back to the
+  /// search-based feed.
+  Future<FeedPage?> _accountHome() async {
+    final home = await _account.home();
+    if (home == null) {
+      debugPrint('[YouTube] account home is empty (watch history off?); using the regular feed');
+      _useSearchFeed();
+      return null;
+    }
+    if (home.chips.isNotEmpty && categories.length <= 2) {
+      categories.addAll([
+        for (final c in home.chips)
+          FeedCategory(c.label, null, Icons.label_rounded, load: () => _account.chip(c)),
+      ]);
+    }
+    return home;
+  }
+
+  bool _searchFallback = false;
+
+  void _useSearchFeed() {
+    _searchFallback = true;
+    _resetFeed();
+  }
+
+  /// Signed in/out: start the feed over with the matching categories.
+  void _resetFeed() {
+    _feedCache.clear();
+    _feedPage = null;
+    feed.clear();
+    feedIndex.value = 0;
+    final account = YoutubeAccountService.to.signedIn.value && !_searchFallback;
+    categories.assignAll(account ? _accountCategories : _searchCategories);
+    loadFeed();
+  }
+
   final feedIndex = 0.obs;
   final feed = <Video>[].obs;
   final feedLoading = false.obs;
   final feedLoadingMore = false.obs;
   final feedError = RxnString();
-  VideoPage? _feedPage;
-  final Map<int, ({List<Video> items, VideoPage? page})> _feedCache = {};
+  FeedPage? _feedPage;
+  final Map<int, ({List<Video> items, FeedPage? page})> _feedCache = {};
 
   // Format sheet state
   final selectedVideo = Rxn<VideoMeta>();
@@ -103,6 +156,12 @@ class YoutubeController extends GetxController {
   void onInit() {
     super.onInit();
     _yt.warmUp(); // visitor id for the fast lookup, before the first tap
+    final account = YoutubeAccountService.to;
+    categories.assignAll(account.signedIn.value ? _accountCategories : _searchCategories);
+    ever(account.signedIn, (_) {
+      _searchFallback = false;
+      _resetFeed();
+    });
     history.assignAll(
         (_storage.read<List>(AppConstants.kSearchHistory) ?? const []).cast<String>());
   }
@@ -123,7 +182,7 @@ class YoutubeController extends GetxController {
   // ------------------------------------------------------------------- feed
 
   String _feedQuery(int index) {
-    final q = categories[index].query;
+    final q = index < categories.length ? categories[index].query : null;
     if (q != null) return q;
     // "For you": lean on what the user searched recently.
     return history.isNotEmpty ? history.first : 'popular music videos';
@@ -147,9 +206,13 @@ class YoutubeController extends GetxController {
     if (refresh) _feedCache.remove(index);
     feedLoading.value = !refresh || feed.isEmpty;
     feedError.value = null;
+    final category = index < categories.length ? categories[index] : null;
     try {
-      final page = await _yt.search(_feedQuery(index));
-      if (index != feedIndex.value) return; // user switched meanwhile
+      final load = category?.load;
+      final FeedPage? page = load != null ? await load() : await _yt.search(_feedQuery(index));
+      if (page == null || index != feedIndex.value || !identical(category, categories.elementAtOrNull(index))) {
+        return; // fell back, or the user switched meanwhile
+      }
       _feedPage = page;
       feed.assignAll(_downloadable(page.videos));
       _feedCache[index] = (items: feed.toList(), page: page);
@@ -157,7 +220,10 @@ class YoutubeController extends GetxController {
       debugPrint('[YouTube] feed failed: $e');
       if (index == feedIndex.value) feedError.value = ErrorText.of(e);
     } finally {
-      if (index == feedIndex.value) feedLoading.value = false;
+      // Not when the feed was started over meanwhile (that load owns it).
+      if (index == feedIndex.value && identical(category, categories.elementAtOrNull(index))) {
+        feedLoading.value = false;
+      }
     }
   }
 

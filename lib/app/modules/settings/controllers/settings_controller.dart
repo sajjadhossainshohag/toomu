@@ -107,7 +107,7 @@ class SettingsController extends GetxController {
     }
     final out = await showConfirmDialog(
       title: 'Sign out of YouTube?',
-      message: "Age-restricted videos won't play or download until you sign in again.",
+      message: "Home goes back to general videos, and age-restricted videos won't play or download until you sign in again.",
       confirmLabel: 'Sign out',
       destructive: true,
     );

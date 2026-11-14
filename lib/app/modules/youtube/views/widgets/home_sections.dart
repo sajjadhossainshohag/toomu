@@ -449,7 +449,7 @@ class FeedChipsHeader extends SliverPersistentHeaderDelegate {
       child: Center(
         child: Obx(
           () => SegmentedTabs(
-            labels: YoutubeController.categories.map((c) => c.label).toList(),
+            labels: yt.categories.map((c) => c.label).toList(),
             selected: yt.feedIndex.value,
             onSelect: yt.selectCategory,
             scrollable: true,

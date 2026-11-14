@@ -119,7 +119,7 @@ class SettingsView extends GetView<SettingsController> {
                       AppRow(
                         icon: Icons.account_circle_rounded,
                         tint: ColorConstants.siteYoutube,
-                        label: 'YouTube account (age-restricted videos)',
+                        label: 'YouTube account',
                         value: controller.account.signedIn.value
                             ? 'Signed in'
                             : controller.account.expired.value

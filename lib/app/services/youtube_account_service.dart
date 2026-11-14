@@ -29,6 +29,31 @@ class YoutubeAccountService extends GetxService {
     return this;
   }
 
+  /// The saved session's cookies (name → value); empty when signed out.
+  /// Read fresh each time: yt-dlp writes refreshed ones back to the file.
+  Future<Map<String, String>> cookies() async {
+    if (!signedIn.value) return const {};
+    try {
+      return parseNetscapeCookies(await File(_cookieFile).readAsString());
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  @visibleForTesting
+  static Map<String, String> parseNetscapeCookies(String text) {
+    final out = <String, String>{};
+    for (var line in text.split('\n')) {
+      // yt-dlp marks HttpOnly cookies "#HttpOnly_<domain>".
+      if (line.startsWith('#HttpOnly_')) line = line.substring(10);
+      if (line.isEmpty || line.startsWith('#')) continue;
+      final f = line.split('\t');
+      if (f.length < 7 || !f[0].endsWith('youtube.com')) continue;
+      out[f[5]] = f[6].trimRight();
+    }
+    return out;
+  }
+
   /// yt-dlp options that use the account (none when signed out).
   List<String> get ytDlpArgs => signedIn.value ? ['--cookies', _cookieFile] : const [];
 

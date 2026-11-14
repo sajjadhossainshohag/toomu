@@ -8,13 +8,24 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../models/youtube_stream.dart';
 import '../models/yt_info.dart';
 
+/// A page of videos in the home feed: search results, or the signed-in
+/// account's feed.
+abstract class FeedPage {
+  List<Video> get videos;
+
+  /// The next page; null at the end.
+  Future<FeedPage?> nextPage();
+}
+
 /// One page of video search results (see [YoutubeProvider.search]).
-class VideoPage {
+class VideoPage implements FeedPage {
   VideoPage._(this.videos, this._list);
 
+  @override
   final List<Video> videos;
   final SearchList _list;
 
+  @override
   Future<VideoPage?> nextPage() async {
     final next = await _list.nextPage();
     return next == null ? null : VideoPage._(YoutubeProvider._toVideos(next), next);

@@ -64,7 +64,7 @@ class _YoutubeSignInPageState extends State<YoutubeSignInPage> {
     if (!ok || _done || !mounted) return;
     _done = true;
     Get.back(result: true);
-    Get.snackbar('Signed in to YouTube', 'Age-restricted videos now work.', duration: const Duration(seconds: 3));
+    Get.snackbar('Signed in to YouTube', 'Home now shows your recommendations.', duration: const Duration(seconds: 3));
   }
 
   @override
@@ -93,8 +93,8 @@ class _YoutubeSignInPageState extends State<YoutubeSignInPage> {
           Padding(
             padding: EdgeInsets.fromLTRB(16 * scale, 4 * scale, 16 * scale, 10 * scale),
             child: Text(
-              'Used only for age-restricted videos, and kept on this phone. '
-              'A spare Google account is safest.',
+              'Shows your YouTube recommendations and subscriptions on Home, and unlocks '
+              'age-restricted videos. Kept on this phone; a spare Google account is safest.',
               style: TextStyle(fontSize: 12.5 * scale, color: ink.withValues(alpha: 0.65)),
             ),
           ),

@@ -70,14 +70,14 @@ class _HomeFeed extends GetView<YoutubeController> {
   Widget build(BuildContext context) {
     final double scale = context.scale;
 
-    final last = YoutubeController.categories.length - 1;
+    int last() => controller.categories.length - 1;
     // Swipe left/right on the feed to move between categories.
     return SwipeToSwitch(
       onNext: () => controller.selectCategory(
-        (controller.feedIndex.value + 1).clamp(0, last),
+        (controller.feedIndex.value + 1).clamp(0, last()),
       ),
       onPrevious: () => controller.selectCategory(
-        (controller.feedIndex.value - 1).clamp(0, last),
+        (controller.feedIndex.value - 1).clamp(0, last()),
       ),
       child: RefreshIndicator(
         color: BrandColors.of(context).primary,
