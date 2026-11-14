@@ -49,7 +49,8 @@ class YtDlpService extends GetxService {
   }
 
   YtDlpService init() {
-    channel.value = _storage.read<String>(AppConstants.kYtdlpChannel) ?? 'stable';
+    channel.value =
+        _storage.read<String>(AppConstants.kYtdlpChannel) ?? 'stable';
     unawaited(_start());
     return this;
   }
@@ -79,7 +80,9 @@ class YtDlpService extends GetxService {
   /// it in without an app update.
   Future<void> _autoUpdate() async {
     final last = _storage.read<int>(AppConstants.kYtdlpUpdatedAt) ?? 0;
-    final due = DateTime.now().millisecondsSinceEpoch - last > _updateEvery.inMilliseconds;
+    final due =
+        DateTime.now().millisecondsSinceEpoch - last >
+        _updateEvery.inMilliseconds;
     if (due) await update();
     _updateInFlight = null;
   }
@@ -93,10 +96,15 @@ class YtDlpService extends GetxService {
       await whenReady;
       debugPrint('[yt-dlp] checking for update (${channel.value})…');
       final status = await YtDlpBridge.update(channel.value);
-      await _storage.write(AppConstants.kYtdlpUpdatedAt, DateTime.now().millisecondsSinceEpoch);
+      await _storage.write(
+        AppConstants.kYtdlpUpdatedAt,
+        DateTime.now().millisecondsSinceEpoch,
+      );
       version.value = await YtDlpBridge.version();
       debugPrint('[yt-dlp] update: $status → ${version.value}');
-      return status == 'DONE' ? 'Updated to ${version.value}' : 'Already up to date (${version.value})';
+      return status == 'DONE'
+          ? 'Updated to ${version.value}'
+          : 'Already up to date (${version.value})';
     } catch (e) {
       debugPrint('[yt-dlp] update failed: $e');
       return 'Update failed: $e';
@@ -112,28 +120,29 @@ class YtDlpService extends GetxService {
 
   /// Options shared by every run.
   List<String> get baseArgs => [
-        '--no-playlist',
-        '--no-mtime',
-        '--newline',
-        // Give up on a dead connection instead of hanging (default 20 s,
-        // retried several times).
-        '--socket-timeout', '15',
-        // IPv4 only: YouTube ties links to the IP version they were looked
-        // up with (403 otherwise), and a half-working IPv6 makes every
-        // connection wait out the timeout (yt-dlp doesn't fall back fast).
-        '-4',
-        '--cache-dir', _cacheDir, // caches YouTube player JS → faster
-        // JS-challenge solver scripts if not bundled (yt-dlp ≥ 2025.11.12 only).
-        if (_supportsRemoteComponents) ...['--remote-components', 'ejs:github'],
-        ...remoteArgs,
-      ];
+    '--no-playlist',
+    '--no-mtime',
+    '--newline',
+    // Give up on a dead connection instead of hanging (default 20 s,
+    // retried several times).
+    '--socket-timeout', '15',
+    // IPv4 only: YouTube ties links to the IP version they were looked
+    // up with (403 otherwise), and a half-working IPv6 makes every
+    // connection wait out the timeout (yt-dlp doesn't fall back fast).
+    '-4',
+    '--cache-dir', _cacheDir, // caches YouTube player JS → faster
+    // JS-challenge solver scripts if not bundled (yt-dlp ≥ 2025.11.12 only).
+    if (_supportsRemoteComponents) ...['--remote-components', 'ejs:github'],
+    ...remoteArgs,
+  ];
 
   bool get _supportsRemoteComponents {
     final v = version.value;
     if (v == null) return false;
     final m = RegExp(r'(\d{4})\.(\d{1,2})\.(\d{1,2})').firstMatch(v);
     if (m == null) return false;
-    final n = int.parse(m[1]!) * 10000 + int.parse(m[2]!) * 100 + int.parse(m[3]!);
+    final n =
+        int.parse(m[1]!) * 10000 + int.parse(m[2]!) * 100 + int.parse(m[3]!);
     return n >= 20251112;
   }
 
@@ -173,14 +182,18 @@ class YtDlpService extends GetxService {
   /// The cached result only (null if none yet).
   YtInfo? cachedInfo(String url) {
     final cached = _infoCache[url];
-    return cached != null && DateTime.now().difference(cached.at) < _infoTtl ? cached.info : null;
+    return cached != null && DateTime.now().difference(cached.at) < _infoTtl
+        ? cached.info
+        : null;
   }
 
   /// yt-dlp's raw info JSON for [url] if a lookup already finished (no
   /// waiting).
   String? savedInfoJson(String url) {
     final c = _infoCache[url];
-    return c != null && DateTime.now().difference(c.at) < _infoTtl ? c.json : null;
+    return c != null && DateTime.now().difference(c.at) < _infoTtl
+        ? c.json
+        : null;
   }
 
   /// yt-dlp's raw info JSON for [url], so a download can skip extraction
@@ -204,11 +217,40 @@ class YtDlpService extends GetxService {
     return fresh();
   }
 
-  /// One run with no client fallback and no URL (e.g. `--load-info-json`).
-  Future<YtDlpResult> runWithoutUrl(String id, List<String> args, {void Function(String line)? onLine}) async {
+  /// One run for [url] (any site yt-dlp supports; no YouTube client
+  /// fallback).
+  Future<YtDlpResult> runUrl(
+    String id,
+    List<String> args,
+    String url, {
+    void Function(String line)? onLine,
+  }) async {
     await whenReady;
     await _waitForUpdate();
-    final r = await YtDlpBridge.run(id, [...baseArgs, ...args, ''], onLine: onLine);
+    final r = await YtDlpBridge.run(id, [
+      ...baseArgs,
+      ...args,
+      url,
+    ], onLine: onLine);
+    if (!r.ok && !r.canceled) {
+      _logFailure(Uri.tryParse(url)?.host ?? 'link', r.err);
+    }
+    return r;
+  }
+
+  /// One run with no client fallback and no URL (e.g. `--load-info-json`).
+  Future<YtDlpResult> runWithoutUrl(
+    String id,
+    List<String> args, {
+    void Function(String line)? onLine,
+  }) async {
+    await whenReady;
+    await _waitForUpdate();
+    final r = await YtDlpBridge.run(id, [
+      ...baseArgs,
+      ...args,
+      '',
+    ], onLine: onLine);
     if (!r.ok && !r.canceled) _logFailure('saved info', r.err);
     return r;
   }
@@ -291,10 +333,18 @@ class YtDlpService extends GetxService {
   /// Extractor args for [client] (+ [extra] YouTube args, merged into the
   /// same `--extractor-args` so neither overrides the other); null when the
   /// client can't be used right now.
-  Future<List<String>?> _clientArgs(String? client, String url, {String? extra}) async {
+  Future<List<String>?> _clientArgs(
+    String? client,
+    String url, {
+    String? extra,
+  }) async {
     final tail = extra == null ? '' : ';$extra';
-    if (client == null) return extra == null ? const [] : ['--extractor-args', 'youtube:$extra'];
-    if (client != 'mweb+pot') return ['--extractor-args', 'youtube:player_client=$client$tail'];
+    if (client == null) {
+      return extra == null ? const [] : ['--extractor-args', 'youtube:$extra'];
+    }
+    if (client != 'mweb+pot') {
+      return ['--extractor-args', 'youtube:player_client=$client$tail'];
+    }
     final id = LinkParser.youtubeVideoId(url);
     if (id == null) return null;
     final t = await PoTokenService.instance.tokensFor(id);
@@ -307,7 +357,6 @@ class YtDlpService extends GetxService {
           'player_skip=webpage,configs$tail',
     ];
   }
-
 
   /// Errors where another client may succeed (vs. private/removed videos).
   static bool isRetryable(String stderr) {
@@ -330,7 +379,9 @@ class YtDlpService extends GetxService {
   /// YouTube's "Sign in to confirm your age" and similar.
   static bool isAgeRestricted(String stderr) {
     final e = stderr.toLowerCase();
-    return e.contains('confirm your age') || e.contains('age-restricted') || e.contains('inappropriate for some users');
+    return e.contains('confirm your age') ||
+        e.contains('age-restricted') ||
+        e.contains('inappropriate for some users');
   }
 
   /// How long the "looking at the video" phase of a download (before the
@@ -361,17 +412,27 @@ class YtDlpService extends GetxService {
     // Always the same order: a client refused for one video (e.g. made for
     // kids) shouldn't make every later lookup slow.
     final order = [for (var i = 0; i < clientFallbacks.length; i++) i];
-    var result = const YtDlpResult(exitCode: -1, out: '', err: 'No YouTube client available');
+    var result = const YtDlpResult(
+      exitCode: -1,
+      out: '',
+      err: 'No YouTube client available',
+    );
     for (var n = 0; n < order.length; n++) {
       final client = clientFallbacks[order[n]];
       if (skip.contains(client)) continue;
       final clientArgs = await _clientArgs(client, url, extra: youtubeArgs);
       if (clientArgs == null) {
-        debugPrint('[yt-dlp] skipping player_client=$client (not available now)');
+        debugPrint(
+          '[yt-dlp] skipping player_client=$client (not available now)',
+        );
         continue;
       }
       if (stopped?.call() ?? false) return result;
-      if (n > 0) debugPrint('[yt-dlp] retrying with player_client=${client ?? 'default'}');
+      if (n > 0) {
+        debugPrint(
+          '[yt-dlp] retrying with player_client=${client ?? 'default'}',
+        );
+      }
       final sw = Stopwatch()..start();
       final run = await _runWatched(
         id,
@@ -381,18 +442,32 @@ class YtDlpService extends GetxService {
       );
       result = run.result;
       if (result.ok && accept != null && !accept(result)) {
-        debugPrint('[yt-dlp] player_client=${client ?? 'default'} gave no HD formats; trying the next');
-        result = YtDlpResult(exitCode: -1, out: '', err: 'ERROR: Requested format is not available');
+        debugPrint(
+          '[yt-dlp] player_client=${client ?? 'default'} gave no HD formats; trying the next',
+        );
+        result = YtDlpResult(
+          exitCode: -1,
+          out: '',
+          err: 'ERROR: Requested format is not available',
+        );
         continue;
       }
       if (result.ok) {
-        debugPrint('[yt-dlp] ok with player_client=${client ?? 'default'} in ${sw.elapsedMilliseconds} ms');
+        debugPrint(
+          '[yt-dlp] ok with player_client=${client ?? 'default'} in ${sw.elapsedMilliseconds} ms',
+        );
         return result;
       }
       if (run.stalled != null) {
-        debugPrint('[yt-dlp] stuck (player_client=${client ?? 'default'}, yt-dlp ${version.value}) '
-            'after ${sw.elapsed.inSeconds} s; last output: ${run.stalled}');
-        result = YtDlpResult(exitCode: -1, out: '', err: 'ERROR: YouTube took too long to respond');
+        debugPrint(
+          '[yt-dlp] stuck (player_client=${client ?? 'default'}, yt-dlp ${version.value}) '
+          'after ${sw.elapsed.inSeconds} s; last output: ${run.stalled}',
+        );
+        result = YtDlpResult(
+          exitCode: -1,
+          out: '',
+          err: 'ERROR: YouTube took too long to respond',
+        );
         if (stopped?.call() ?? false) return result;
         continue;
       }
@@ -403,10 +478,20 @@ class YtDlpService extends GetxService {
       // Age-restricted (yt-dlp's embedded-player workaround already tried):
       // only the signed-in account can get it; other clients can't.
       if (isAgeRestricted(result.err)) {
-        return _withAccount(id, args, url,
-            failed: result, onLine: onLine, youtubeArgs: youtubeArgs, attemptLimit: attemptLimit, accept: accept);
+        return _withAccount(
+          id,
+          args,
+          url,
+          failed: result,
+          onLine: onLine,
+          youtubeArgs: youtubeArgs,
+          attemptLimit: attemptLimit,
+          accept: accept,
+        );
       }
-      if (!_fastFirst.contains(client) && !isRetryable(result.err)) return result;
+      if (!_fastFirst.contains(client) && !isRetryable(result.err)) {
+        return result;
+      }
     }
     return result;
   }
@@ -426,14 +511,19 @@ class YtDlpService extends GetxService {
   }) async {
     final account = YoutubeAccountService.to;
     if (!account.signedIn.value) return failed;
-    debugPrint('[yt-dlp] age-restricted; trying with the signed-in YouTube account');
+    debugPrint(
+      '[yt-dlp] age-restricted; trying with the signed-in YouTube account',
+    );
     final sw = Stopwatch()..start();
     final run = await _runWatched(
       id,
       [
         ...baseArgs,
         ...account.ytDlpArgs,
-        if (youtubeArgs != null) ...['--extractor-args', 'youtube:$youtubeArgs'],
+        if (youtubeArgs != null) ...[
+          '--extractor-args',
+          'youtube:$youtubeArgs',
+        ],
         ...args,
         url,
       ],
@@ -443,19 +533,28 @@ class YtDlpService extends GetxService {
     );
     final r = run.result;
     if (r.ok && (accept?.call(r) ?? true)) {
-      debugPrint('[yt-dlp] ok with the YouTube account in ${sw.elapsedMilliseconds} ms');
+      debugPrint(
+        '[yt-dlp] ok with the YouTube account in ${sw.elapsedMilliseconds} ms',
+      );
       return r;
     }
     if (r.canceled) return r;
     _logFailure('account', r.err);
     if (isSessionExpired(r.err)) await account.markExpired();
-    return r.ok ? const YtDlpResult(exitCode: -1, out: '', err: 'ERROR: Requested format is not available') : r;
+    return r.ok
+        ? const YtDlpResult(
+            exitCode: -1,
+            out: '',
+            err: 'ERROR: Requested format is not available',
+          )
+        : r;
   }
 
   /// yt-dlp: "The provided YouTube account cookies are no longer valid".
   static bool isSessionExpired(String stderr) {
     final e = stderr.toLowerCase();
-    return e.contains('cookies are no longer valid') || e.contains('account cookies are no longer');
+    return e.contains('cookies are no longer valid') ||
+        e.contains('account cookies are no longer');
   }
 
   /// One yt-dlp run with a watchdog. With [limit], the whole run is
@@ -481,23 +580,31 @@ class YtDlpService extends GetxService {
           : extracting && now.difference(lastAt) > stallTimeout;
       if (limit == null && !extracting) return t.cancel();
       if (stuck) {
-        stalled = limit != null ? 'no answer within ${limit.inSeconds} s' : last;
+        stalled = limit != null
+            ? 'no answer within ${limit.inSeconds} s'
+            : last;
         t.cancel();
         YtDlpBridge.cancel(id);
       }
     });
     try {
-      final result = await YtDlpBridge.run(id, args, onLine: (line) {
-        lastAt = DateTime.now();
-        final l = line.trim();
-        if (l.isNotEmpty && l.length < 300) last = l;
-        // Extractor / challenge-solver lines look like "[youtube] …",
-        // "[jsc:quickjs] …", "[info] …". Anything else (download progress,
-        // merging, converting) means extraction is over: long silent steps
-        // like converting to MP3 must not trip the watchdog.
-        if (extracting && l.isNotEmpty && !_isExtractorLine(l)) extracting = false;
-        onLine?.call(line);
-      });
+      final result = await YtDlpBridge.run(
+        id,
+        args,
+        onLine: (line) {
+          lastAt = DateTime.now();
+          final l = line.trim();
+          if (l.isNotEmpty && l.length < 300) last = l;
+          // Extractor / challenge-solver lines look like "[youtube] …",
+          // "[jsc:quickjs] …", "[info] …". Anything else (download progress,
+          // merging, converting) means extraction is over: long silent steps
+          // like converting to MP3 must not trip the watchdog.
+          if (extracting && l.isNotEmpty && !_isExtractorLine(l)) {
+            extracting = false;
+          }
+          onLine?.call(line);
+        },
+      );
       return (result: result, stalled: result.canceled ? stalled : null);
     } finally {
       watchdog.cancel();
@@ -515,7 +622,9 @@ class YtDlpService extends GetxService {
   void _logFailure(String? client, String stderr) {
     final lines = stderr.split('\n').where((l) => l.trim().isNotEmpty).toList();
     final tail = lines.length > 12 ? lines.sublist(lines.length - 12) : lines;
-    debugPrint('[yt-dlp] failed (player_client=${client ?? 'default'}, '
-        'yt-dlp ${version.value}):\n${tail.join('\n')}');
+    debugPrint(
+      '[yt-dlp] failed (player_client=${client ?? 'default'}, '
+      'yt-dlp ${version.value}):\n${tail.join('\n')}',
+    );
   }
 }

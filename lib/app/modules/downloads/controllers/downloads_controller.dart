@@ -14,6 +14,7 @@ import '../../video_player/controllers/video_playback_controller.dart';
 import '../../../services/audio_player_service.dart';
 import '../../../services/download_service.dart';
 import '../../../widgets/app_dialog.dart';
+import '../../../widgets/app_snackbar.dart';
 
 class DownloadsController extends GetxController {
   final DownloadService _service = DownloadService.to;
@@ -56,14 +57,14 @@ class DownloadsController extends GetxController {
     final exists = File(t.filePath).existsSync();
     debugPrint('[Downloads] open ${t.kind.name}: ${t.filePath.split('/').last} (${exists ? 'found' : 'MISSING'})');
     if (!exists) {
-      Get.snackbar('File missing', 'The file was moved or deleted.');
+      showSnack('File missing', 'The file was moved or deleted.');
       return;
     }
     try {
       await _open(t);
     } catch (e) {
       debugPrint('[Downloads] open failed: $e');
-      Get.snackbar("Can't open this file", '$e');
+      showSnack("Can't open this file", '$e');
     }
   }
 
@@ -160,7 +161,7 @@ class DownloadsController extends GetxController {
 
   void _reportFreed(int bytes, {required String fallback}) {
     Get.closeAllSnackbars();
-    Get.snackbar(
+    showSnack(
       bytes > 0 ? 'Storage freed' : 'Done',
       bytes > 0 ? '${Formatters.bytes(bytes)} cleaned up' : fallback,
       duration: const Duration(seconds: 2),

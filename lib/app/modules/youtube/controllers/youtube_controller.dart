@@ -16,6 +16,8 @@ import '../../../data/models/video_item.dart';
 import '../../../data/models/video_meta.dart';
 import '../../../data/models/yt_info.dart';
 import '../../../services/stream_proxy.dart';
+import '../../../services/tiktok_service.dart';
+import '../../home/controllers/home_controller.dart';
 import '../../../services/youtube_account_service.dart';
 import '../../../data/providers/youtube/account_feed.dart';
 import '../../settings/views/youtube_sign_in_page.dart';
@@ -31,6 +33,7 @@ import '../../../services/storage_service.dart';
 import '../../../data/providers/ytdlp/ytdlp_bridge.dart';
 import '../../../services/ytdlp_service.dart';
 import '../views/widgets/format_sheet.dart';
+import '../../../widgets/app_snackbar.dart';
 
 /// A home-feed category: a search query (signed out — YouTube has no
 /// public "trending" API), or one of the signed-in account's own feeds.
@@ -67,12 +70,20 @@ class YoutubeController extends GetxController {
   static const _builtInCategories = <FeedCategory>[
     FeedCategory('For you', null, Icons.auto_awesome_rounded),
     FeedCategory('Music', 'new music video 2026', Icons.music_note_rounded),
-    FeedCategory('Trending', 'trending videos today', Icons.local_fire_department_rounded),
+    FeedCategory(
+      'Trending',
+      'trending videos today',
+      Icons.local_fire_department_rounded,
+    ),
     FeedCategory('Gaming', 'gaming highlights', Icons.sports_esports_rounded),
     FeedCategory('News', 'news today', Icons.newspaper_rounded),
     FeedCategory('Sports', 'sports highlights', Icons.sports_soccer_rounded),
     FeedCategory('Podcasts', 'podcast full episode', Icons.podcasts_rounded),
-    FeedCategory('Comedy', 'funny videos', Icons.sentiment_very_satisfied_rounded),
+    FeedCategory(
+      'Comedy',
+      'funny videos',
+      Icons.sentiment_very_satisfied_rounded,
+    ),
   ];
 
   /// Signed out: "For you" first; the rest from remote config when
@@ -82,7 +93,8 @@ class YoutubeController extends GetxController {
     if (remote.isEmpty) return _builtInCategories;
     return [
       _builtInCategories.first,
-      for (final c in remote) FeedCategory(c.label, c.query, Icons.label_rounded),
+      for (final c in remote)
+        FeedCategory(c.label, c.query, Icons.label_rounded),
     ];
   }
 
@@ -90,12 +102,19 @@ class YoutubeController extends GetxController {
   /// YouTube — Home, Subscriptions and the account's own categories.
   final categories = <FeedCategory>[].obs;
 
-  late final AccountFeed _account = AccountFeed(YoutubeAccountService.to.cookies);
+  late final AccountFeed _account = AccountFeed(
+    YoutubeAccountService.to.cookies,
+  );
 
   List<FeedCategory> get _accountCategories => [
-        FeedCategory('Home', null, Icons.home_rounded, load: _accountHome),
-        FeedCategory('Subscriptions', null, Icons.subscriptions_rounded, load: _account.subscriptions),
-      ];
+    FeedCategory('Home', null, Icons.home_rounded, load: _accountHome),
+    FeedCategory(
+      'Subscriptions',
+      null,
+      Icons.subscriptions_rounded,
+      load: _account.subscriptions,
+    ),
+  ];
 
   /// The account's Home; its first answer also brings the account's
   /// categories. No recommendations (watch history off) → back to the
@@ -103,14 +122,21 @@ class YoutubeController extends GetxController {
   Future<FeedPage?> _accountHome() async {
     final home = await _account.home();
     if (home == null) {
-      debugPrint('[YouTube] account home is empty (watch history off?); using the regular feed');
+      debugPrint(
+        '[YouTube] account home is empty (watch history off?); using the regular feed',
+      );
       _useSearchFeed();
       return null;
     }
     if (home.chips.isNotEmpty && categories.length <= 2) {
       categories.addAll([
         for (final c in home.chips)
-          FeedCategory(c.label, null, Icons.label_rounded, load: () => _account.chip(c)),
+          FeedCategory(
+            c.label,
+            null,
+            Icons.label_rounded,
+            load: () => _account.chip(c),
+          ),
       ]);
     }
     return home;
@@ -157,13 +183,17 @@ class YoutubeController extends GetxController {
     super.onInit();
     _yt.warmUp(); // visitor id for the fast lookup, before the first tap
     final account = YoutubeAccountService.to;
-    categories.assignAll(account.signedIn.value ? _accountCategories : _searchCategories);
+    categories.assignAll(
+      account.signedIn.value ? _accountCategories : _searchCategories,
+    );
     ever(account.signedIn, (_) {
       _searchFallback = false;
       _resetFeed();
     });
     history.assignAll(
-        (_storage.read<List>(AppConstants.kSearchHistory) ?? const []).cast<String>());
+      (_storage.read<List>(AppConstants.kSearchHistory) ?? const [])
+          .cast<String>(),
+    );
   }
 
   @override
@@ -209,8 +239,12 @@ class YoutubeController extends GetxController {
     final category = index < categories.length ? categories[index] : null;
     try {
       final load = category?.load;
-      final FeedPage? page = load != null ? await load() : await _yt.search(_feedQuery(index));
-      if (page == null || index != feedIndex.value || !identical(category, categories.elementAtOrNull(index))) {
+      final FeedPage? page = load != null
+          ? await load()
+          : await _yt.search(_feedQuery(index));
+      if (page == null ||
+          index != feedIndex.value ||
+          !identical(category, categories.elementAtOrNull(index))) {
         return; // fell back, or the user switched meanwhile
       }
       _feedPage = page;
@@ -221,7 +255,8 @@ class YoutubeController extends GetxController {
       if (index == feedIndex.value) feedError.value = ErrorText.of(e);
     } finally {
       // Not when the feed was started over meanwhile (that load owns it).
-      if (index == feedIndex.value && identical(category, categories.elementAtOrNull(index))) {
+      if (index == feedIndex.value &&
+          identical(category, categories.elementAtOrNull(index))) {
         feedLoading.value = false;
       }
     }
@@ -258,6 +293,11 @@ class YoutubeController extends GetxController {
     if (text.isEmpty) return;
     final id = LinkParser.youtubeVideoId(text);
     if (id != null) return openVideo(id);
+    // A TikTok link: downloaded as is (no watermark).
+    if (TiktokService.linkIn(text) != null) {
+      await Get.find<HomeController>().openLinkFrom(text);
+      return;
+    }
     // 1DM-style: any direct file link downloads as-is.
     final uri = Uri.tryParse(text);
     if (uri != null && const DirectFileExtractor().canHandle(uri)) {
@@ -305,8 +345,11 @@ class YoutubeController extends GetxController {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text?.trim();
     if (text == null || text.isEmpty) {
-      Get.snackbar('Clipboard is empty', 'Copy a YouTube link first.',
-          duration: const Duration(seconds: 2));
+      showSnack(
+        'Clipboard is empty',
+        'Copy a YouTube link first.',
+        duration: const Duration(seconds: 2),
+      );
       return;
     }
     searchText.text = text;
@@ -401,7 +444,10 @@ class YoutubeController extends GetxController {
     _loadingId = null;
     _showSheet();
     try {
-      final query = [title, if (artist != null && artist.isNotEmpty) artist].join(' ');
+      final query = [
+        title,
+        if (artist != null && artist.isNotEmpty) artist,
+      ].join(' ');
       final results = (await _yt.search(query)).videos.take(8).toList();
       final scores = [
         for (final v in results)
@@ -424,7 +470,8 @@ class YoutubeController extends GetxController {
         ..sort((a, b) => scores[b].compareTo(scores[a]));
       candidates.assignAll(ranked.take(4).map((i) => results[i]));
       if (candidates.isEmpty) {
-        formatsError.value = 'Couldn\'t find this video. In YouTube, tap Share → "Download with Toomu".';
+        formatsError.value =
+            'Couldn\'t find this video. In YouTube, tap Share → "Download with Toomu".';
       }
     } catch (e) {
       debugPrint('[YouTube] finding "$title" failed: $e');
@@ -478,23 +525,36 @@ class YoutubeController extends GetxController {
     formatsStatus.value = !ytdlp.ready.value
         ? 'Preparing downloader (first run)…'
         : ytdlp.updating.value
-            ? 'Updating downloader…'
-            : '';
+        ? 'Updating downloader…'
+        : '';
 
     // Header for links whose title we don't know yet (fast, parallel).
     if (selectedVideo.value == null || selectedVideo.value!.id.isEmpty) {
-      unawaited(_yt.video(videoId).then((v) {
-        if (selectedVideo.value == null || selectedVideo.value!.id.isEmpty) {
-          selectedVideo.value = VideoMeta.fromVideo(v);
-        }
-      }).catchError((Object _) {}));
+      unawaited(
+        _yt
+            .video(videoId)
+            .then((v) {
+              if (selectedVideo.value == null ||
+                  selectedVideo.value!.id.isEmpty) {
+                selectedVideo.value = VideoMeta.fromVideo(v);
+              }
+            })
+            .catchError((Object _) {}),
+      );
     }
 
     final shown = Completer<void>();
     void showFast(FastLinks? fast) {
       if (fast == null || shown.isCompleted || _sheetVideoId != videoId) return;
-      if (MediaFormat.videoOptions(fast.info).isEmpty && MediaFormat.audioOptions(fast.info).isEmpty) return;
-      _show(fast.info, from: 'fast lookup (${fast.client})', ms: sw.elapsedMilliseconds);
+      if (MediaFormat.videoOptions(fast.info).isEmpty &&
+          MediaFormat.audioOptions(fast.info).isEmpty) {
+        return;
+      }
+      _show(
+        fast.info,
+        from: 'fast lookup (${fast.client})',
+        ms: sw.elapsedMilliseconds,
+      );
       shown.complete();
     }
 
@@ -517,24 +577,33 @@ class YoutubeController extends GetxController {
     // Otherwise yt-dlp too (its links are needed, or the fast lookup is
     // slow / failed): the first good answer fills the sheet.
     Object? ytdlpError;
-    final full = ytdlp.info(url).timeout(const Duration(seconds: 90)).then((info) {
-      if (_sheetVideoId != videoId) return;
-      _info = info;
-      final meta = selectedVideo.value;
-      if (meta == null || meta.id.isEmpty) selectedVideo.value = VideoMeta.fromInfo(info);
-      if (!shown.isCompleted) {
-        _show(info, from: 'yt-dlp', ms: sw.elapsedMilliseconds);
-        shown.complete();
-      }
-    }).catchError((Object e) {
-      if (e is YtDlpCanceled) return; // sheet closed
-      ytdlpError = e;
-      debugPrint('[YouTube] yt-dlp formats for $videoId failed: $e');
-    });
+    final full = ytdlp
+        .info(url)
+        .timeout(const Duration(seconds: 90))
+        .then((info) {
+          if (_sheetVideoId != videoId) return;
+          _info = info;
+          final meta = selectedVideo.value;
+          if (meta == null || meta.id.isEmpty) {
+            selectedVideo.value = VideoMeta.fromInfo(info);
+          }
+          if (!shown.isCompleted) {
+            _show(info, from: 'yt-dlp', ms: sw.elapsedMilliseconds);
+            shown.complete();
+          }
+        })
+        .catchError((Object e) {
+          if (e is YtDlpCanceled) return; // sheet closed
+          ytdlpError = e;
+          debugPrint('[YouTube] yt-dlp formats for $videoId failed: $e');
+        });
     final quick = fastLookup.then(showFast);
 
     // Done when one path showed formats, or both finished without.
-    await Future.any([shown.future, Future.wait([full, quick])]);
+    await Future.any([
+      shown.future,
+      Future.wait([full, quick]),
+    ]);
     if (!shown.isCompleted && _sheetVideoId == videoId) {
       formatsError.value = ytdlpError != null
           ? ErrorText.of(ytdlpError!)
@@ -551,13 +620,16 @@ class YoutubeController extends GetxController {
   static bool _wantsSignIn(Object? e) {
     if (YoutubeAccountService.to.signedIn.value) return false;
     final text = e is YtDlpException ? e.message : '$e';
-    return YtDlpService.isAgeRestricted(text) || YtDlpService.isSessionExpired(text);
+    return YtDlpService.isAgeRestricted(text) ||
+        YtDlpService.isSessionExpired(text);
   }
 
   /// Sheet button: sign in, then look the video up again.
   Future<void> signInAndRetry() async {
     final id = _loadingId;
-    if (id == null || !await YoutubeSignInPage.open() || _loadingId != id) return;
+    if (id == null || !await YoutubeSignInPage.open() || _loadingId != id) {
+      return;
+    }
     _resetSheet();
     await _loadFormats(id);
   }
@@ -574,14 +646,17 @@ class YoutubeController extends GetxController {
     debugPrint('[YouTube] formats from $from in $ms ms');
   }
 
-
   Future<void> download(MediaFormat format) async {
     final video = selectedVideo.value;
     if (video == null) return;
     _sheetUsed = true;
     await DownloadService.to.enqueue(video: video, format: format);
     Get.back();
-    Get.snackbar('Download started', video.title, duration: const Duration(seconds: 2));
+    showSnack(
+      'Download started',
+      video.title,
+      duration: const Duration(seconds: 2),
+    );
   }
 
   /// Watch in our own video player — YouTube's media streams themselves, so
@@ -591,10 +666,16 @@ class YoutubeController extends GetxController {
     if (video == null || video.id.isEmpty) return;
     _sheetUsed = true;
     openingVideo.value = true;
-    await _watch(video.id, video.title, info: _info, duration: video.duration, beforeOpen: () {
-      openingVideo.value = false;
-      Get.back(); // the sheet
-    });
+    await _watch(
+      video.id,
+      video.title,
+      info: _info,
+      duration: video.duration,
+      beforeOpen: () {
+        openingVideo.value = false;
+        Get.back(); // the sheet
+      },
+    );
     openingVideo.value = false;
   }
 
@@ -605,8 +686,12 @@ class YoutubeController extends GetxController {
   Future<void> watchFromCard(Video video) async {
     if (watchingId.value != null) return; // one at a time
     watchingId.value = video.id.value;
-    await _watch(video.id.value, video.title,
-        duration: video.duration, beforeOpen: () => watchingId.value = null);
+    await _watch(
+      video.id.value,
+      video.title,
+      duration: video.duration,
+      beforeOpen: () => watchingId.value = null,
+    );
     watchingId.value = null;
   }
 
@@ -632,42 +717,69 @@ class YoutubeController extends GetxController {
 
       final reliable = info ?? ytdlp.cachedInfo(url);
       if (reliable != null) {
-        item = YoutubeStream.pick(reliable, videoId: id, title: title, preferred: preferred);
+        item = YoutubeStream.pick(
+          reliable,
+          videoId: id,
+          title: title,
+          preferred: preferred,
+        );
       } else {
         final fast = await _yt
             .fastLinks(id, duration: duration)
             .timeout(const Duration(seconds: 15), onTimeout: () => null)
             .catchError((Object _) => null);
         if (fast != null) {
-          item = YoutubeStream.pick(fast.info,
-              videoId: id, title: title, preferred: preferred, provisional: true, partial: !fast.full);
-          source = 'fast lookup (${fast.client}${fast.full ? '' : ', first minute'})';
+          item = YoutubeStream.pick(
+            fast.info,
+            videoId: id,
+            title: title,
+            preferred: preferred,
+            provisional: true,
+            partial: !fast.full,
+          );
+          source =
+              'fast lookup (${fast.client}${fast.full ? '' : ', first minute'})';
         } else {
-          debugPrint('[YouTube] no fast links work right now; waiting for yt-dlp');
+          debugPrint(
+            '[YouTube] no fast links work right now; waiting for yt-dlp',
+          );
         }
         if (item == null) {
-          item = YoutubeStream.pick(await ytdlp.info(url).timeout(const Duration(seconds: 90)),
-              videoId: id, title: title, preferred: preferred);
+          item = YoutubeStream.pick(
+            await ytdlp.info(url).timeout(const Duration(seconds: 90)),
+            videoId: id,
+            title: title,
+            preferred: preferred,
+          );
           source = 'yt-dlp';
         }
       }
-      if (item == null) throw StateError('No playable stream found for this video.');
-      debugPrint('[YouTube] watching ${item.quality ?? '?'}'
-          '${item.audioUri != null ? ' + separate audio' : ''} from $source after ${sw.elapsedMilliseconds} ms');
+      if (item == null) {
+        throw StateError('No playable stream found for this video.');
+      }
+      debugPrint(
+        '[YouTube] watching ${item.quality ?? '?'}'
+        '${item.audioUri != null ? ' + separate audio' : ''} from $source after ${sw.elapsedMilliseconds} ms',
+      );
       beforeOpen();
-      await Get.toNamed(Routes.videoPlayer, arguments: VideoPlaylist([item], 0));
+      await Get.toNamed(
+        Routes.videoPlayer,
+        arguments: VideoPlaylist([item], 0),
+      );
     } catch (e) {
       debugPrint('[YouTube] watch failed: $e');
-      Get.snackbar(
+      showSnack(
         'Can\'t play this video',
         ErrorText.of(e),
         mainButton: _wantsSignIn(e)
-            ? TextButton(onPressed: () => YoutubeSignInPage.open(), child: const Text('Sign in'))
+            ? TextButton(
+                onPressed: () => YoutubeSignInPage.open(),
+                child: const Text('Sign in'),
+              )
             : null,
       );
     }
   }
-
 
   /// Stream the audio in the music player without downloading.
   ///
@@ -684,7 +796,12 @@ class YoutubeController extends GetxController {
     final trackId = 'yt:${video.id}';
 
     Track trackFor(YtFormat f, {bool partial = false}) {
-      final link = StreamProxy.to.wrap(f.url!, headers: f.httpHeaders, videoId: video.id, partial: partial);
+      final link = StreamProxy.to.wrap(
+        f.url!,
+        headers: f.httpHeaders,
+        videoId: video.id,
+        partial: partial,
+      );
       final direct = link == f.url;
       return Track(
         id: trackId,
@@ -693,8 +810,11 @@ class YoutubeController extends GetxController {
         uri: link,
         duration: video.duration,
         artworkUrl: 'https://i.ytimg.com/vi/${video.id}/hqdefault.jpg',
-        sourceBuilder: (item) => AudioSource.uri(Uri.parse(link),
-            headers: direct && f.httpHeaders.isNotEmpty ? f.httpHeaders : null, tag: item),
+        sourceBuilder: (item) => AudioSource.uri(
+          Uri.parse(link),
+          headers: direct && f.httpHeaders.isNotEmpty ? f.httpHeaders : null,
+          tag: item,
+        ),
       );
     }
 
@@ -720,12 +840,19 @@ class YoutubeController extends GetxController {
           .timeout(const Duration(seconds: 6), onTimeout: () => null)
           .catchError((Object _) => null);
       final best = fast?.info.bestAudio;
-      if (best?.url != null && await audio.playTracks([trackFor(best!, partial: !fast!.full)], quiet: true)) {
-        debugPrint('[YouTube] audio playing via fast lookup (${fast.client}) in ${sw.elapsedMilliseconds} ms');
+      if (best?.url != null &&
+          await audio.playTracks([
+            trackFor(best!, partial: !fast!.full),
+          ], quiet: true)) {
+        debugPrint(
+          '[YouTube] audio playing via fast lookup (${fast.client}) in ${sw.elapsedMilliseconds} ms',
+        );
         Get.back();
         _fallBackOnError(trackId, () async {
           final at = audio.position.value;
-          debugPrint('[YouTube] fast audio stream failed at $at; switching to yt-dlp');
+          debugPrint(
+            '[YouTube] fast audio stream failed at $at; switching to yt-dlp',
+          );
           await playFromYtDlp(at: at);
         });
         return;
@@ -733,10 +860,12 @@ class YoutubeController extends GetxController {
 
       // 3. No fast link (or it failed to load) → yt-dlp.
       await playFromYtDlp();
-      debugPrint('[YouTube] audio playing via yt-dlp in ${sw.elapsedMilliseconds} ms');
+      debugPrint(
+        '[YouTube] audio playing via yt-dlp in ${sw.elapsedMilliseconds} ms',
+      );
       Get.back();
     } catch (e) {
-      Get.snackbar('Playback error', ErrorText.of(e));
+      showSnack('Playback error', ErrorText.of(e));
     } finally {
       streamingAudio.value = false;
     }
@@ -755,11 +884,12 @@ class YoutubeController extends GetxController {
 
     errors = audio.trackErrors.where((id) => id == trackId).listen((_) {
       done();
-      fallback().catchError((Object e) => Get.snackbar('Playback error', ErrorText.of(e)));
+      fallback().catchError(
+        (Object e) => showSnack('Playback error', ErrorText.of(e)),
+      );
     });
     trackWatch = ever(audio.currentIndex, (_) {
       if (audio.current?.id != trackId) done();
     });
   }
-
 }

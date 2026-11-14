@@ -437,7 +437,11 @@ class MainActivity : AudioServiceActivity() {
             MediaStore.Video.Media.HEIGHT,
             MediaStore.Video.Media.DATE_ADDED,
             MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
-        )
+        ).let { base ->
+            // Phone-camera videos are often stored 1920×1080 with "rotate
+            // 90°": the real shape needs the orientation too (Android 10+).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) base + MediaStore.Video.Media.ORIENTATION else base
+        }
         val videos = ArrayList<Map<String, Any?>>()
         contentResolver.query(uri, projection, null, null, "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { c ->
             fun col(name: String) = c.getColumnIndexOrThrow(name)
@@ -451,8 +455,15 @@ class MainActivity : AudioServiceActivity() {
             val height = col(MediaStore.Video.Media.HEIGHT)
             val added = col(MediaStore.Video.Media.DATE_ADDED)
             val bucket = col(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+            val orientation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                c.getColumnIndex(MediaStore.Video.Media.ORIENTATION)
+            } else {
+                -1
+            }
             while (c.moveToNext()) {
                 val videoId = c.getLong(id)
+                // Shown sideways (rotated 90°/270°): width and height swap.
+                val turned = orientation >= 0 && (c.getInt(orientation) == 90 || c.getInt(orientation) == 270)
                 videos.add(
                     mapOf(
                         "id" to videoId,
@@ -461,8 +472,8 @@ class MainActivity : AudioServiceActivity() {
                         "duration" to c.getLong(duration),
                         "path" to c.getString(data),
                         "size" to c.getLong(size),
-                        "width" to c.getInt(width),
-                        "height" to c.getInt(height),
+                        "width" to c.getInt(if (turned) height else width),
+                        "height" to c.getInt(if (turned) width else height),
                         "dateAdded" to c.getLong(added),
                         "folder" to c.getString(bucket),
                         "uri" to ContentUris.withAppendedId(uri, videoId).toString(),

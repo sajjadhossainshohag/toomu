@@ -88,7 +88,11 @@ class BubbleService : Service() {
     private val poll = object : Runnable {
         override fun run() {
             updateForegroundApp()
-            val show = foregroundApp in TARGETS
+            // Over YouTube, only while a video is open (its watch page or
+            // mini player) — known with Notification access; without it,
+            // on every YouTube screen.
+            val show = foregroundApp in TARGETS &&
+                MediaNotificationListener.hasVideoOpen(this@BubbleService, TARGETS) != false
             bubble?.visibility = if (show) View.VISIBLE else View.GONE
             handler.postDelayed(this, POLL_MS)
         }

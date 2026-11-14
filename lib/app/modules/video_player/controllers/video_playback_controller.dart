@@ -17,6 +17,7 @@ import '../../../services/settings_service.dart';
 import '../../../services/storage_service.dart';
 import '../../../services/video_session_service.dart';
 import '../../../widgets/option_sheet.dart';
+import '../../../widgets/app_snackbar.dart';
 
 /// What to play: a list (e.g. a folder) and where to start.
 class VideoPlaylist {
@@ -117,7 +118,10 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _setOrientation(current.isLandscape);
+    // Unknown size (a download, a file from another app): stay upright
+    // until the player knows. Turning to landscape first and back made
+    // portrait videos show half their picture on some phones.
+    if (current.hasSize) _setOrientation(current.isLandscape);
     VolumeController.instance.showSystemUI = false;
 
     // Music and video shouldn't play at once.
@@ -164,7 +168,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       // Orientation from the real frame size when the library didn't know it.
       player.stream.width.listen((w) {
         final h = player.state.height;
-        if (w != null && h != null && w > 0 && h > 0 && current.width == 0) _setOrientation(w >= h);
+        if (w != null && h != null && w > 0 && h > 0 && !current.hasSize) _setOrientation(w >= h);
         _syncPlatform();
       }),
     ]);
@@ -317,6 +321,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     resumedFrom.value = null;
     zoom.value = 1;
     final item = current;
+    if (item.hasSize) _setOrientation(item.isLandscape); // next/previous in a playlist
     // Resume point decided up front so the player starts right there (no
     // load, then seek, then load again).
     final saved = _resume.positionOf(item.resumeKey);
@@ -350,7 +355,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       if (isClosed || !identical(current, item) || player.state.duration > Duration.zero) return;
       debugPrint('[Video] file not loaded after 6 s: ${item.path ?? item.uri} '
           '(playing=${player.state.playing}, buffering=${player.state.buffering}, error=$_lastError)');
-      Get.snackbar("Can't play this video", _lastError ?? 'The player could not open this file.',
+      showSnack("Can't play this video", _lastError ?? 'The player could not open this file.',
           duration: const Duration(seconds: 6));
     });
   }
@@ -513,6 +518,27 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     showControls();
   }
 
+  /// Leaving: turn upright *before* the screen closes. Turning during the
+  /// close animation re-laid out the page behind it mid-flight — a flicker
+  /// on some phones. The picture is hidden while the screen turns.
+  final exiting = false.obs;
+
+  Future<void> exit() async {
+    if (exiting.value) return;
+    exiting.value = true;
+    if (landscape.value) {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      // Until the window is upright (or ~0.5 s at most).
+      for (var i = 0; i < 10; i++) {
+        final size = viewSize;
+        if (size != Size.zero && size.height >= size.width) break;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
+    Get.back();
+  }
+
   void _setOrientation(bool toLandscape) {
     landscape.value = toLandscape;
     SystemChrome.setPreferredOrientations(toLandscape
@@ -579,7 +605,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     _hideTimer?.cancel();
     final tracks = player.state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
     if (tracks.isEmpty) {
-      Get.snackbar('Audio', 'This video has a single audio track.', duration: const Duration(seconds: 2));
+      showSnack('Audio', 'This video has a single audio track.', duration: const Duration(seconds: 2));
       return;
     }
     final picked = await showOptionSheet<AudioTrack>(
@@ -604,7 +630,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     );
     if (picked != null) await player.setSubtitleTrack(picked);
     if (tracks.isEmpty && picked == null) {
-      Get.snackbar('Subtitles', 'This video has no subtitles.', duration: const Duration(seconds: 2));
+      showSnack('Subtitles', 'This video has no subtitles.', duration: const Duration(seconds: 2));
     }
     _scheduleHide();
   }

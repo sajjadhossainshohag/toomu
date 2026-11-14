@@ -9,6 +9,7 @@ import '../core/values/app_constants.dart';
 import '../data/models/track.dart';
 import 'storage_service.dart';
 import 'video_session_service.dart';
+import '../widgets/app_snackbar.dart';
 
 enum SleepMode { off, timer, endOfTrack }
 
@@ -118,7 +119,7 @@ class AudioPlayerService extends GetxService {
       player.play();
       return true;
     } on PlayerException catch (e) {
-      if (!quiet) Get.snackbar('Playback error', e.message ?? 'Could not play this file');
+      if (!quiet) showSnack('Playback error', e.message ?? 'Could not play this file');
       return false;
     } on PlayerInterruptedException catch (_) {
       // A newer load request replaced this one.

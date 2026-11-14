@@ -12,6 +12,7 @@ import '../../../services/permission_service.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../home/home_tabs.dart';
+import '../../../widgets/app_snackbar.dart';
 
 enum SongSort { title, recent, duration }
 
@@ -58,7 +59,7 @@ class MusicController extends GetxController {
       } catch (e) {
         debugPrint('[Music] library query failed: $e');
         _all.clear();
-        Get.snackbar('Music library', ErrorText.of(e));
+        showSnack('Music library', ErrorText.of(e));
       }
     }
     loading.value = false;
@@ -145,9 +146,9 @@ class MusicController extends GetxController {
       await audio.removeTrack(t.id);
       if (audio.favorites.contains(t.id)) audio.toggleFavorite(t);
       if (t.path != null) await DownloadService.to.forgetFile(t.path!);
-      Get.snackbar('Deleted', t.title, duration: const Duration(seconds: 2));
+      showSnack('Deleted', t.title, duration: const Duration(seconds: 2));
     } catch (e) {
-      Get.snackbar('Could not delete', ErrorText.of(e));
+      showSnack('Could not delete', ErrorText.of(e));
     }
   }
 

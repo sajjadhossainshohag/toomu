@@ -9,6 +9,7 @@ import '../../../../services/ytdlp_service.dart';
 import '../../../../widgets/gradient_pill.dart';
 import '../../../../widgets/option_sheet.dart';
 import '../../../../widgets/outline_pill.dart';
+import '../../../../widgets/app_snackbar.dart';
 
 /// Recent download/yt-dlp log lines with Copy — for phones that hide logs.
 class DiagnosticsSheet extends StatelessWidget {
@@ -88,7 +89,7 @@ class DiagnosticsSheet extends StatelessWidget {
                     height: 44,
                     onTap: () async {
                       await Clipboard.setData(ClipboardData(text: log.text));
-                      Get.snackbar('Copied', 'Paste it to share the diagnostics.',
+                      showSnack('Copied', 'Paste it to share the diagnostics.',
                           duration: const Duration(seconds: 2));
                     },
                   ),

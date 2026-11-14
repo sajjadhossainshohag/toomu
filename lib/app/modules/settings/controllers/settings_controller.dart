@@ -14,6 +14,7 @@ import '../../../widgets/option_sheet.dart';
 import '../../player/views/widgets/equalizer_sheet.dart';
 import '../views/widgets/diagnostics_sheet.dart';
 import '../views/youtube_sign_in_page.dart';
+import '../../../widgets/app_snackbar.dart';
 
 class SettingsController extends GetxController {
   final SettingsService settings = SettingsService.to;
@@ -87,7 +88,7 @@ class SettingsController extends GetxController {
 
   Future<void> cleanTemporaryFiles() async {
     final freed = await DownloadService.to.cleanTemporaryFiles();
-    Get.snackbar(
+    showSnack(
       freed > 0 ? 'Storage freed' : 'All clean',
       freed > 0 ? '${Formatters.bytes(freed)} of temporary files removed' : 'No leftover temporary files found',
       duration: const Duration(seconds: 2),
@@ -126,11 +127,11 @@ class SettingsController extends GetxController {
   /// Updating yt-dlp while it runs downloads can break them, so wait.
   Future<void> updateDownloader() async {
     if (DownloadService.to.hasActiveDownloads) {
-      Get.snackbar('Downloads running', 'Pause or finish downloads before updating the downloader.');
+      showSnack('Downloads running', 'Pause or finish downloads before updating the downloader.');
       return;
     }
     final status = await ytdlp.update();
-    Get.snackbar('Downloader', status, duration: const Duration(seconds: 3));
+    showSnack('Downloader', status, duration: const Duration(seconds: 3));
   }
 
   Future<void> pickUpdateChannel() async {

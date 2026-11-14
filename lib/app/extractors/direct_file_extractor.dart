@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 import '../core/utils/formatters.dart';
 import '../services/download_service.dart';
 import '../widgets/option_sheet.dart';
 import 'media_extractor.dart';
+import '../widgets/app_snackbar.dart';
 
 /// Links that point straight at a media/file (…/song.mp3, …/clip.mp4).
 /// 1DM-style: downloads the URL as-is.
@@ -54,6 +54,6 @@ class DirectFileExtractor extends MediaExtractor {
     );
     if (ok != true) return;
     await DownloadService.to.enqueueDirect(url: url, fileName: name, size: size);
-    Get.snackbar('Download started', name, duration: const Duration(seconds: 2));
+    showSnack('Download started', name, duration: const Duration(seconds: 2));
   }
 }

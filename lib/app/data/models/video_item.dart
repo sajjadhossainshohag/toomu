@@ -99,6 +99,10 @@ class VideoItem {
 
   bool get isLandscape => width == 0 || height == 0 ? true : width >= height;
 
+  /// Width and height are known (files opened from other apps and fresh
+  /// downloads learn theirs only once they play).
+  bool get hasSize => width > 0 && height > 0;
+
   /// "1080p", "720p"… from the shorter side.
   String? get quality {
     if (width == 0 || height == 0) return null;

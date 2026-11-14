@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.media.MediaMetadata
 import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.os.Bundle
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
@@ -20,6 +21,30 @@ class MediaNotificationListener : NotificationListenerService() {
         fun hasAccess(context: Context): Boolean {
             val enabled = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
             return enabled?.contains(context.packageName) == true
+        }
+
+        /**
+         * Whether [packages] has a video open (playing, paused or loading:
+         * the watch page or its mini player); null without Notification
+         * access (then it can't be known). Feeds, search and Shorts publish
+         * no media session.
+         */
+        fun hasVideoOpen(context: Context, packages: Set<String>): Boolean? {
+            if (!hasAccess(context)) return null
+            val manager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
+            val sessions = try {
+                manager.getActiveSessions(ComponentName(context, MediaNotificationListener::class.java))
+            } catch (e: SecurityException) {
+                return null
+            }
+            return sessions.any { session ->
+                session.packageName in packages && session.metadata != null &&
+                    when (session.playbackState?.state) {
+                        PlaybackState.STATE_PLAYING, PlaybackState.STATE_PAUSED,
+                        PlaybackState.STATE_BUFFERING, PlaybackState.STATE_CONNECTING -> true
+                        else -> false
+                    }
+            }
         }
 
         /**

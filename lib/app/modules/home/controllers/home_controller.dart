@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
+import '../../../services/download_service.dart';
+import '../../../services/tiktok_service.dart';
+
 import '../../../core/utils/link_parser.dart';
 import '../../../data/models/video_item.dart';
 import '../../../routes/app_pages.dart';
@@ -14,6 +17,7 @@ import '../../../services/permission_service.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../youtube/controllers/youtube_controller.dart';
 import '../home_tabs.dart';
+import '../../../widgets/app_snackbar.dart';
 
 class HomeController extends GetxController with WidgetsBindingObserver {
   /// Links handed over by Android: "Download with Toomu" in the share sheet,
@@ -107,14 +111,21 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         // "Open with Toomu" from a file manager / gallery.
         final uri = payload['uri'] as String?;
         if (uri != null) {
-          await Get.toNamed(Routes.videoPlayer,
-              arguments: VideoPlaylist([VideoItem.file(uri, name: payload['name'] as String?)]));
+          await Get.toNamed(
+            Routes.videoPlayer,
+            arguments: VideoPlaylist([
+              VideoItem.file(uri, name: payload['name'] as String?),
+            ]),
+          );
         }
       case 'share':
         final text = (payload['text'] as String?) ?? '';
         if (!await openLinkFrom(text)) {
-          Get.snackbar('Nothing to download', 'The shared text has no video or file link.',
-              duration: const Duration(seconds: 3));
+          showSnack(
+            'Nothing to download',
+            'The shared text has no video or file link.',
+            duration: const Duration(seconds: 3),
+          );
         }
       case 'bubble':
         // 1. YouTube's media session said what's playing (Notification access).
@@ -123,12 +134,14 @@ class HomeController extends GetxController with WidgetsBindingObserver {
           Get.closeAllSnackbars();
           openTab(HomeTabs.youtube);
           final ms = (payload['durationMs'] as num?)?.toInt() ?? 0;
-          unawaited(Get.find<YoutubeController>().openPlaying(
-            title: title,
-            artist: payload['artist'] as String?,
-            duration: ms > 0 ? Duration(milliseconds: ms) : null,
-            mediaId: payload['mediaId'] as String?,
-          ));
+          unawaited(
+            Get.find<YoutubeController>().openPlaying(
+              title: title,
+              artist: payload['artist'] as String?,
+              duration: ms > 0 ? Duration(milliseconds: ms) : null,
+              mediaId: payload['mediaId'] as String?,
+            ),
+          );
           return;
         }
         // 2. A copied link (Toomu is in front now, so it may read the clipboard).
@@ -141,15 +154,46 @@ class HomeController extends GetxController with WidgetsBindingObserver {
             message: access
                 ? 'Play a video in YouTube, then tap the download bubble.'
                 : 'To open the download options straight from the bubble, allow Toomu '
-                    '"Notification access" in Settings → YouTube app → Floating download button.\n\n'
-                    'Or in YouTube tap Share → "Download with Toomu".',
+                      '"Notification access" in Settings → YouTube app → Floating download button.\n\n'
+                      'Or in YouTube tap Share → "Download with Toomu".',
           );
         }
     }
   }
 
+  /// A TikTok link: straight to Downloads (no watermark).
+  Future<void> _downloadTiktok(String url) async {
+    showSnack(
+      'TikTok',
+      'Getting the video…',
+      duration: const Duration(seconds: 2),
+    );
+    final item = await TiktokService.itemFromUrl(url);
+    if (item == null) {
+      showSnack(
+        "Can't download this TikTok",
+        "This link doesn't lead to a TikTok video.",
+        duration: const Duration(seconds: 4),
+      );
+      return;
+    }
+    await DownloadService.to.enqueueTiktok(item);
+    openTab(HomeTabs.downloads);
+    showSnack(
+      'Download started',
+      item.caption.isEmpty ? '@${item.authorId}' : item.caption,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
   /// Opens the download flow for the first supported link in [text].
   Future<bool> openLinkFrom(String text) async {
+    final tiktok = TiktokService.linkIn(text);
+    if (tiktok != null) {
+      Get.closeAllSnackbars();
+      unawaited(_downloadTiktok(tiktok));
+      return true;
+    }
     final id = LinkParser.youtubeVideoId(text);
     if (id != null) {
       _lastClipboardLink = id; // don't also offer it via the clipboard snackbar
@@ -175,7 +219,9 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   Future<void> checkClipboard() async {
     // A share/bubble intent may arrive right after resume; let it win.
     await Future<void>.delayed(const Duration(milliseconds: 400));
-    if (DateTime.now().difference(_lastIntentAt) < const Duration(seconds: 2)) return;
+    if (DateTime.now().difference(_lastIntentAt) < const Duration(seconds: 2)) {
+      return;
+    }
 
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
@@ -184,7 +230,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (id == null || id == _lastClipboardLink) return;
     _lastClipboardLink = id;
 
-    Get.snackbar(
+    showSnack(
       'Link detected',
       'Download the YouTube video you copied?',
       duration: const Duration(seconds: 6),

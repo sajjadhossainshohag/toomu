@@ -22,7 +22,7 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
           controller.showControls();
           return;
         }
-        Get.back();
+        controller.exit();
       },
       child: Scaffold(
         backgroundColor: ColorConstants.black,
@@ -34,10 +34,15 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
               children: <Widget>[
                 // Video (zoom = pinch; fit/aspect = aspect button).
                 Obx(
-                  () => ClipRect(
+                  () => controller.exiting.value
+                      ? const SizedBox.expand()
+                      : ClipRect(
                     child: Transform.scale(
                       scale: controller.zoom.value,
                       child: Video(
+                        // A fresh surface per orientation: some phones kept
+                        // the old layout after turning (half the picture).
+                        key: ValueKey(controller.landscape.value),
                         controller: controller.video,
                         controls: NoVideoControls,
                         fill: ColorConstants.black,

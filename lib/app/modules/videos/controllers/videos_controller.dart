@@ -10,6 +10,7 @@ import '../../../widgets/option_sheet.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../home/home_tabs.dart';
+import '../../../widgets/app_snackbar.dart';
 
 enum VideoSort { recent, name, size, duration }
 
@@ -58,7 +59,7 @@ class VideosController extends GetxController {
         _all.assignAll(await _provider.videos());
       } catch (e) {
         debugPrint('[Videos] library query failed: $e');
-        Get.snackbar('Videos', ErrorText.of(e));
+        showSnack('Videos', ErrorText.of(e));
       }
     }
     loading.value = false;

@@ -7,12 +7,21 @@ enum DownloadKind { video, audio, file }
 /// Where the bytes come from.
 /// * youtube: downloaded by yt-dlp using [DownloadTask.ytdlpFormat].
 /// * direct: a plain URL (browser downloads, direct file links).
-enum DownloadSource { youtube, direct }
+/// youtube / tiktok: downloaded by yt-dlp; direct: a plain file link.
+enum DownloadSource { youtube, direct, tiktok }
 
 /// What a running task is doing right now (not persisted).
 /// [lookingUp]: yt-dlp is reading the video's details from YouTube;
 /// [starting]: details known, the download is connecting (no bytes yet).
-enum DownloadPhase { idle, lookingUp, starting, video, audio, merging, converting }
+enum DownloadPhase {
+  idle,
+  lookingUp,
+  starting,
+  video,
+  audio,
+  merging,
+  converting,
+}
 
 /// A single download job. Progress fields are reactive so each list row can
 /// rebuild independently without refreshing the whole list.
@@ -38,10 +47,10 @@ class DownloadTask {
     int receivedBytes = 0,
     DownloadStatus status = DownloadStatus.queued,
     String? error,
-  })  : totalBytes = totalBytes.obs,
-        receivedBytes = receivedBytes.obs,
-        status = status.obs,
-        error = RxnString(error);
+  }) : totalBytes = totalBytes.obs,
+       receivedBytes = receivedBytes.obs,
+       status = status.obs,
+       error = RxnString(error);
 
   final String id;
   final DownloadSource source;
@@ -62,13 +71,15 @@ class DownloadTask {
   final int? audioTag;
 
   String get ytdlpFormat =>
-      format ?? (audioTag != null ? '$streamTag+$audioTag/bv*+ba/b' : '$streamTag/b');
+      format ??
+      (audioTag != null ? '$streamTag+$audioTag/bv*+ba/b' : '$streamTag/b');
 
   /// Post-processing, e.g. `mp3:192` (convert to 192 kbps MP3).
   final String? convert;
   final DownloadKind kind;
   final String extension;
   final String qualityLabel;
+
   /// Final file; updated if yt-dlp ends up with a different extension.
   String filePath;
   final DateTime createdAt;
@@ -85,8 +96,9 @@ class DownloadTask {
   bool get needsMerge => audioTag != null;
 
   /// e.g. 192 for `mp3:192`, null when no MP3 conversion is requested.
-  int? get mp3Kbps =>
-      convert != null && convert!.startsWith('mp3:') ? int.tryParse(convert!.substring(4)) : null;
+  int? get mp3Kbps => convert != null && convert!.startsWith('mp3:')
+      ? int.tryParse(convert!.substring(4))
+      : null;
 
   String get partPath => '$filePath.part';
   String get videoPartPath => '$filePath.video.part';
@@ -120,54 +132,58 @@ class DownloadTask {
   }
 
   bool get isActive =>
-      status.value == DownloadStatus.running || status.value == DownloadStatus.queued;
+      status.value == DownloadStatus.running ||
+      status.value == DownloadStatus.queued;
 
   bool get isFinished =>
-      status.value == DownloadStatus.completed || status.value == DownloadStatus.canceled;
+      status.value == DownloadStatus.completed ||
+      status.value == DownloadStatus.canceled;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'source': source.name,
-        'videoId': videoId,
-        'format': format,
-        'url': url,
-        'title': title,
-        'author': author,
-        'thumbnailUrl': thumbnailUrl,
-        'streamTag': streamTag,
-        'audioTag': audioTag,
-        'convert': convert,
-        'kind': kind.name,
-        'extension': extension,
-        'qualityLabel': qualityLabel,
-        'filePath': filePath,
-        'createdAt': createdAt.toIso8601String(),
-        'totalBytes': totalBytes.value,
-        'receivedBytes': receivedBytes.value,
-        'status': status.value.name,
-        'error': error.value,
-      };
+    'id': id,
+    'source': source.name,
+    'videoId': videoId,
+    'format': format,
+    'url': url,
+    'title': title,
+    'author': author,
+    'thumbnailUrl': thumbnailUrl,
+    'streamTag': streamTag,
+    'audioTag': audioTag,
+    'convert': convert,
+    'kind': kind.name,
+    'extension': extension,
+    'qualityLabel': qualityLabel,
+    'filePath': filePath,
+    'createdAt': createdAt.toIso8601String(),
+    'totalBytes': totalBytes.value,
+    'receivedBytes': receivedBytes.value,
+    'status': status.value.name,
+    'error': error.value,
+  };
 
   factory DownloadTask.fromJson(Map<String, dynamic> json) => DownloadTask(
-        id: json['id'] as String,
-        source: DownloadSource.values.asNameMap()[json['source']] ?? DownloadSource.youtube,
-        videoId: json['videoId'] as String? ?? '',
-        format: json['format'] as String?,
-        url: json['url'] as String?,
-        title: json['title'] as String,
-        author: json['author'] as String? ?? '',
-        thumbnailUrl: json['thumbnailUrl'] as String? ?? '',
-        streamTag: json['streamTag'] as int? ?? 0,
-        audioTag: json['audioTag'] as int?,
-        convert: json['convert'] as String?,
-        kind: DownloadKind.values.asNameMap()[json['kind']] ?? DownloadKind.file,
-        extension: json['extension'] as String,
-        qualityLabel: json['qualityLabel'] as String? ?? '',
-        filePath: json['filePath'] as String,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        totalBytes: json['totalBytes'] as int? ?? 0,
-        receivedBytes: json['receivedBytes'] as int? ?? 0,
-        status: DownloadStatus.values.byName(json['status'] as String),
-        error: json['error'] as String?,
-      );
+    id: json['id'] as String,
+    source:
+        DownloadSource.values.asNameMap()[json['source']] ??
+        DownloadSource.youtube,
+    videoId: json['videoId'] as String? ?? '',
+    format: json['format'] as String?,
+    url: json['url'] as String?,
+    title: json['title'] as String,
+    author: json['author'] as String? ?? '',
+    thumbnailUrl: json['thumbnailUrl'] as String? ?? '',
+    streamTag: json['streamTag'] as int? ?? 0,
+    audioTag: json['audioTag'] as int?,
+    convert: json['convert'] as String?,
+    kind: DownloadKind.values.asNameMap()[json['kind']] ?? DownloadKind.file,
+    extension: json['extension'] as String,
+    qualityLabel: json['qualityLabel'] as String? ?? '',
+    filePath: json['filePath'] as String,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    totalBytes: json['totalBytes'] as int? ?? 0,
+    receivedBytes: json['receivedBytes'] as int? ?? 0,
+    status: DownloadStatus.values.byName(json['status'] as String),
+    error: json['error'] as String?,
+  );
 }

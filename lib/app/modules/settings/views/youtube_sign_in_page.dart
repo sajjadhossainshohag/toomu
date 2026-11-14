@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
 import '../../../services/youtube_account_service.dart';
+import '../../../widgets/app_snackbar.dart';
 
 /// Google's own sign-in page for YouTube, inside the app. When the user is
 /// signed in, the session is saved for age-restricted videos and the page
@@ -64,7 +65,7 @@ class _YoutubeSignInPageState extends State<YoutubeSignInPage> {
     if (!ok || _done || !mounted) return;
     _done = true;
     Get.back(result: true);
-    Get.snackbar('Signed in to YouTube', 'Home now shows your recommendations.', duration: const Duration(seconds: 3));
+    showSnack('Signed in to YouTube', 'Home now shows your recommendations.', duration: const Duration(seconds: 3));
   }
 
   @override
