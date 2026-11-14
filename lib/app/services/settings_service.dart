@@ -1,0 +1,61 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+
+import '../core/values/app_constants.dart';
+import 'storage_service.dart';
+
+class SettingsService extends GetxService {
+  static SettingsService get to => Get.find();
+
+  final _storage = StorageService.to;
+
+  final themeMode = ThemeMode.dark.obs;
+  final maxConcurrentDownloads = AppConstants.defaultMaxConcurrentDownloads.obs;
+
+  /// Video player: keep audio playing when the app is left / screen is off.
+  final videoBackgroundPlay = false.obs;
+
+  /// Video player: shrink into picture-in-picture when pressing Home.
+  final videoAutoPip = true.obs;
+
+  /// Parallel connections per file (1DM-style segmented download).
+  final connectionsPerDownload = AppConstants.defaultConnectionsPerDownload.obs;
+
+  SettingsService init() {
+    final savedTheme = _storage.read<String>(AppConstants.kThemeMode);
+    if (savedTheme != null) themeMode.value = ThemeMode.values.byName(savedTheme);
+    maxConcurrentDownloads.value =
+        _storage.read<int>(AppConstants.kMaxConcurrent) ??
+            AppConstants.defaultMaxConcurrentDownloads;
+    connectionsPerDownload.value = _storage.read<int>(AppConstants.kConnections) ??
+        AppConstants.defaultConnectionsPerDownload;
+    videoBackgroundPlay.value = _storage.read<bool>(AppConstants.kVideoBackgroundPlay) ?? false;
+    videoAutoPip.value = _storage.read<bool>(AppConstants.kVideoAutoPip) ?? true;
+    return this;
+  }
+
+  void setVideoBackgroundPlay(bool v) {
+    videoBackgroundPlay.value = v;
+    _storage.write(AppConstants.kVideoBackgroundPlay, v);
+  }
+
+  void setVideoAutoPip(bool v) {
+    videoAutoPip.value = v;
+    _storage.write(AppConstants.kVideoAutoPip, v);
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    themeMode.value = mode;
+    _storage.write(AppConstants.kThemeMode, mode.name);
+  }
+
+  void setConnectionsPerDownload(int value) {
+    connectionsPerDownload.value = value;
+    _storage.write(AppConstants.kConnections, value);
+  }
+
+  void setMaxConcurrentDownloads(int value) {
+    maxConcurrentDownloads.value = value;
+    _storage.write(AppConstants.kMaxConcurrent, value);
+  }
+}

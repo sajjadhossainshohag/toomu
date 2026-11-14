@@ -1,0 +1,378 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
+import 'package:get/get.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+
+import '../data/models/video_item.dart';
+import '../data/models/youtube_stream.dart';
+import '../data/providers/local_video_provider.dart';
+import '../data/repositories/video_resume_repository.dart';
+import '../routes/app_pages.dart';
+import '../modules/video_player/controllers/video_playback_controller.dart';
+import 'settings_service.dart';
+import 'ytdlp_service.dart';
+
+/// Owns the video player so playback can outlive the player screen:
+/// with background play on, leaving the player keeps the audio going
+/// (notification + mini bar), and reopening resumes the same session.
+class VideoSessionService extends GetxService {
+  static VideoSessionService get to => Get.find();
+
+  static const _platform = MethodChannel('toomu/video');
+
+  Player? _player;
+  VideoController? _video;
+  Player get player => _player!;
+  VideoController get video => _video!;
+
+  final items = <VideoItem>[].obs;
+  final index = 0.obs;
+
+  /// Playing with no player screen open (shows the mini bar).
+  final inBackground = false.obs;
+  final playing = false.obs;
+
+  VideoItem? get current => items.isEmpty ? null : items[index.value];
+
+  /// Set while a player screen is attached; receives PiP / button events.
+  void Function(MethodCall call)? _screen;
+
+  final List<StreamSubscription<dynamic>> _subs = [];
+
+  VideoSessionService init() {
+    // Buttons from the PiP window / background notification land here even
+    // when no player screen is open.
+    _platform.setMethodCallHandler((call) async {
+      final screen = _screen;
+      if (screen != null) return screen(call);
+      if (call.method == 'action' && _player != null) {
+        final action = call.arguments as String;
+        if (action.startsWith('seek:')) {
+          await player.seek(Duration(milliseconds: int.tryParse(action.substring(5)) ?? 0));
+          return;
+        }
+        switch (action) {
+          case 'playPause':
+            await player.playOrPause();
+          case 'play':
+            await player.play();
+          case 'pause':
+            await player.pause();
+          case 'rewind':
+            await player.seek(player.state.position - const Duration(seconds: 10));
+          case 'forward':
+            await player.seek(player.state.position + const Duration(seconds: 10));
+          case 'next':
+            await _skip(1);
+          case 'previous':
+            if (player.state.position > const Duration(seconds: 3) || index.value == 0) {
+              await player.seek(Duration.zero);
+            } else {
+              await _skip(-1);
+            }
+          case 'stop':
+            mediaStopped();
+            await stop();
+        }
+      }
+    });
+    return this;
+  }
+
+  /// Called by the player screen. Returns true when it re-joins the running
+  /// session (same playlist position), so it must not reopen the file.
+  bool attach(VideoPlaylist args, void Function(MethodCall call) onPlatformCall) {
+    _screen = onPlatformCall;
+    final same = _player != null &&
+        args.items.length == items.length &&
+        args.index == index.value &&
+        args.items.isNotEmpty &&
+        args.items[args.index].resumeKey == current?.resumeKey;
+    _outsideBuild(() => inBackground.value = false);
+    if (same) {
+      setVideoEnabled(true);
+      return true;
+    }
+
+    _disposePlayer();
+    items.assignAll(args.items);
+    index.value = args.index.clamp(0, args.items.length - 1);
+    _player = Player(configuration: const PlayerConfiguration(title: 'Toomu'));
+    _video = VideoController(_player!);
+    _subs.addAll([
+      player.stream.playing.listen((v) {
+        playing.value = v;
+        syncMedia();
+      }),
+      player.stream.duration.listen((_) => syncMedia()),
+      player.stream.rate.listen((_) => syncMedia()),
+      // Seeks (from anywhere) move the media controls' seek bar.
+      player.stream.position.listen(_checkDrift),
+      player.stream.completed.listen((done) {
+        if (!done || !inBackground.value) return;
+        final item = current;
+        final total = item?.duration ?? player.state.duration;
+        if (item != null &&
+            item.isStream &&
+            total > Duration.zero &&
+            player.state.position < total - const Duration(seconds: 10)) {
+          _recoverInBackground(item); // cut off by the server, not the end
+          return;
+        }
+        _savePosition(finished: true);
+        if (index.value < items.length - 1) {
+          _skip(1);
+        } else {
+          stop();
+        }
+      }),
+    ]);
+    return false;
+  }
+
+  /// Player screen closing. With [keepPlaying] the audio continues in the
+  /// background; otherwise the session ends.
+  Future<void> detach({required bool keepPlaying}) async {
+    _screen = null;
+    if (keepPlaying && _player != null) {
+      inBackground.value = true;
+      setVideoEnabled(false); // audio only until the player is reopened
+      return;
+    }
+    await stop();
+  }
+
+  /// Ends the session (mini bar ✕, notification Close, music starting…).
+  Future<void> stop() async {
+    _savePosition();
+    inBackground.value = false;
+    _disposePlayer();
+    await _stopMedia();
+  }
+
+  bool _videoOff = false;
+
+  /// Turns video decoding off while nobody can see it (background play)
+  /// and back on when the player is visible again.
+  void setVideoEnabled(bool on) {
+    if (_player == null || _videoOff == !on) return;
+    _videoOff = !on;
+    player.setVideoTrack(on ? VideoTrack.auto() : VideoTrack.no());
+  }
+
+  /// Next / previous video with no player screen open.
+  Future<void> _skip(int delta) async {
+    final to = index.value + delta;
+    if (to < 0 || to >= items.length) return;
+    _savePosition();
+    index.value = to;
+    await openItem(current!);
+    syncMedia();
+  }
+
+  /// What to play when [failed] (a stream) stops working:
+  ///  - fast links (no yt-dlp) → yt-dlp's links at the same quality (its
+  ///    lookup started when the video opened, so it's usually ready);
+  ///  - yt-dlp's links → the combined 360p stream.
+  Future<VideoItem?> replacementFor(VideoItem failed) async {
+    final id = failed.youtubeId;
+    if (!failed.provisional || id == null) return failed.fallback;
+    try {
+      final info = await YtDlpService.to
+          .info('https://www.youtube.com/watch?v=$id')
+          .timeout(const Duration(seconds: 90));
+      return YoutubeStream.pick(info,
+              videoId: id,
+              title: failed.title,
+              preferred: failed.currentQuality?.quality ?? YoutubeStream.defaultQuality) ??
+          failed.fallback;
+    } catch (e) {
+      debugPrint('[Video] yt-dlp links unavailable: $e');
+      return failed.fallback;
+    }
+  }
+
+  Future<void> _recoverInBackground(VideoItem failed) async {
+    final at = player.state.position;
+    final next = await replacementFor(failed);
+    if (next == null || _player == null || !identical(current, failed)) return;
+    debugPrint('[Video] stream cut off in background; reconnecting');
+    items[index.value] = next;
+    await openItem(next, start: at);
+  }
+
+  /// Opens [item] in the player (at [start] if given): a file, or a stream
+  /// with its headers and separate audio track.
+  Future<void> openItem(VideoItem item, {bool play = true, Duration? start}) async {
+    final p = player;
+    final audio = item.audioUri;
+    await p.open(
+      Media(
+        audio == null ? item.playable : edl(item.playable, audio),
+        httpHeaders: item.httpHeaders.isEmpty ? null : item.httpHeaders,
+        start: start != null && start > Duration.zero ? start : null,
+      ),
+      play: play,
+    );
+  }
+
+  /// One mpv "file" made of a video stream and a separate audio stream
+  /// (mpv's EDL format, as its own YouTube support uses): both are opened
+  /// while loading, instead of adding the audio after the video loaded.
+  /// `%N%` = the next N bytes are taken literally (URLs contain ';' etc.).
+  @visibleForTesting
+  static String edl(String video, String audio) {
+    String literal(String s) => '%${utf8.encode(s).length}%$s';
+    return 'edl://${literal(video)};!new_stream;${literal(audio)}';
+  }
+
+  /// Artwork bytes for the media controls.
+  Future<Uint8List?> _art(VideoItem item) async {
+    if (item.id != null) return VideoThumbCache.load(item.id!);
+    final url = item.thumbnailUrl;
+    if (url == null) return null;
+    try {
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+      final res = await (await client.getUrl(Uri.parse(url))).close();
+      if (res.statusCode != 200) return null;
+      final bytes = await consolidateHttpClientResponseBytes(res);
+      client.close();
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ------------------------------------------------- system media controls
+
+  /// The Android media session (notification, lock screen, headset
+  /// buttons) is up.
+  bool _mediaOn = false;
+  String? _artFor;
+  Duration _sentPosition = Duration.zero;
+  DateTime _sentAt = DateTime.now();
+  bool _syncing = false, _syncAgain = false;
+
+  /// Shows / updates the system media controls while background play is on
+  /// (removes them when it's turned off). Safe to call often.
+  Future<void> syncMedia() async {
+    if (_syncing) {
+      _syncAgain = true;
+      return;
+    }
+    _syncing = true;
+    try {
+      do {
+        _syncAgain = false;
+        await _syncMediaOnce();
+      } while (_syncAgain);
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  Future<void> _syncMediaOnce() async {
+    final item = current;
+    if (_player == null || item == null) return;
+    final enabled = SettingsService.to.videoBackgroundPlay.value;
+    if (!enabled) {
+      if (_mediaOn) await _stopMedia();
+      return;
+    }
+    final state = player.state;
+    if (!state.playing && !_mediaOn) return; // nothing to show yet
+
+    final args = <String, Object?>{
+      'title': item.title,
+      'subtitle': item.folder ?? 'Toomu',
+      'playing': state.playing,
+      'position': state.position.inMilliseconds,
+      'duration': (state.duration > Duration.zero ? state.duration : item.duration ?? Duration.zero)
+          .inMilliseconds,
+      'speed': state.rate,
+      'hasNext': index.value < items.length - 1,
+    };
+    final newItem = _artFor != item.resumeKey;
+    if (newItem) {
+      args['art'] = await _art(item);
+    }
+    if (_player == null) return;
+    try {
+      final ok = await _platform.invokeMethod<bool>(_mediaOn ? 'updateBackground' : 'startBackground', args);
+      if (ok == true) {
+        _mediaOn = true;
+        _artFor = item.resumeKey;
+        _sentPosition = state.position;
+        _sentAt = DateTime.now();
+      }
+    } on PlatformException catch (e) {
+      debugPrint('[Video] media controls: $e');
+    }
+  }
+
+  /// Resyncs when the real position strays from what the controls show
+  /// (a seek, a stall).
+  void _checkDrift(Duration position) {
+    if (!_mediaOn || _player == null) return;
+    final elapsed = DateTime.now().difference(_sentAt);
+    final expected = player.state.playing
+        ? _sentPosition + elapsed * player.state.rate
+        : _sentPosition;
+    if ((position - expected).abs() > const Duration(milliseconds: 1500)) syncMedia();
+  }
+
+  /// The user closed the media controls (they're already gone).
+  void mediaStopped() {
+    _mediaOn = false;
+    _artFor = null;
+  }
+
+  Future<void> _stopMedia() async {
+    final wasOn = _mediaOn;
+    mediaStopped();
+    if (wasOn) await _platform.invokeMethod<void>('stopBackground');
+  }
+
+  /// Mini bar tap: back to the full player, same session.
+  void reopen() {
+    if (_player == null) return;
+    Get.toNamed(Routes.videoPlayer, arguments: VideoPlaylist(items.toList(), index.value));
+  }
+
+  void _savePosition({bool finished = false}) {
+    final item = current;
+    if (_player == null || item == null) return;
+    final total = player.state.duration;
+    VideoResumeRepository.instance.save(item.resumeKey, finished ? total : player.state.position, total);
+  }
+
+  void _disposePlayer() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _subs.clear();
+    _player?.dispose();
+    _player = null;
+    _videoOff = false;
+    _video = null;
+    _outsideBuild(() => playing.value = false);
+  }
+
+  /// The player screen attaches while it is being built (its controller is
+  /// created then). Changing state other widgets watch (the mini bar) in
+  /// the middle of a build is an error, so such changes wait until the
+  /// frame is done.
+  void _outsideBuild(void Function() change) {
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => change());
+    } else {
+      change();
+    }
+  }
+}

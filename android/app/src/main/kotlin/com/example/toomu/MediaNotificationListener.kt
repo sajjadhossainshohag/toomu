@@ -1,0 +1,54 @@
+package com.example.toomu
+
+import android.content.ComponentName
+import android.content.Context
+import android.media.MediaMetadata
+import android.media.session.MediaSessionManager
+import android.os.Bundle
+import android.provider.Settings
+import android.service.notification.NotificationListenerService
+
+/**
+ * Exists only so the user can grant "Notification access", which Android
+ * requires before an app may read other apps' media sessions. Toomu never
+ * reads notification contents; it only asks the media session what video
+ * YouTube is playing (title, channel, duration) when the bubble is tapped.
+ */
+class MediaNotificationListener : NotificationListenerService() {
+
+    companion object {
+        fun hasAccess(context: Context): Boolean {
+            val enabled = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+            return enabled?.contains(context.packageName) == true
+        }
+
+        /**
+         * What [packages] is playing right now, as {title, artist, durationMs,
+         * mediaId}; null without access or when nothing is playing.
+         */
+        fun nowPlaying(context: Context, packages: Set<String>): Bundle? {
+            if (!hasAccess(context)) return null
+            val manager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
+            val sessions = try {
+                manager.getActiveSessions(ComponentName(context, MediaNotificationListener::class.java))
+            } catch (e: SecurityException) {
+                return null
+            }
+            val session = sessions.firstOrNull { it.packageName in packages } ?: return null
+            val metadata = session.metadata ?: return null
+            val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
+                ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
+                ?: return null
+            return Bundle().apply {
+                putString("title", title)
+                putString(
+                    "artist",
+                    metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)
+                        ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE),
+                )
+                putLong("durationMs", metadata.getLong(MediaMetadata.METADATA_KEY_DURATION))
+                putString("mediaId", metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID))
+            }
+        }
+    }
+}

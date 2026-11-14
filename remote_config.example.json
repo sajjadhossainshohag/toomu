@@ -1,0 +1,15 @@
+{
+  "ytdlpArgs": [],
+  "ytdlpChannel": "stable",
+  "connectionsPerDownload": 4,
+  "sites": [
+    { "name": "YouTube", "url": "https://m.youtube.com/", "icon": "video", "color": "#FF0033" },
+    { "name": "YT Music", "url": "https://music.youtube.com/", "icon": "music", "color": "#E5484D" },
+    { "name": "Google", "url": "https://www.google.com/", "icon": "search", "color": "#3D63DD" }
+  ],
+  "feedCategories": [
+    { "label": "Music", "query": "new music video" },
+    { "label": "Trending", "query": "trending videos today" },
+    { "label": "Gaming", "query": "gaming highlights" }
+  ]
+}

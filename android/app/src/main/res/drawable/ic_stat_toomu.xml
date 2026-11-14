@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Toomu mark for the status bar / notifications: same shape as the
+     launcher foreground (ic_launcher_foreground.xml), white on transparent,
+     centered and enlarged to fill the 24dp icon box. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="1024" android:viewportHeight="1024">
+    <group android:pivotX="512" android:pivotY="512" android:scaleX="1.38" android:scaleY="1.38">
+        <group android:translateX="-12" android:translateY="-25">
+            <path android:fillColor="#FFFFFFFF" android:pathData="M278 690 A152 152 0 1 1 582 690 A152 152 0 1 1 278 690 Z M526 252 Q526 232 546 236 L582 246 L582 690 L526 690 Z M546 236 C696 262 776 372 740 532 C718 450 666 400 582 390 Z M378.0 630.0 L378.0 750.0 Q378.0 772.0 396.8 760.5 L493.2 701.5 Q512.0 690.0 493.2 678.5 L396.8 619.5 Q378.0 608.0 378.0 630.0 Z"/>
+        </group>
+    </group>
+</vector>

@@ -1,0 +1,61 @@
+import 'package:get/get.dart';
+
+import '../modules/browser/bindings/browser_binding.dart';
+import '../modules/browser/views/browser_view.dart';
+import '../modules/home/bindings/home_binding.dart';
+import '../modules/home/views/home_view.dart';
+import '../modules/music/bindings/collection_binding.dart';
+import '../modules/music/views/collection_view.dart';
+import '../modules/player/bindings/player_binding.dart';
+import '../modules/player/views/player_view.dart';
+import '../modules/video_player/bindings/video_player_binding.dart';
+import '../modules/video_player/views/video_player_view.dart';
+import '../modules/videos/bindings/videos_binding.dart';
+import '../modules/videos/views/video_folder_view.dart';
+
+part 'app_routes.dart';
+
+/// Route table. A new feature module adds its GetPage here (and, if it is a
+/// main tab, an entry in `modules/home/home_tabs.dart`).
+class AppPages {
+  AppPages._();
+
+  static const initial = Routes.home;
+
+  static final routes = <GetPage<dynamic>>[
+    GetPage(
+      name: _Paths.home,
+      page: () => const HomeView(),
+      binding: HomeBinding(),
+    ),
+    GetPage(
+      name: _Paths.player,
+      page: () => const PlayerView(),
+      binding: PlayerBinding(),
+      transition: Transition.downToUp,
+      fullscreenDialog: true,
+    ),
+    GetPage(
+      name: _Paths.browser,
+      page: () => const BrowserView(),
+      binding: BrowserBinding(),
+      transition: Transition.downToUp,
+    ),
+    GetPage(
+      name: _Paths.videoPlayer,
+      page: () => const VideoPlayerView(),
+      binding: VideoPlayerBinding(),
+      transition: Transition.fadeIn,
+    ),
+    GetPage(
+      name: _Paths.videoFolder,
+      page: () => const VideoFolderView(),
+      binding: VideosBinding(),
+    ),
+    GetPage(
+      name: _Paths.musicCollection,
+      page: () => const CollectionView(),
+      binding: CollectionBinding(),
+    ),
+  ];
+}
