@@ -41,4 +41,18 @@ void main() {
     expect(d.title, 'Clip (720p)');
     expect(d.playable, '/storage/emulated/0/Download/Toomu/Video/Clip (720p).mp4');
   });
+
+  test('downloads with Bengali, emoji or % in the name open (no decoding errors)', () {
+    for (final path in [
+      '/storage/emulated/0/Download/Toomu/Video/৩৭ হাজার টাকায় বিক্রি (1080p).mp4',
+      '/storage/emulated/0/Download/Toomu/Video/100% Love 🎵 (720p).mp4',
+    ]) {
+      final v = VideoItem.file(path);
+      expect(v.path, path);
+      expect(v.title, isNotEmpty);
+    }
+    // A title is shown as is ("ft." is not an extension).
+    expect(VideoItem.file('/x/a.mp4', title: 'Song ft. Topu').title, 'Song ft. Topu');
+    expect(VideoItem.file('content://x/%E0%A7%A9%E0%A7%AD.mp4').title, '৩৭');
+  });
 }

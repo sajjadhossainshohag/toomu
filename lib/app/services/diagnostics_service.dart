@@ -28,7 +28,9 @@ class DiagnosticsService extends GetxService {
       original(message, wrapWidth: wrapWidth);
       if (message != null) add(message);
     };
-    add('— app started —');
+    // Which build is running (set by tool/build_release.sh).
+    const build = String.fromEnvironment('TOOMU_BUILD', defaultValue: 'dev build');
+    add('— app started ($build) —');
     return this;
   }
 

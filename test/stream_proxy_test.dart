@@ -1,0 +1,219 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:toomu/app/data/models/yt_info.dart';
+import 'package:toomu/app/services/stream_proxy.dart';
+
+/// A stand-in for YouTube's media servers with their measured rules: only
+/// `range=` pieces up to 10 MB are served; the fast-lookup ("partial") link
+/// refuses anything past its free minute; one connection drops mid-piece.
+class FakeYoutube {
+  FakeYoutube(this.length, {required this.freeBytes});
+
+  final int length;
+  final int freeBytes;
+  late HttpServer server;
+  int requests = 0;
+  bool dropped = false;
+
+  static int byteAt(int i) => (i * 31 + 7) & 0xff;
+
+  Future<void> start() async {
+    server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((req) async {
+      requests++;
+      final q = req.uri.queryParameters;
+      final res = req.response;
+      final m = RegExp(r'^(\d+)-(\d+)$').firstMatch(q['range'] ?? '');
+      final from = m == null ? -1 : int.parse(m[1]!);
+      final to = m == null ? -1 : int.parse(m[2]!);
+      if (q['kind'] == 'liar') {
+        // Ignores the range and sends the file from the start.
+        res.contentLength = length;
+        res.add([for (var i = 0; i < length; i++) byteAt(i)]);
+        await res.close();
+        return;
+      }
+      final refused = m == null ||
+          req.headers.value('range') != null ||
+          to - from + 1 > 10 << 20 ||
+          to >= length ||
+          (q['kind'] == 'partial' && to >= freeBytes);
+      if (refused) {
+        res.statusCode = 403;
+        await res.close();
+        return;
+      }
+      res.contentLength = to - from + 1;
+      final bytes = [for (var i = from; i <= to; i++) byteAt(i)];
+      if (!dropped && q['kind'] == 'full' && bytes.length > 4096) {
+        // Half the piece, then the connection breaks.
+        dropped = true;
+        final socket = await res.detachSocket(); // headers (full length) sent
+        socket.add(bytes.sublist(0, bytes.length ~/ 2));
+        await socket.flush();
+        socket.destroy();
+        return;
+      }
+      res.add(bytes);
+      await res.close();
+    });
+  }
+
+  String url(String kind) => 'http://127.0.0.1:${server.port}/videoplayback?itag=137&clen=$length&kind=$kind';
+}
+
+Future<(int status, List<int> body, String? contentRange)> fetch(String url, {String? range}) async {
+  final client = HttpClient();
+  try {
+    final req = await client.getUrl(Uri.parse(url));
+    if (range != null) req.headers.set('range', range);
+    final res = await req.close();
+    final body = <int>[];
+    try {
+      await for (final d in res) {
+        body.addAll(d);
+      }
+    } catch (_) {
+      // Connection dropped: return what arrived.
+    }
+    return (res.statusCode, body, res.headers.value('content-range'));
+  } finally {
+    client.close(force: true);
+  }
+}
+
+void main() {
+  const length = 6 * 1024 * 1024 + 123;
+  const free = 2500000;
+  late FakeYoutube yt;
+  late Completer<void> lookupDone;
+  late StreamProxy proxy;
+  var lookupFails = false;
+
+  setUp(() async {
+    yt = FakeYoutube(length, freeBytes: free);
+    await yt.start();
+    lookupDone = Completer<void>();
+    lookupFails = false;
+    proxy = StreamProxy(
+      isMediaFile: (u) => u.path == '/videoplayback',
+      fullLookup: (id) async {
+        await lookupDone.future;
+        if (lookupFails) throw StateError('lookup failed');
+        return YtInfo(id: id, title: '', uploader: '', formats: [
+          YtFormat(formatId: '136', ext: 'mp4', url: '${yt.url('full')}x'.replaceFirst('itag=137', 'itag=136')),
+          YtFormat(formatId: '137', ext: 'mp4', url: yt.url('full')),
+        ]);
+      },
+    );
+    await proxy.init();
+  });
+
+  tearDown(() async {
+    proxy.onClose();
+    await yt.server.close(force: true);
+  });
+
+  bool matches(List<int> body, int from) {
+    for (var i = 0; i < body.length; i++) {
+      if (body[i] != FakeYoutube.byteAt(from + i)) return false;
+    }
+    return true;
+  }
+
+  test('plays a fast link past its free minute once full links arrive', () async {
+    final local = proxy.wrap(yt.url('partial'), videoId: 'abc', partial: true);
+    expect(local, startsWith('http://127.0.0.1:'));
+    // Full links arrive while the player is already waiting at the limit.
+    Timer(const Duration(milliseconds: 600), lookupDone.complete);
+    final (status, body, contentRange) = await fetch(local, range: 'bytes=0-');
+    expect(status, 206);
+    expect(contentRange, 'bytes 0-${length - 1}/$length');
+    expect(body.length, length);
+    expect(matches(body, 0), isTrue);
+    expect(yt.dropped, isTrue, reason: 'the dropped piece was asked for again');
+  });
+
+  test('serves exact ranges, suffix ranges and refuses ranges past the end', () async {
+    lookupDone.complete();
+    final local = proxy.wrap(yt.url('full'), videoId: 'abc');
+    final mid = await fetch(local, range: 'bytes=100-199');
+    expect(mid.$1, 206);
+    expect(mid.$2.length, 100);
+    expect(matches(mid.$2, 100), isTrue);
+    expect(mid.$3, 'bytes 100-199/$length');
+
+    final tail = await fetch(local, range: 'bytes=-500');
+    expect(tail.$2.length, 500);
+    expect(matches(tail.$2, length - 500), isTrue);
+
+    final whole = await fetch(local);
+    expect(whole.$1, 200);
+    expect(whole.$2.length, length);
+
+    final past = await fetch(local, range: 'bytes=$length-');
+    expect(past.$1, 416);
+  });
+
+  test('a failed lookup ends the stream at the free minute instead of hanging', () async {
+    lookupFails = true;
+    final local = proxy.wrap(yt.url('partial'), videoId: 'abc', partial: true);
+    Timer(const Duration(milliseconds: 300), lookupDone.complete);
+    final (status, body, _) = await fetch(local, range: 'bytes=0-');
+    expect(status, 206);
+    expect(body.length, lessThan(length));
+    expect(body.length, lessThanOrEqualTo(free));
+    expect(matches(body, 0), isTrue);
+  });
+
+  test('the same file keeps one address; other links pass through', () {
+    lookupDone.complete();
+    final a = proxy.wrap(yt.url('partial'), videoId: 'abc', partial: true);
+    final b = proxy.wrap(yt.url('full'), videoId: 'abc');
+    expect(a, b);
+    expect(proxy.wrap('https://example.com/a.mp4'), 'https://example.com/a.mp4');
+  });
+
+  test("yt-dlp's download links are routed through the proxy, other entries left alone", () {
+    lookupDone.complete();
+    final media = yt.url('full');
+    final json = jsonEncode({
+      'id': 'abc',
+      'formats': [
+        {'format_id': '137', 'protocol': 'https', 'url': media, 'http_headers': {'User-Agent': 'x'}},
+        {'format_id': 'sb0', 'protocol': 'mhtml', 'url': 'https://i.ytimg.com/sb/abc/storyboard.jpg'},
+      ],
+    });
+    final routed = jsonDecode(proxy.routeInfoJson(json)) as Map<String, dynamic>;
+    final formats = routed['formats'] as List;
+    expect(formats[0]['url'], proxy.wrap(media, videoId: 'abc'));
+    expect(formats[0]['url'], startsWith('http://127.0.0.1:'));
+    expect(formats[1]['url'], 'https://i.ytimg.com/sb/abc/storyboard.jpg');
+    expect(proxy.routeInfoJson('not json'), 'not json');
+  });
+
+  test('a server that ignores the range never gets wrong bytes into the output', () async {
+    lookupDone.complete();
+    final local = proxy.wrap(yt.url('liar'), videoId: 'abc');
+    List<int> body;
+    try {
+      body = (await fetch(local, range: 'bytes=1000-1999')).$2;
+    } on HttpException {
+      body = const []; // closed before any byte: the player reports an error
+    }
+    expect(matches(body, 1000), isTrue, reason: 'whatever arrived is the right part');
+    expect(body.length, lessThan(1000), reason: 'the stream is cut, not filled with other bytes');
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  test('parseRange', () {
+    expect(StreamProxy.parseRange(null, 1000), (0, 999, false));
+    expect(StreamProxy.parseRange('bytes=0-', 1000), (0, 999, true));
+    expect(StreamProxy.parseRange('bytes=10-20', 1000), (10, 20, true));
+    expect(StreamProxy.parseRange('bytes=990-5000', 1000), (990, 999, true));
+    expect(StreamProxy.parseRange('bytes=-100', 1000), (900, 999, true));
+    expect(StreamProxy.parseRange('bytes=1000-', 1000), isNull);
+  });
+}

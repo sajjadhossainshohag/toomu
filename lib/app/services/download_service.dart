@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -14,11 +15,13 @@ import '../core/values/app_constants.dart';
 import '../data/models/download_task.dart';
 import '../data/models/media_format.dart';
 import '../data/models/video_meta.dart';
+import '../data/providers/youtube_provider.dart';
 import '../data/providers/ytdlp/ytdlp_bridge.dart';
 import '../data/repositories/download_repository.dart';
 import 'media_scanner_service.dart';
 import 'permission_service.dart';
 import 'settings_service.dart';
+import 'stream_proxy.dart';
 import 'storage_service.dart';
 import 'ytdlp_service.dart';
 
@@ -484,6 +487,14 @@ class DownloadService extends GetxService {
 
     final work = _workDirOf(task);
     await Directory(work).create(recursive: true);
+    // Tasks queued before names were limited by bytes can have names
+    // Android can't create (255 bytes; a Bengali letter is 3).
+    final fitted = _fittedPath(task.filePath);
+    if (fitted != task.filePath) {
+      debugPrint('[Download] file name shortened to fit the phone\'s limit');
+      task.filePath = fitted;
+      await _persist();
+    }
     final target = File(task.filePath);
     final dir = target.parent.path;
     final name = target.uri.pathSegments.last;
@@ -516,14 +527,11 @@ class DownloadService extends GetxService {
     });
     bool stopped(YtDlpResult r) => r.canceled || token.isCancelled;
 
-    // 1. Reuse the format sheet's extraction: no second Python + YouTube
-    //    challenge round (often 5–15 s) before bytes start flowing.
-    YtDlpResult? result;
-    var json = await yt.infoJsonFor(url);
-    if (json == null) {
-      // No lookup from the sheet (e.g. resumed later): run one now. It picks
-      // the fast client and checks the HD formats are there; pausing stops
-      // waiting for it.
+    // yt-dlp's own lookup: the format sheet may have started one; else run
+    // one now (pausing stops waiting for it).
+    Future<String?> lookedUp() async {
+      var json = await yt.infoJsonFor(url);
+      if (json != null) return json;
       try {
         await Future.any<Object?>([yt.info(url), token.whenCancel]);
         json = await yt.infoJsonFor(url);
@@ -531,8 +539,23 @@ class DownloadService extends GetxService {
         debugPrint('[Download] lookup failed ($e); extracting during the download');
       }
       _checkStopped(token);
+      return json;
     }
-    debugPrint('[Download] video details ${json != null ? 'ready' : 'not ready (extracting)'} '
+
+    // 1. Links already in hand, fastest first — no second Python run and
+    //    YouTube round before bytes flow:
+    //    a. yt-dlp's lookup, if one finished (e.g. the sheet's);
+    //    b. the fast lookup's whole-file links (~0.4 s, no Python; usually
+    //       already done by the sheet), handed to yt-dlp as its info JSON;
+    //    c. else wait for / run yt-dlp's lookup.
+    var json = yt.savedInfoJson(url);
+    var fromFast = false;
+    if (json == null) {
+      json = await _fastInfoJson(task);
+      fromFast = json != null;
+    }
+    json ??= await lookedUp();
+    debugPrint('[Download] video details ${json != null ? 'ready (${fromFast ? 'fast lookup' : 'yt-dlp'})' : 'not ready (extracting)'} '
         'after ${sw.elapsedMilliseconds} ms');
     // Each fallback starts clean: partial files of one downloader / link set
     // can't be resumed by another.
@@ -543,22 +566,52 @@ class DownloadService extends GetxService {
     }
 
     final infoFile = File('$work/info.json');
-    Future<YtDlpResult> fromSavedInfo({required bool aria2c}) async {
-      await infoFile.writeAsString(json!);
-      return yt.runWithoutUrl(task.id, [...argsWith(aria2c: aria2c), '--load-info-json', infoFile.path],
+    Future<YtDlpResult> fromSavedInfo(String info, {required bool aria2c}) async {
+      // Media links via the stream proxy: full-speed pieces for every
+      // connection (YouTube throttles or refuses aria2c's large ranges).
+      await infoFile.writeAsString(StreamProxy.to.routeInfoJson(info));
+      return yt.runWithoutUrl(
+          task.id,
+          [
+            ...argsWith(aria2c: aria2c),
+            '--load-info-json', infoFile.path,
+            // If these links fail, yt-dlp looks the video up again by
+            // itself: make that the quick, JS-free client too.
+            '--extractor-args', 'youtube:player_client=visionos;skip=hls,translated_subs',
+          ],
           onLine: progress.onLine);
     }
 
-    if (json != null) {
-      _checkStopped(token);
+    Future<YtDlpResult> fromInfo(String info) async {
       task.phase.value = DownloadPhase.starting;
-      result = await fromSavedInfo(aria2c: useAria2c);
-      // aria2c refused (e.g. exit code 22 = the server said no): the
-      // built-in downloader asks differently (YouTube's own range requests).
-      if (useAria2c && !result.ok && !stopped(result)) {
+      var r = await fromSavedInfo(info, aria2c: useAria2c);
+      // aria2c refused: the built-in downloader asks differently.
+      if (useAria2c && !r.ok && !stopped(r)) {
         debugPrint('[Download] aria2c failed on the saved links; trying the built-in downloader');
         await freshStart();
-        result = await fromSavedInfo(aria2c: false);
+        r = await fromSavedInfo(info, aria2c: false);
+      }
+      return r;
+    }
+
+    // The file can't be written (name, space, permission): no other links
+    // or downloader can fix that, so stop with the reason.
+    void stopIfLocal(YtDlpResult r) {
+      final problem = r.ok ? null : localFileProblem(r.err);
+      if (problem != null) throw YtDlpException(problem);
+    }
+
+    YtDlpResult? result;
+    if (json != null) {
+      _checkStopped(token);
+      result = await fromInfo(json);
+      stopIfLocal(result);
+      if (fromFast && !result.ok && !stopped(result)) {
+        debugPrint('[Download] fast-lookup links failed; using yt-dlp\'s lookup');
+        await freshStart();
+        final looked = await lookedUp();
+        if (looked != null) result = await fromInfo(looked);
+        stopIfLocal(result);
       }
       if (!result.ok && !stopped(result)) {
         debugPrint('[Download] saved links failed; extracting again with other clients');
@@ -567,17 +620,13 @@ class DownloadService extends GetxService {
     }
 
     // 2. Full extraction (fresh links), with the YouTube client fallback.
+    //    yt-dlp's built-in downloader here: these links aren't routed
+    //    through the stream proxy, and aria2c's large ranges straight to
+    //    YouTube get throttled or refused (aria2c exit code 22).
     if (result == null || (!result.ok && !stopped(result))) {
-      result = await yt.runWithFallback(task.id, argsWith(aria2c: useAria2c), url,
-          stopped: () => token.isCancelled, onLine: progress.onLine);
-    }
-
-    // 3. aria2c trouble: start clean and retry with the built-in downloader.
-    if (useAria2c && !result.ok && !stopped(result)) {
-      debugPrint('[Download] aria2c failed; retrying with the built-in downloader');
-      await freshStart();
       result = await yt.runWithFallback(task.id, argsWith(aria2c: false), url,
           stopped: () => token.isCancelled, onLine: progress.onLine);
+      stopIfLocal(result);
     }
 
     if (result.canceled || token.isCancelled) throw const _Stopped();
@@ -598,6 +647,37 @@ class DownloadService extends GetxService {
       task.filePath = found.first.path;
     }
     await _deleteQuietly(work);
+  }
+
+  /// [path] with its name cut to fit Android's 255-byte limit (with room
+  /// for yt-dlp's and aria2c's temporary endings); unchanged if it fits.
+  String _fittedPath(String path) {
+    final slash = path.lastIndexOf('/');
+    final dir = path.substring(0, slash);
+    final name = path.substring(slash + 1);
+    final dot = name.lastIndexOf('.');
+    final base = dot > 0 ? name.substring(0, dot) : name;
+    if (utf8.encode(base).length <= 170) return path;
+    final ext = dot > 0 ? name.substring(dot + 1) : 'mp4';
+    return _uniquePath(dir, Formatters.fileName(base), ext);
+  }
+
+  static final _youtube = YoutubeProvider();
+
+  /// [task]'s video as yt-dlp info JSON built from the fast lookup — only
+  /// with whole-file links (visionOS client); null otherwise.
+  static Future<String?> _fastInfoJson(DownloadTask task) async {
+    try {
+      final fast = await _youtube.fastLinks(task.videoId).timeout(const Duration(seconds: 10));
+      if (fast == null || !fast.full) return null;
+      return jsonEncode(fast.info.toYtDlpInfo(
+        title: task.title,
+        uploader: task.author,
+        thumbnail: task.thumbnailUrl.isEmpty ? null : task.thumbnailUrl,
+      ));
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Merge / convert options per task.

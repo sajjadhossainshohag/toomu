@@ -12,6 +12,7 @@ import '../core/utils/link_parser.dart';
 import '../data/providers/youtube/po_token_service.dart';
 import '../data/providers/ytdlp/ytdlp_bridge.dart';
 import 'storage_service.dart';
+import 'youtube_account_service.dart';
 
 /// Owns the bundled yt-dlp: starts it, keeps it updated from GitHub (no
 /// server of our own; Snaptube-style "hot update"), and builds the common
@@ -117,6 +118,10 @@ class YtDlpService extends GetxService {
         // Give up on a dead connection instead of hanging (default 20 s,
         // retried several times).
         '--socket-timeout', '15',
+        // IPv4 only: YouTube ties links to the IP version they were looked
+        // up with (403 otherwise), and a half-working IPv6 makes every
+        // connection wait out the timeout (yt-dlp doesn't fall back fast).
+        '-4',
         '--cache-dir', _cacheDir, // caches YouTube player JS → faster
         // JS-challenge solver scripts if not bundled (yt-dlp ≥ 2025.11.12 only).
         if (_supportsRemoteComponents) ...['--remote-components', 'ejs:github'],
@@ -171,14 +176,18 @@ class YtDlpService extends GetxService {
     return cached != null && DateTime.now().difference(cached.at) < _infoTtl ? cached.info : null;
   }
 
+  /// yt-dlp's raw info JSON for [url] if a lookup already finished (no
+  /// waiting).
+  String? savedInfoJson(String url) {
+    final c = _infoCache[url];
+    return c != null && DateTime.now().difference(c.at) < _infoTtl ? c.json : null;
+  }
+
   /// yt-dlp's raw info JSON for [url], so a download can skip extraction
   /// (`--load-info-json`). Waits for an extraction already in progress (the
-  /// format sheet starts one); null if there is none.
+  /// format sheet may have started one); null if there is none.
   Future<String?> infoJsonFor(String url) async {
-    String? fresh() {
-      final c = _infoCache[url];
-      return c != null && DateTime.now().difference(c.at) < _infoTtl ? c.json : null;
-    }
+    String? fresh() => savedInfoJson(url);
 
     final cached = fresh();
     if (cached != null) return cached;
@@ -262,14 +271,22 @@ class YtDlpService extends GetxService {
   // ------------------------------------------------------- client fallback
 
   /// YouTube "player clients" yt-dlp can impersonate, tried in this order;
-  /// when one is refused (YouTube is uneven per video, network and week)
-  /// the next is tried.
-  ///  - `null` = yt-dlp's own default choice (solves the JS challenge).
-  ///  - `android_vr` needs no challenge solving but, as of Nov 2026, gets
-  ///    no HD streams (and still took ~17 s), so it's only a late fallback.
-  ///  - `mweb+pot` = mobile web with PO tokens from our BotGuard WebView —
-  ///    yt-dlp's recommended way past "HTTP Error 403" on video data.
-  static const clientFallbacks = <String?>[null, 'tv', 'web_safari', 'android_vr', 'mweb+pot'];
+  /// when one fails (YouTube is uneven per video, network and week) the
+  /// next is tried.
+  ///  - `visionos`: whole-file HD links with no JS challenge and no PO
+  ///    token, so yt-dlp skips downloading YouTube's player script and
+  ///    solving it in QuickJS — the ~20 s of a default lookup on a phone.
+  ///    Not available for "made for kids" videos.
+  ///  - `null` = yt-dlp's own default choice (tv_samsung + visionos + web;
+  ///    solves the JS challenge in QuickJS: slow but thorough).
+  ///  - `tv`: another client yt-dlp knows without PO tokens (JS challenge).
+  ///  - `mweb+pot` = mobile web with PO tokens from our BotGuard WebView.
+  /// Dropped (Nov 2026): android_vr (all formats 403 since Aug 2026) and
+  /// web_safari (only adds HLS formats, which the app skips).
+  static const clientFallbacks = <String?>['visionos', null, 'tv', 'mweb+pot'];
+
+  /// Clients that are a fast first try: any failure moves on to the next.
+  static const _fastFirst = {'visionos'};
 
   /// Extractor args for [client] (+ [extra] YouTube args, merged into the
   /// same `--extractor-args` so neither overrides the other); null when the
@@ -295,6 +312,9 @@ class YtDlpService extends GetxService {
   /// Errors where another client may succeed (vs. private/removed videos).
   static bool isRetryable(String stderr) {
     final e = stderr.toLowerCase();
+    // Age-restricted: only a signed-in adult account gets these (yt-dlp
+    // already tried its embedded-player workaround); other clients can't.
+    if (isAgeRestricted(e)) return false;
     const signs = [
       '403', 'forbidden', 'http error 4', 'requested format is not available',
       'not a bot', 'sign in to confirm', 'precondition', 'n challenge', 'nsig',
@@ -305,6 +325,12 @@ class YtDlpService extends GetxService {
       'aria2c exited with code 22', 'aria2c exited with code 24',
     ];
     return signs.any(e.contains);
+  }
+
+  /// YouTube's "Sign in to confirm your age" and similar.
+  static bool isAgeRestricted(String stderr) {
+    final e = stderr.toLowerCase();
+    return e.contains('confirm your age') || e.contains('age-restricted') || e.contains('inappropriate for some users');
   }
 
   /// How long the "looking at the video" phase of a download (before the
@@ -372,9 +398,64 @@ class YtDlpService extends GetxService {
       }
       if (result.canceled || (stopped?.call() ?? false)) return result;
       _logFailure(client, result.err);
-      if (!isRetryable(result.err)) return result;
+      // The file can't be written: no other client can help.
+      if (localFileProblem(result.err) != null) return result;
+      // Age-restricted (yt-dlp's embedded-player workaround already tried):
+      // only the signed-in account can get it; other clients can't.
+      if (isAgeRestricted(result.err)) {
+        return _withAccount(id, args, url,
+            failed: result, onLine: onLine, youtubeArgs: youtubeArgs, attemptLimit: attemptLimit, accept: accept);
+      }
+      if (!_fastFirst.contains(client) && !isRetryable(result.err)) return result;
     }
     return result;
+  }
+
+  /// Age-restricted [url]: one more run with the user's YouTube sign-in
+  /// (yt-dlp then picks its own clients for accounts). [failed] is returned
+  /// when nobody is signed in.
+  Future<YtDlpResult> _withAccount(
+    String id,
+    List<String> args,
+    String url, {
+    required YtDlpResult failed,
+    void Function(String line)? onLine,
+    String? youtubeArgs,
+    Duration? attemptLimit,
+    bool Function(YtDlpResult result)? accept,
+  }) async {
+    final account = YoutubeAccountService.to;
+    if (!account.signedIn.value) return failed;
+    debugPrint('[yt-dlp] age-restricted; trying with the signed-in YouTube account');
+    final sw = Stopwatch()..start();
+    final run = await _runWatched(
+      id,
+      [
+        ...baseArgs,
+        ...account.ytDlpArgs,
+        if (youtubeArgs != null) ...['--extractor-args', 'youtube:$youtubeArgs'],
+        ...args,
+        url,
+      ],
+      onLine: onLine,
+      // Account lookups solve YouTube's JS challenge (QuickJS): slower.
+      limit: attemptLimit == null ? null : attemptLimit * 2,
+    );
+    final r = run.result;
+    if (r.ok && (accept?.call(r) ?? true)) {
+      debugPrint('[yt-dlp] ok with the YouTube account in ${sw.elapsedMilliseconds} ms');
+      return r;
+    }
+    if (r.canceled) return r;
+    _logFailure('account', r.err);
+    if (isSessionExpired(r.err)) await account.markExpired();
+    return r.ok ? const YtDlpResult(exitCode: -1, out: '', err: 'ERROR: Requested format is not available') : r;
+  }
+
+  /// yt-dlp: "The provided YouTube account cookies are no longer valid".
+  static bool isSessionExpired(String stderr) {
+    final e = stderr.toLowerCase();
+    return e.contains('cookies are no longer valid') || e.contains('account cookies are no longer');
   }
 
   /// One yt-dlp run with a watchdog. With [limit], the whole run is

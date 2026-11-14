@@ -15,6 +15,9 @@ import '../../../data/models/media_format.dart';
 import '../../../data/models/video_item.dart';
 import '../../../data/models/video_meta.dart';
 import '../../../data/models/yt_info.dart';
+import '../../../services/stream_proxy.dart';
+import '../../../services/youtube_account_service.dart';
+import '../../settings/views/youtube_sign_in_page.dart';
 import '../../../data/models/youtube_stream.dart';
 import '../../../routes/app_pages.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
@@ -99,6 +102,7 @@ class YoutubeController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _yt.warmUp(); // visitor id for the fast lookup, before the first tap
     history.assignAll(
         (_storage.read<List>(AppConstants.kSearchHistory) ?? const []).cast<String>());
   }
@@ -282,9 +286,6 @@ class YoutubeController extends GetxController {
   /// yt-dlp info of the video in the sheet (formats + stream URLs).
   YtInfo? _info;
 
-  /// Fast-path info of the video in the sheet (its audio URL plays at once).
-  YtInfo? _quick;
-
   /// Search results when the bubble's "now playing" info isn't a clear
   /// match; the sheet asks the user to pick one.
   final candidates = <Video>[].obs;
@@ -379,7 +380,6 @@ class YoutubeController extends GetxController {
 
   void _resetSheet() {
     _info = null;
-    _quick = null;
     candidates.clear();
     formatsLoading.value = true;
     formatsError.value = null;
@@ -388,14 +388,14 @@ class YoutubeController extends GetxController {
     audioFormats.clear();
   }
 
-  /// Fills the sheet as fast as possible: a lightweight quality list
-  /// (~0.3 s, no yt-dlp) races the full yt-dlp info; the first good answer
-  /// wins. yt-dlp keeps running in the background for "Play audio" and is
-  /// cached, so downloads/reopening reuse it.
+  /// Fills the sheet as fast as possible from the fast lookup (~0.4 s, no
+  /// yt-dlp); yt-dlp is only started when those links don't cover whole
+  /// files, or the fast lookup is slow or fails.
   Future<void> _loadFormats(String videoId) async {
     _loadingId = videoId;
     formatsLoading.value = true;
     formatsError.value = null;
+    needsSignIn.value = false;
     final ytdlp = YtDlpService.to;
     final url = 'https://www.youtube.com/watch?v=$videoId';
     final sw = Stopwatch()..start();
@@ -425,8 +425,32 @@ class YoutubeController extends GetxController {
     }
 
     final shown = Completer<void>();
-    Object? ytdlpError;
+    void showFast(FastLinks? fast) {
+      if (fast == null || shown.isCompleted || _sheetVideoId != videoId) return;
+      if (MediaFormat.videoOptions(fast.info).isEmpty && MediaFormat.audioOptions(fast.info).isEmpty) return;
+      _show(fast.info, from: 'fast lookup (${fast.client})', ms: sw.elapsedMilliseconds);
+      shown.complete();
+    }
 
+    // The fast lookup gets a head start. With whole-file links (visionOS)
+    // it's all the sheet needs — downloads, Watch and Play audio use those
+    // links — so yt-dlp isn't started at all: one Python run (CPU, heat)
+    // saved per video.
+    final fastLookup = _yt
+        .fastLinks(videoId, duration: selectedVideo.value?.duration)
+        .timeout(const Duration(seconds: 12), onTimeout: () => null)
+        .catchError((Object _) => null);
+    final early = await Future.any<FastLinks?>([
+      fastLookup,
+      Future<FastLinks?>.delayed(const Duration(seconds: 3), () => null),
+    ]);
+    if (_sheetVideoId != videoId) return;
+    showFast(early);
+    if (early != null && early.full && shown.isCompleted) return;
+
+    // Otherwise yt-dlp too (its links are needed, or the fast lookup is
+    // slow / failed): the first good answer fills the sheet.
+    Object? ytdlpError;
     final full = ytdlp.info(url).timeout(const Duration(seconds: 90)).then((info) {
       if (_sheetVideoId != videoId) return;
       _info = info;
@@ -441,16 +465,7 @@ class YoutubeController extends GetxController {
       ytdlpError = e;
       debugPrint('[YouTube] yt-dlp formats for $videoId failed: $e');
     });
-
-    final quick = _yt
-        .quickInfo(videoId, duration: selectedVideo.value?.duration)
-        .then((info) {
-      if (info != null && _sheetVideoId == videoId) _quick = info;
-      if (info == null || shown.isCompleted || _sheetVideoId != videoId) return;
-      if (MediaFormat.videoOptions(info).isEmpty && MediaFormat.audioOptions(info).isEmpty) return;
-      _show(info, from: 'quick list', ms: sw.elapsedMilliseconds);
-      shown.complete();
-    }).catchError((Object _) {});
+    final quick = fastLookup.then(showFast);
 
     // Done when one path showed formats, or both finished without.
     await Future.any([shown.future, Future.wait([full, quick])]);
@@ -458,9 +473,27 @@ class YoutubeController extends GetxController {
       formatsError.value = ytdlpError != null
           ? ErrorText.of(ytdlpError!)
           : 'No downloadable formats found for this video.';
+      needsSignIn.value = _wantsSignIn(ytdlpError);
     }
     formatsLoading.value = false;
     formatsStatus.value = '';
+  }
+
+  /// The sheet's error is YouTube asking for a sign-in (age-restricted).
+  final needsSignIn = false.obs;
+
+  static bool _wantsSignIn(Object? e) {
+    if (YoutubeAccountService.to.signedIn.value) return false;
+    final text = e is YtDlpException ? e.message : '$e';
+    return YtDlpService.isAgeRestricted(text) || YtDlpService.isSessionExpired(text);
+  }
+
+  /// Sheet button: sign in, then look the video up again.
+  Future<void> signInAndRetry() async {
+    final id = _loadingId;
+    if (id == null || !await YoutubeSignInPage.open() || _loadingId != id) return;
+    _resetSheet();
+    await _loadFormats(id);
   }
 
   /// Which video the sheet currently shows (ignore late results for others).
@@ -512,9 +545,10 @@ class YoutubeController extends GetxController {
   }
 
   /// Opens the player as fast as possible: yt-dlp's links when it already
-  /// has them; otherwise the fast lookup's (~0.5 s) while yt-dlp looks the
-  /// video up in the background — the player switches to yt-dlp's links
-  /// only if YouTube cuts the fast ones off.
+  /// has them; otherwise the fast lookup's (well under a second). Those
+  /// are whole-file links (visionOS client) — or, when only the Android
+  /// client works, links for about the first minute that the stream proxy
+  /// extends with yt-dlp's links, looked up while the video plays.
   Future<void> _watch(
     String id,
     String title, {
@@ -534,16 +568,14 @@ class YoutubeController extends GetxController {
       if (reliable != null) {
         item = YoutubeStream.pick(reliable, videoId: id, title: title, preferred: preferred);
       } else {
-        // Backup links, ready by the time they'd be needed.
-        unawaited(ytdlp.info(url).then<void>((_) {}, onError: (Object _) {}));
-        // Only links YouTube is actually serving (each client is checked).
         final fast = await _yt
-            .playableInfo(id, duration: duration)
+            .fastLinks(id, duration: duration)
             .timeout(const Duration(seconds: 15), onTimeout: () => null)
             .catchError((Object _) => null);
         if (fast != null) {
-          item = YoutubeStream.pick(fast.info, videoId: id, title: title, preferred: preferred, provisional: true);
-          source = 'fast lookup (${fast.client})';
+          item = YoutubeStream.pick(fast.info,
+              videoId: id, title: title, preferred: preferred, provisional: true, partial: !fast.full);
+          source = 'fast lookup (${fast.client}${fast.full ? '' : ', first minute'})';
         } else {
           debugPrint('[YouTube] no fast links work right now; waiting for yt-dlp');
         }
@@ -560,16 +592,22 @@ class YoutubeController extends GetxController {
       await Get.toNamed(Routes.videoPlayer, arguments: VideoPlaylist([item], 0));
     } catch (e) {
       debugPrint('[YouTube] watch failed: $e');
-      Get.snackbar('Can\'t play this video', ErrorText.of(e));
+      Get.snackbar(
+        'Can\'t play this video',
+        ErrorText.of(e),
+        mainButton: _wantsSignIn(e)
+            ? TextButton(onPressed: () => YoutubeSignInPage.open(), child: const Text('Sign in'))
+            : null,
+      );
     }
   }
 
 
   /// Stream the audio in the music player without downloading.
   ///
-  /// Starts at once with the fast path's audio URL; yt-dlp (already running
-  /// for the sheet) is the safety net — if YouTube refuses or cuts off the
-  /// fast stream, playback switches to yt-dlp's URL at the same position.
+  /// Starts at once with the fast lookup's audio link, played through the
+  /// stream proxy; yt-dlp is the safety net — if the fast stream fails
+  /// anyway, playback switches to yt-dlp's link at the same position.
   Future<void> playAudio() async {
     final video = selectedVideo.value;
     if (video == null) return;
@@ -578,27 +616,31 @@ class YoutubeController extends GetxController {
     final sw = Stopwatch()..start();
     final audio = AudioPlayerService.to;
     final trackId = 'yt:${video.id}';
-    final ytdlpInfo = YtDlpService.to.info(video.watchUrl); // shared / cached run
 
-    Track trackFor(YtFormat f) => Track(
-          id: trackId,
-          title: video.title,
-          album: 'YouTube',
-          uri: f.url!,
-          duration: video.duration,
-          artworkUrl: 'https://i.ytimg.com/vi/${video.id}/hqdefault.jpg',
-          sourceBuilder: (item) =>
-              AudioSource.uri(Uri.parse(f.url!), headers: f.httpHeaders.isEmpty ? null : f.httpHeaders, tag: item),
-        );
+    Track trackFor(YtFormat f, {bool partial = false}) {
+      final link = StreamProxy.to.wrap(f.url!, headers: f.httpHeaders, videoId: video.id, partial: partial);
+      final direct = link == f.url;
+      return Track(
+        id: trackId,
+        title: video.title,
+        album: 'YouTube',
+        uri: link,
+        duration: video.duration,
+        artworkUrl: 'https://i.ytimg.com/vi/${video.id}/hqdefault.jpg',
+        sourceBuilder: (item) => AudioSource.uri(Uri.parse(link),
+            headers: direct && f.httpHeaders.isNotEmpty ? f.httpHeaders : null, tag: item),
+      );
+    }
 
+    // yt-dlp only when needed (shared with any lookup already running).
     Future<bool> playFromYtDlp({Duration? at}) async {
-      final best = (await ytdlpInfo).bestAudio;
+      final best = (await YtDlpService.to.info(video.watchUrl)).bestAudio;
       if (best?.url == null) throw StateError('No playable audio found.');
       return audio.playTracks([trackFor(best!)], position: at);
     }
 
     try {
-      // 1. yt-dlp already done (recently opened) → its URL, no fallback needed.
+      // 1. yt-dlp already done (recently opened) → its link, no fallback needed.
       final done = _info ?? YtDlpService.to.cachedInfo(video.watchUrl);
       if (done?.bestAudio?.url != null) {
         await audio.playTracks([trackFor(done!.bestAudio!)]);
@@ -606,15 +648,14 @@ class YoutubeController extends GetxController {
         return;
       }
 
-      // 2. Fast path (usually already fetched by the sheet).
-      final quick = _quick ??
-          await _yt
-              .quickInfo(video.id, duration: video.duration)
-              .timeout(const Duration(seconds: 4), onTimeout: () => null)
-              .catchError((Object _) => null);
-      final fast = quick?.bestAudio;
-      if (fast?.url != null && await audio.playTracks([trackFor(fast!)], quiet: true)) {
-        debugPrint('[YouTube] audio playing via fast path in ${sw.elapsedMilliseconds} ms');
+      // 2. Fast lookup (usually already done by the sheet).
+      final fast = await _yt
+          .fastLinks(video.id, duration: video.duration)
+          .timeout(const Duration(seconds: 6), onTimeout: () => null)
+          .catchError((Object _) => null);
+      final best = fast?.info.bestAudio;
+      if (best?.url != null && await audio.playTracks([trackFor(best!, partial: !fast!.full)], quiet: true)) {
+        debugPrint('[YouTube] audio playing via fast lookup (${fast.client}) in ${sw.elapsedMilliseconds} ms');
         Get.back();
         _fallBackOnError(trackId, () async {
           final at = audio.position.value;
@@ -624,7 +665,7 @@ class YoutubeController extends GetxController {
         return;
       }
 
-      // 3. No fast URL (or it failed to load) → yt-dlp.
+      // 3. No fast link (or it failed to load) → yt-dlp.
       await playFromYtDlp();
       debugPrint('[YouTube] audio playing via yt-dlp in ${sw.elapsedMilliseconds} ms');
       Get.back();

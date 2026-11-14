@@ -7,11 +7,13 @@ import '../../../core/values/app_constants.dart';
 import '../../../services/download_service.dart';
 import '../../../services/floating_button_service.dart';
 import '../../../services/settings_service.dart';
+import '../../../services/youtube_account_service.dart';
 import '../../../services/ytdlp_service.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../player/views/widgets/equalizer_sheet.dart';
 import '../views/widgets/diagnostics_sheet.dart';
+import '../views/youtube_sign_in_page.dart';
 
 class SettingsController extends GetxController {
   final SettingsService settings = SettingsService.to;
@@ -94,6 +96,23 @@ class SettingsController extends GetxController {
 
   YtDlpService get ytdlp => YtDlpService.to;
   FloatingButtonService get bubble => FloatingButtonService.to;
+
+  final YoutubeAccountService account = YoutubeAccountService.to;
+
+  /// Settings → YouTube account: sign in, or sign out.
+  Future<void> youtubeAccount() async {
+    if (!account.signedIn.value) {
+      await YoutubeSignInPage.open();
+      return;
+    }
+    final out = await showConfirmDialog(
+      title: 'Sign out of YouTube?',
+      message: "Age-restricted videos won't play or download until you sign in again.",
+      confirmLabel: 'Sign out',
+      destructive: true,
+    );
+    if (out) await account.signOut();
+  }
 
   void toggleBubble() => bubble.toggle();
 

@@ -15,6 +15,25 @@ class YtDlpResult {
 }
 
 /// yt-dlp failed; [message] is its last `ERROR:` line.
+/// A failure on this phone rather than at YouTube — the file can't be
+/// written — as a message the user can act on; null otherwise. Other
+/// links, YouTube clients or downloaders can't fix these, so downloads stop
+/// at once instead of retrying.
+String? localFileProblem(String err) {
+  final e = err.toLowerCase();
+  if (e.contains('errno 36') || e.contains('file name too long')) {
+    return "The file name is too long for this phone's storage.";
+  }
+  if (e.contains('errno 28') || e.contains('no space left')) return 'Not enough free storage on the phone.';
+  if (e.contains('errno 30') || e.contains('read-only file system')) {
+    return "The download folder can't be written to (read-only storage).";
+  }
+  if (e.contains('errno 13') || e.contains('permission denied')) {
+    return "Toomu isn't allowed to write to the download folder.";
+  }
+  return null;
+}
+
 class YtDlpException implements Exception {
   YtDlpException(String stderr) : message = _lastError(stderr);
 

@@ -91,12 +91,22 @@ class FormatSheet extends GetView<YoutubeController> {
                     ],
                   ),
                 )
-              else if (controller.formatsError.value != null)
+              else if (controller.formatsError.value != null) ...<Widget>[
                 Padding(
                   padding: EdgeInsets.only(top: 16 * scale),
                   child: InfoBanner(controller.formatsError.value!,
                       icon: Icons.error_outline_rounded),
-                )
+                ),
+                if (controller.needsSignIn.value)
+                  Padding(
+                    padding: EdgeInsets.only(top: 12 * scale),
+                    child: GradientPill(
+                      label: 'Sign in to YouTube',
+                      icon: Icons.account_circle_rounded,
+                      onTap: controller.signInAndRetry,
+                    ),
+                  ),
+              ]
               else ...<Widget>[
                 if (controller.videoFormats.isNotEmpty) ...<Widget>[
                   const SectionTitle('Video', padded: false),

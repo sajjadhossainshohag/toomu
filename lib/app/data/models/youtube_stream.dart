@@ -76,6 +76,7 @@ abstract class YoutubeStream {
     String? title,
     int? preferred,
     bool provisional = false,
+    bool partial = false,
   }) {
     final key = 'yt:$videoId';
     final name = title ?? info.title;
@@ -98,6 +99,7 @@ abstract class YoutubeStream {
         thumbnailUrl: thumb,
         qualities: list, // so the menu still works after falling back
         provisional: provisional,
+        partial: partial,
       );
     }
 
@@ -113,6 +115,7 @@ abstract class YoutubeStream {
       fallback: simple,
       qualities: list,
       provisional: provisional,
+      partial: partial,
     ).withQuality(start);
   }
 }

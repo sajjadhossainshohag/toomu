@@ -19,12 +19,18 @@ class VideoItem {
     this.fallback,
     this.qualities = const [],
     this.provisional = false,
+    this.partial = false,
   });
 
   /// Streams: links from the fast lookup (no yt-dlp). They start in well
-  /// under a second but YouTube may cut them off; the player then switches
-  /// to yt-dlp's links at the same position.
+  /// under a second; if they fail anyway, the player switches to yt-dlp's
+  /// links at the same position.
   final bool provisional;
+
+  /// Streams: the links only serve about the first minute (fast lookup
+  /// without a whole-file client); the stream proxy carries on with
+  /// yt-dlp's links for the same files.
+  final bool partial;
 
   /// Streams: the YouTube video id (from the "yt:…" key).
   String? get youtubeId => remoteKey != null && remoteKey!.startsWith('yt:') ? remoteKey!.substring(3) : null;
@@ -54,6 +60,7 @@ class VideoItem {
         fallback: fallback,
         qualities: qualities,
         provisional: provisional,
+        partial: partial,
       );
 
   /// Streams: separate audio played alongside [uri] (YouTube serves HD as
@@ -128,13 +135,26 @@ class VideoItem {
   }
 
   /// A file outside the library (download, shared from another app).
-  factory VideoItem.file(String pathOrUri, {String? name}) {
+  /// [title] is shown as is; a file [name] (or the path's last part)
+  /// loses its extension.
+  factory VideoItem.file(String pathOrUri, {String? name, String? title}) {
     final isUri = pathOrUri.contains('://');
-    final fallback = Uri.decodeComponent(pathOrUri.split('/').last);
+    String fromPath() {
+      final last = pathOrUri.split('/').last;
+      // Only URIs are %-encoded. Decoding a plain path throws on Bengali
+      // or emoji names and on a literal "%" ("100% Love.mp4").
+      if (!isUri) return last;
+      try {
+        return Uri.decodeComponent(last);
+      } catch (_) {
+        return last;
+      }
+    }
+
     return VideoItem(
       uri: isUri ? pathOrUri : Uri.file(pathOrUri).toString(),
       path: isUri ? null : pathOrUri,
-      title: _stripExtension(name ?? fallback),
+      title: title ?? _stripExtension(name ?? fromPath()),
     );
   }
 }

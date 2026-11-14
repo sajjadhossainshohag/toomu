@@ -116,6 +116,17 @@ class SettingsView extends GetView<SettingsController> {
                         value: 'How',
                         onTap: controller.explainShare,
                       ),
+                      AppRow(
+                        icon: Icons.account_circle_rounded,
+                        tint: ColorConstants.siteYoutube,
+                        label: 'YouTube account (age-restricted videos)',
+                        value: controller.account.signedIn.value
+                            ? 'Signed in'
+                            : controller.account.expired.value
+                                ? 'Expired'
+                                : 'Sign in',
+                        onTap: controller.youtubeAccount,
+                      ),
                     ],
                   ),
                   SizedBox(height: 18 * scale),

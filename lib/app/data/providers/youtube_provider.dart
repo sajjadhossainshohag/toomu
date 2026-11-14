@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -19,8 +21,8 @@ class VideoPage {
   }
 }
 
-/// YouTube search, home feed and video details (youtube_explode_dart).
-/// Downloading and audio streaming are done by yt-dlp (YtDlpService).
+/// YouTube search, home feed, video details and the fast stream lookup
+/// (youtube_explode_dart). Downloads are done by yt-dlp (YtDlpService).
 class YoutubeProvider {
   YoutubeProvider() : _yt = YoutubeExplode();
 
@@ -70,55 +72,140 @@ class YoutubeProvider {
 
   Future<Video> video(String videoId) => _yt.videos.get(videoId);
 
-  // ------------------------------------------------- fast format listing
+  // ------------------------------------------------------- fast lookup
 
-  /// The download sheet's quality list in ~0.3 s, without yt-dlp (no
-  /// Python start-up, no JS challenge). Only *metadata* is used: options are
-  /// yt-dlp selectors, so yt-dlp still picks working streams at download
-  /// time. Returns null if YouTube refuses these clients.
-  Future<YtInfo?> quickInfo(String videoId, {Duration? duration}) async {
-    for (final clients in [
-      [YoutubeApiClient.android],
-      [YoutubeApiClient.androidVr],
-      [YoutubeApiClient.ios],
-    ]) {
-      try {
-        final m = await _yt.videos.streams
-            .getManifest(videoId, ytClients: clients, requireWatchPage: false)
-            .timeout(const Duration(seconds: 5));
-        if (m.videoOnly.isEmpty && m.audioOnly.isEmpty) continue;
-        return YtInfo(
-          id: videoId,
-          title: '',
-          uploader: '',
-          duration: duration,
-          formats: [for (final s in m.streams) _toFormat(s)],
-        );
-      } catch (_) {
-        // Try the next client.
-      }
+  /// YouTube's visionOS app client: whole-file links up to 4K with no JS
+  /// challenge and no PO token — what yt-dlp, NewPipe and Grayjay use since
+  /// mid-2026 (measured Nov 2026: ~0.2 s per lookup, every file served to
+  /// the end). Without a visitor id YouTube asks to sign in.
+  static const _visionOsAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 '
+      '(KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+
+  static YoutubeApiClient _visionOs(String visitorData) => YoutubeApiClient(
+        {
+          'context': {
+            'client': {
+              'clientName': 'VISIONOS',
+              'clientVersion': '1.02',
+              'deviceMake': 'Apple',
+              'deviceModel': 'RealityDevice17,1',
+              'userAgent': _visionOsAgent,
+              'osName': 'visionOS',
+              'osVersion': '26.5.23O471',
+              'hl': 'en',
+              'timeZone': 'UTC',
+              'utcOffsetMinutes': 0,
+              'visitorData': visitorData,
+            },
+          },
+          'contentCheckOk': true,
+          'racyCheckOk': true,
+        },
+        'https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
+        headers: {'X-Goog-Visitor-Id': visitorData},
+      );
+
+  /// Anonymous YouTube visitor id, fetched once and kept for hours.
+  static String? _visitorData;
+  static DateTime _visitorAt = DateTime(0);
+  static Future<String?>? _visitorInFlight;
+
+  /// Fetches the visitor id ahead of time (first Watch tap is faster).
+  void warmUp() => unawaited(_visitor());
+
+  static Future<String?> _visitor({bool fresh = false}) {
+    if (!fresh && _visitorData != null && DateTime.now().difference(_visitorAt) < const Duration(hours: 6)) {
+      return Future.value(_visitorData);
     }
-    return null;
+    return _visitorInFlight ??= () async {
+      try {
+        // A tiny endpoint first; the home page (large) if that ever changes.
+        for (final (url, pattern) in [
+          ('https://www.youtube.com/sw.js_data', RegExp(r'"(Cg[A-Za-z0-9_\-%]{20,})"')),
+          ('https://www.youtube.com/', RegExp(r'"VISITOR_DATA":"([^"]+)"')),
+        ]) {
+          final body = await _get(url);
+          final found = body == null ? null : pattern.firstMatch(body)?.group(1);
+          if (found != null) {
+            _visitorData = found;
+            _visitorAt = DateTime.now();
+            return found;
+          }
+        }
+        return null;
+      } finally {
+        _visitorInFlight = null;
+      }
+    }();
   }
 
-  /// Streams for watching right away (no yt-dlp, well under a second) —
-  /// but only links YouTube actually serves: each client's best video link
-  /// is test-fetched (first byte) before it's used, since YouTube refuses
-  /// some clients' links outright. Null when no client's links work.
-  Future<({YtInfo info, String client})?> playableInfo(String videoId, {Duration? duration}) async {
-    // Clients whose links need no signature deciphering, most likely to
-    // work first.
-    final clients = <(String, YoutubeApiClient)>[
-      ('android_sdkless', YoutubeApiClient.androidSdkless),
-      ('android_vr', YoutubeApiClient.androidVr),
-      ('android', YoutubeApiClient.android),
-      ('ios', YoutubeApiClient.ios),
-    ];
-    for (final (name, client) in clients) {
+  static Future<String?> _get(String url) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    try {
+      final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      req.headers.set(HttpHeaders.userAgentHeader, _visionOsAgent);
+      final res = await req.close().timeout(const Duration(seconds: 5));
+      if (res.statusCode != 200) return null;
+      return await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 8));
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  // Shared by every instance: the sheet's lookup is reused by downloads.
+  static final Map<String, ({DateTime at, FastLinks links})> _fastCache = {};
+  static final Map<String, Future<FastLinks?>> _fastInFlight = {};
+
+  /// Formats and stream links without yt-dlp (no Python, no JS challenge),
+  /// for the download sheet's list, "Watch" and "Play audio". Each client's
+  /// links are test-fetched before use. Null when no client works.
+  Future<FastLinks?> fastLinks(String videoId, {Duration? duration}) {
+    final cached = _fastCache[videoId];
+    if (cached != null && DateTime.now().difference(cached.at) < const Duration(minutes: 30)) {
+      return Future.value(cached.links);
+    }
+    return _fastInFlight[videoId] ??= _fastLookup(videoId, duration).then((links) {
+      if (links != null) {
+        _fastCache[videoId] = (at: DateTime.now(), links: links);
+        if (_fastCache.length > 30) _fastCache.remove(_fastCache.keys.first);
+      }
+      return links;
+    }).whenComplete(() {
+      _fastInFlight.remove(videoId);
+    });
+  }
+
+  /// The sheet's quality list (metadata only).
+  Future<YtInfo?> quickInfo(String videoId, {Duration? duration}) =>
+      fastLinks(videoId, duration: duration).then((l) => l?.info);
+
+  Future<FastLinks?> _fastLookup(String videoId, Duration? duration) async {
+    final sw = Stopwatch()..start();
+    // visionOS: whole files. Android: only about the first minute without a
+    // PO token (Nov 2026) — still good for an instant start; the stream
+    // proxy carries on with yt-dlp's links.
+    for (final name in ['visionos', 'android_sdkless', 'android']) {
       try {
-        final m = await _yt.videos.streams
-            .getManifest(videoId, ytClients: [client], requireWatchPage: false)
-            .timeout(const Duration(seconds: 5));
+        final YoutubeApiClient client;
+        if (name == 'visionos') {
+          final visitor = await _visitor();
+          if (visitor == null) continue;
+          client = _visionOs(visitor);
+        } else {
+          client = name == 'android' ? YoutubeApiClient.android : YoutubeApiClient.androidSdkless;
+        }
+        StreamManifest manifest;
+        try {
+          manifest = await _manifest(videoId, client);
+        } on VideoUnplayableException {
+          if (name != 'visionos') rethrow;
+          // "Sign in to confirm you're not a bot": a stale visitor id.
+          final visitor = await _visitor(fresh: true);
+          if (visitor == null) rethrow;
+          manifest = await _manifest(videoId, _visionOs(visitor));
+        }
         final agent = (client.payload['context'] as Map?)?['client']?['userAgent'] as String?;
         final headers = agent == null ? const <String, String>{} : {'User-Agent': agent};
         final info = YtInfo(
@@ -126,26 +213,45 @@ class YoutubeProvider {
           title: '',
           uploader: '',
           duration: duration,
-          formats: [for (final s in m.streams) _toFormat(s, headers: headers)],
+          formats: [
+            for (final s in manifest.streams)
+              if (s is! HlsVideoStreamInfo && s is! HlsAudioStreamInfo && s is! HlsMuxedStreamInfo)
+                _toFormat(s, headers: headers),
+          ],
         );
-        final best = YoutubeStream.qualities(info);
-        if (best.isEmpty) continue; // no separate HD streams from this client
-        if (await _serves(best.first.videoUri, headers)) return (info: info, client: name);
-        debugPrint('[YouTube] fast links from $name refused');
-      } catch (_) {
-        // Try the next client.
+        final test = YoutubeStream.qualities(info).firstOrNull?.videoUri ?? info.bestAudio?.url;
+        if (test == null) continue;
+        // A link that serves the end of its file is a whole-file link
+        // (Grayjay's check); one that only serves the start is not.
+        final full = await _serves(test, headers, tail: true);
+        if (!full && !await _serves(test, headers)) {
+          debugPrint('[YouTube] fast links from $name refused');
+          continue;
+        }
+        debugPrint('[YouTube] fast lookup: $name${full ? '' : ' (first minute only)'} '
+            'in ${sw.elapsedMilliseconds} ms');
+        return FastLinks(info, name, full: full);
+      } catch (e) {
+        debugPrint('[YouTube] fast lookup $name failed: ${e.toString().split('\n').first}');
       }
     }
     return null;
   }
 
-  /// Whether YouTube serves [url] (fetches its first byte).
-  static Future<bool> _serves(String url, Map<String, String> headers) async {
+  Future<StreamManifest> _manifest(String videoId, YoutubeApiClient client) => _yt.videos.streams
+      .getManifest(videoId, ytClients: [client], requireWatchPage: false)
+      .timeout(const Duration(seconds: 6));
+
+  /// Whether YouTube serves [url]'s first byte — or with [tail], its last
+  /// bytes — asked for the way the stream proxy asks (`range=` parameter).
+  static Future<bool> _serves(String url, Map<String, String> headers, {bool tail = false}) async {
+    final length = int.tryParse(Uri.parse(url).queryParameters['clen'] ?? '');
+    if (tail && (length == null || length < 1024)) return false;
+    final range = tail ? '${length! - 512}-${length - 1}' : '0-0';
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
     try {
-      final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 3));
+      final req = await client.getUrl(Uri.parse('$url&range=$range')).timeout(const Duration(seconds: 3));
       headers.forEach(req.headers.set);
-      req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
       final res = await req.close().timeout(const Duration(seconds: 3));
       await res.drain<void>();
       return res.statusCode == 206 || res.statusCode == 200;
@@ -172,8 +278,8 @@ class YoutubeProvider {
       fps: video?.framerate.framesPerSecond.toDouble(),
       filesize: s.size.totalBytes,
       abr: video == null ? s.bitrate.kiloBitsPerSecond : null,
-      // ANDROID-client URL: plays with plain Range requests (fast "Play
-      // audio"); yt-dlp's URL is the fallback if YouTube cuts it off.
+      tbr: s.bitrate.kiloBitsPerSecond,
+      // Played through the stream proxy (see StreamProxy).
       url: s.url.toString(),
       httpHeaders: headers,
       // yt-dlp ranks the original language highest; dubs below.
@@ -182,4 +288,19 @@ class YoutubeProvider {
   }
 
   void dispose() => _yt.close();
+}
+
+/// Stream links from the fast lookup (no yt-dlp).
+class FastLinks {
+  const FastLinks(this.info, this.client, {required this.full});
+
+  final YtInfo info;
+
+  /// Which YouTube client they came from (for the logs).
+  final String client;
+
+  /// Whole files are served (visionOS). False: only about the first minute
+  /// (Android client without a PO token); the stream proxy carries on with
+  /// yt-dlp's links.
+  final bool full;
 }

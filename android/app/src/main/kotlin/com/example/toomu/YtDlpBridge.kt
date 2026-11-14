@@ -144,7 +144,8 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
             "--downloader", "libaria2c.so",
             "--downloader-args",
             "aria2c:-x $n -s $n -k 1M --file-allocation=none --summary-interval=1 " +
-                "--console-log-level=warn --ca-certificate=$caCert",
+                // Same IP version as yt-dlp (-4): links are tied to it.
+                "--disable-ipv6=true --console-log-level=warn --ca-certificate=$caCert",
         )
     }
 

@@ -16,6 +16,7 @@ import '../data/repositories/video_resume_repository.dart';
 import '../routes/app_pages.dart';
 import '../modules/video_player/controllers/video_playback_controller.dart';
 import 'settings_service.dart';
+import 'stream_proxy.dart';
 import 'ytdlp_service.dart';
 
 /// Owns the video player so playback can outlive the player screen:
@@ -103,9 +104,18 @@ class VideoSessionService extends GetxService {
     _disposePlayer();
     items.assignAll(args.items);
     index.value = args.index.clamp(0, args.items.length - 1);
-    _player = Player(configuration: const PlayerConfiguration(title: 'Toomu'));
+    // mpv's warnings and errors go to the diagnostics log (why a file or
+    // stream won't open).
+    _player = Player(configuration: const PlayerConfiguration(title: 'Toomu', logLevel: MPVLogLevel.warn));
     _video = VideoController(_player!);
+    _configure(_player!);
+    String? lastLog;
     _subs.addAll([
+      player.stream.log.listen((l) {
+        final line = '[mpv] ${l.level} ${l.prefix}: ${l.text.trim()}';
+        if (line != lastLog) debugPrint(line);
+        lastLog = line;
+      }),
       player.stream.playing.listen((v) {
         playing.value = v;
         syncMedia();
@@ -177,8 +187,7 @@ class VideoSessionService extends GetxService {
   }
 
   /// What to play when [failed] (a stream) stops working:
-  ///  - fast links (no yt-dlp) → yt-dlp's links at the same quality (its
-  ///    lookup started when the video opened, so it's usually ready);
+  ///  - fast links (no yt-dlp) → yt-dlp's links at the same quality;
   ///  - yt-dlp's links → the combined 360p stream.
   Future<VideoItem?> replacementFor(VideoItem failed) async {
     final id = failed.youtubeId;
@@ -207,14 +216,46 @@ class VideoSessionService extends GetxService {
     await openItem(next, start: at);
   }
 
+  /// mpv options media_kit doesn't set the way streams need them. Called
+  /// right after the player is created and never awaited: these calls are
+  /// queued behind the player's start-up just like `open()`, and ahead of
+  /// it, so nothing ever waits on them.
+  static void _configure(Player p) {
+    final mpv = p.platform;
+    if (mpv is! NativePlayer) return;
+    void set(String name, String value) {
+      mpv.setProperty(name, value).catchError((Object e) => debugPrint('[Video] mpv option $name: $e'));
+    }
+
+    // YouTube streams come through the local stream proxy, which may hold a
+    // read for a while (fast links running out, waiting for yt-dlp's):
+    // media_kit's 5 s would make mpv give up and reconnect in a loop.
+    set('network-timeout', '60');
+    // Read ahead into the 32 MB memory buffer only. On disk, read-ahead has
+    // no size limit: more mobile data and more work for the phone.
+    set('cache-on-disk', 'no');
+  }
+
   /// Opens [item] in the player (at [start] if given): a file, or a stream
-  /// with its headers and separate audio track.
+  /// with its separate audio track. YouTube media goes through the stream
+  /// proxy (fast, piece by piece; see StreamProxy).
   Future<void> openItem(VideoItem item, {bool play = true, Duration? start}) async {
     final p = player;
-    final audio = item.audioUri;
+    String route(String url) => item.isStream
+        ? StreamProxy.to.wrap(url, headers: item.httpHeaders, videoId: item.youtubeId, partial: item.partial)
+        : url;
+    final video = route(item.playable);
+    final audioUri = item.audioUri;
+    final path = item.path;
+    if (path != null) {
+      final file = File(path);
+      final exists = file.existsSync();
+      debugPrint('[Video] opening file ${path.split('/').last} '
+          '(${exists ? '${(file.lengthSync() / 1048576).toStringAsFixed(1)} MB' : 'MISSING'})');
+    }
     await p.open(
       Media(
-        audio == null ? item.playable : edl(item.playable, audio),
+        audioUri == null ? video : edl(video, route(audioUri)),
         httpHeaders: item.httpHeaders.isEmpty ? null : item.httpHeaders,
         start: start != null && start > Duration.zero ? start : null,
       ),
@@ -223,13 +264,13 @@ class VideoSessionService extends GetxService {
   }
 
   /// One mpv "file" made of a video stream and a separate audio stream
-  /// (mpv's EDL format, as its own YouTube support uses): both are opened
-  /// while loading, instead of adding the audio after the video loaded.
+  /// (mpv's EDL format, with the same headers mpv's own YouTube support
+  /// uses): one buffer for both, both opened while loading.
   /// `%N%` = the next N bytes are taken literally (URLs contain ';' etc.).
   @visibleForTesting
   static String edl(String video, String audio) {
-    String literal(String s) => '%${utf8.encode(s).length}%$s';
-    return 'edl://${literal(video)};!new_stream;${literal(audio)}';
+    String part(String s) => '!new_stream;!no_clip;!no_chapters;%${utf8.encode(s).length}%$s';
+    return 'edl://${part(video)};${part(audio)}';
   }
 
   /// Artwork bytes for the media controls.

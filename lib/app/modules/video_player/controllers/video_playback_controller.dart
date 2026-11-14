@@ -158,6 +158,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       }),
       player.stream.error.listen((e) {
         debugPrint('[Video] $e');
+        _lastError = e;
         _streamFailed();
       }),
       // Orientation from the real frame size when the library didn't know it.
@@ -330,8 +331,28 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       _resumeTimer?.cancel();
       _resumeTimer = Timer(const Duration(seconds: 6), () => resumedFrom.value = null);
     }
-    if (item.isStream) _logStart(sw);
+    if (item.isStream) {
+      _logStart(sw);
+    } else {
+      _watchFileLoad(item);
+    }
     _syncPlatform(); // new title for the notification / PiP aspect
+  }
+
+  /// mpv's last error message (shown if a file won't load).
+  String? _lastError;
+
+  /// Local files: if nothing has loaded a few seconds after opening, say so
+  /// on screen with mpv's reason, instead of a silent black screen.
+  void _watchFileLoad(VideoItem item) {
+    _lastError = null;
+    Timer(const Duration(seconds: 6), () {
+      if (isClosed || !identical(current, item) || player.state.duration > Duration.zero) return;
+      debugPrint('[Video] file not loaded after 6 s: ${item.path ?? item.uri} '
+          '(playing=${player.state.playing}, buffering=${player.state.buffering}, error=$_lastError)');
+      Get.snackbar("Can't play this video", _lastError ?? 'The player could not open this file.',
+          duration: const Duration(seconds: 6));
+    });
   }
 
   /// Diagnostics: how long until the stream actually plays.

@@ -99,7 +99,8 @@ void main() {
   test('EDL joins video + audio; URL lengths make ; and , safe', () {
     const v = 'https://v/1?a=1;b=2,c';
     const a = 'https://a/2?x=%3B';
-    expect(VideoSessionService.edl(v, a), 'edl://%${v.length}%$v;!new_stream;%${a.length}%$a');
+    const head = '!new_stream;!no_clip;!no_chapters;';
+    expect(VideoSessionService.edl(v, a), 'edl://$head%${v.length}%$v;$head%${a.length}%$a');
   });
 
   test('fast-lookup streams are marked provisional, and stay so across qualities', () {
@@ -107,10 +108,14 @@ void main() {
       _info([_v('299', 'avc1', 1920, 1080), _v('136', 'avc1', 1280, 720), _audio, _combined]),
       videoId: 'abc',
       provisional: true,
+      partial: true,
     )!;
     expect(item.provisional, isTrue);
+    expect(item.partial, isTrue);
     expect(item.youtubeId, 'abc');
     expect(item.withQuality(item.qualities.last).provisional, isTrue);
+    expect(item.withQuality(item.qualities.last).partial, isTrue);
     expect(item.fallback?.provisional, isTrue);
+    expect(item.fallback?.partial, isTrue);
   });
 }

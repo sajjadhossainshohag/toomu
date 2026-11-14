@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
@@ -52,10 +53,21 @@ class DownloadsController extends GetxController {
 
   /// Audio plays in Toomu's player; video opens in the system player.
   Future<void> open(DownloadTask t) async {
-    if (!File(t.filePath).existsSync()) {
+    final exists = File(t.filePath).existsSync();
+    debugPrint('[Downloads] open ${t.kind.name}: ${t.filePath.split('/').last} (${exists ? 'found' : 'MISSING'})');
+    if (!exists) {
       Get.snackbar('File missing', 'The file was moved or deleted.');
       return;
     }
+    try {
+      await _open(t);
+    } catch (e) {
+      debugPrint('[Downloads] open failed: $e');
+      Get.snackbar("Can't open this file", '$e');
+    }
+  }
+
+  Future<void> _open(DownloadTask t) async {
     if (t.kind == DownloadKind.audio) {
       final audioTasks = completed
           .where((c) => c.kind == DownloadKind.audio)
@@ -77,7 +89,7 @@ class DownloadsController extends GetxController {
       await Get.toNamed(
         Routes.videoPlayer,
         arguments: VideoPlaylist(
-          videos.map((c) => VideoItem.file(c.filePath, name: c.title)).toList(),
+          videos.map((c) => VideoItem.file(c.filePath, title: c.title)).toList(),
           videos.indexOf(t).clamp(0, videos.length - 1),
         ),
       );

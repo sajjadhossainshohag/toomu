@@ -9,7 +9,9 @@ import 'permission_service.dart';
 import 'remote_config_service.dart';
 import 'settings_service.dart';
 import 'storage_service.dart';
+import 'stream_proxy.dart';
 import 'video_session_service.dart';
+import 'youtube_account_service.dart';
 import 'ytdlp_service.dart';
 
 /// Registers app-lifetime services in dependency order.
@@ -19,7 +21,9 @@ abstract class AppServices {
     Get.put(StorageService(), permanent: true);
     Get.put(DiagnosticsService().init(), permanent: true); // before anything logs
     Get.put(SettingsService().init(), permanent: true);
+    await Get.putAsync(() => YoutubeAccountService().init(), permanent: true);
     Get.put(YtDlpService().init(), permanent: true); // unpacks in background
+    await Get.putAsync(() => StreamProxy().init(), permanent: true); // 127.0.0.1, instant
     Get.put(RemoteConfigService().init(), permanent: true);
     await Get.putAsync(() => PermissionService().init(), permanent: true);
     Get.put(MediaScannerService(), permanent: true);
