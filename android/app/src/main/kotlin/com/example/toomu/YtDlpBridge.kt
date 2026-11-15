@@ -3,6 +3,7 @@ package com.example.toomu
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import com.yausername.aria2c.Aria2c
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -126,7 +127,10 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
                 val value = block()
                 main.post { result.success(value) }
             } catch (e: Throwable) {
-                main.post { result.error("YTDLP", e.message ?: e.toString(), null) }
+                Log.e("YtDlpBridge", "call failed", e)
+                // An ExceptionInInitializerError has no message: the reason is in its causes.
+                val message = generateSequence(e) { it.cause }.take(5).joinToString(" <- ") { it.toString() }
+                main.post { result.error("YTDLP", message, null) }
             }
         }
     }

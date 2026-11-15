@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
@@ -31,6 +33,13 @@ class DiagnosticsService extends GetxService {
     // Which build is running (set by tool/build_release.sh).
     const build = String.fromEnvironment('TOOMU_BUILD', defaultValue: 'dev build');
     add('— app started ($build) —');
+    if (Platform.isAndroid) {
+      unawaited(DeviceInfoPlugin().androidInfo.then(
+        (i) => add('device: ${i.manufacturer} ${i.model}, Android ${i.version.release} '
+            '(SDK ${i.version.sdkInt}), ${i.supportedAbis.join('/')}'),
+        onError: (_) {},
+      ));
+    }
     return this;
   }
 
