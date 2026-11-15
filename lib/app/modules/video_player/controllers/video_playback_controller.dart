@@ -9,6 +9,7 @@ import 'package:screen_brightness/screen_brightness.dart';
 import 'package:volume_controller/volume_controller.dart';
 
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/frame_probe.dart';
 import '../../../core/values/app_constants.dart';
 import '../../../data/models/video_item.dart';
 import '../../../data/repositories/video_resume_repository.dart';
@@ -115,6 +116,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   @override
   void onInit() {
     super.onInit();
+    FrameProbe.watch('player open');
     final args = Get.arguments as VideoPlaylist;
     final rejoined = _session.attach(args, (call) => _onPlatformCall(call));
     WidgetsBinding.instance.addObserver(this);
@@ -535,6 +537,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   Future<void> exit() async {
     if (exiting.value) return;
     exiting.value = true;
+    FrameProbe.watch('player close', window: const Duration(milliseconds: 1800));
     if (landscape.value) {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);

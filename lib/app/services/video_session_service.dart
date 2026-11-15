@@ -27,10 +27,17 @@ class VideoSessionService extends GetxService {
 
   static const _platform = MethodChannel('toomu/video');
 
+  /// One player for the whole app, made on first use and then reused:
+  /// a new mpv + video surface per video made opening the player stutter,
+  /// and media_kit destroys a disposed mpv on the UI thread 5 s later (a
+  /// stall right after closing).
   Player? _player;
   VideoController? _video;
   Player get player => _player!;
   VideoController get video => _video!;
+
+  /// A video is loaded (player screen open, or playing in the background).
+  bool _active = false;
 
   final items = <VideoItem>[].obs;
   final index = 0.obs;
@@ -52,7 +59,7 @@ class VideoSessionService extends GetxService {
     _platform.setMethodCallHandler((call) async {
       final screen = _screen;
       if (screen != null) return screen(call);
-      if (call.method == 'action' && _player != null) {
+      if (call.method == 'action' && _active) {
         final action = call.arguments as String;
         if (action.startsWith('seek:')) {
           await player.seek(Duration(milliseconds: int.tryParse(action.substring(5)) ?? 0));
@@ -90,7 +97,7 @@ class VideoSessionService extends GetxService {
   /// session (same playlist position), so it must not reopen the file.
   bool attach(VideoPlaylist args, void Function(MethodCall call) onPlatformCall) {
     _screen = onPlatformCall;
-    final same = _player != null &&
+    final same = _active &&
         args.items.length == items.length &&
         args.index == index.value &&
         args.items.isNotEmpty &&
@@ -101,9 +108,21 @@ class VideoSessionService extends GetxService {
       return true;
     }
 
-    _disposePlayer();
+    if (_active) _savePosition();
     items.assignAll(args.items);
     index.value = args.index.clamp(0, args.items.length - 1);
+    _ensurePlayer();
+    _active = true;
+    // Choices from the last video don't carry over (mpv keeps them).
+    setVideoEnabled(true);
+    player.setRate(1.0);
+    player.setAudioTrack(AudioTrack.auto());
+    player.setSubtitleTrack(SubtitleTrack.auto());
+    return false;
+  }
+
+  void _ensurePlayer() {
+    if (_player != null) return;
     // mpv's warnings and errors go to the diagnostics log (why a file or
     // stream won't open).
     _player = Player(configuration: const PlayerConfiguration(title: 'Toomu', logLevel: MPVLogLevel.warn));
@@ -117,7 +136,7 @@ class VideoSessionService extends GetxService {
         lastLog = line;
       }),
       player.stream.playing.listen((v) {
-        playing.value = v;
+        playing.value = _active && v;
         syncMedia();
       }),
       player.stream.duration.listen((_) => syncMedia()),
@@ -125,7 +144,7 @@ class VideoSessionService extends GetxService {
       // Seeks (from anywhere) move the media controls' seek bar.
       player.stream.position.listen(_checkDrift),
       player.stream.completed.listen((done) {
-        if (!done || !inBackground.value) return;
+        if (!done || !_active || !inBackground.value) return;
         final item = current;
         final total = item?.duration ?? player.state.duration;
         if (item != null &&
@@ -143,14 +162,13 @@ class VideoSessionService extends GetxService {
         }
       }),
     ]);
-    return false;
   }
 
   /// Player screen closing. With [keepPlaying] the audio continues in the
   /// background; otherwise the session ends.
   Future<void> detach({required bool keepPlaying}) async {
     _screen = null;
-    if (keepPlaying && _player != null) {
+    if (keepPlaying && _active) {
       inBackground.value = true;
       setVideoEnabled(false); // audio only until the player is reopened
       return;
@@ -162,7 +180,7 @@ class VideoSessionService extends GetxService {
   Future<void> stop() async {
     _savePosition();
     inBackground.value = false;
-    _disposePlayer();
+    _endSession();
     await _stopMedia();
   }
 
@@ -171,7 +189,7 @@ class VideoSessionService extends GetxService {
   /// Turns video decoding off while nobody can see it (background play)
   /// and back on when the player is visible again.
   void setVideoEnabled(bool on) {
-    if (_player == null || _videoOff == !on) return;
+    if (!_active || _videoOff == !on) return;
     _videoOff = !on;
     player.setVideoTrack(on ? VideoTrack.auto() : VideoTrack.no());
   }
@@ -210,7 +228,7 @@ class VideoSessionService extends GetxService {
   Future<void> _recoverInBackground(VideoItem failed) async {
     final at = player.state.position;
     final next = await replacementFor(failed);
-    if (next == null || _player == null || !identical(current, failed)) return;
+    if (next == null || !_active || !identical(current, failed)) return;
     debugPrint('[Video] stream cut off in background; reconnecting');
     items[index.value] = next;
     await openItem(next, start: at);
@@ -320,7 +338,7 @@ class VideoSessionService extends GetxService {
 
   Future<void> _syncMediaOnce() async {
     final item = current;
-    if (_player == null || item == null) return;
+    if (!_active || item == null) return;
     final enabled = SettingsService.to.videoBackgroundPlay.value;
     if (!enabled) {
       if (_mediaOn) await _stopMedia();
@@ -343,7 +361,7 @@ class VideoSessionService extends GetxService {
     if (newItem) {
       args['art'] = await _art(item);
     }
-    if (_player == null) return;
+    if (!_active) return;
     try {
       final ok = await _platform.invokeMethod<bool>(_mediaOn ? 'updateBackground' : 'startBackground', args);
       if (ok == true) {
@@ -360,7 +378,7 @@ class VideoSessionService extends GetxService {
   /// Resyncs when the real position strays from what the controls show
   /// (a seek, a stall).
   void _checkDrift(Duration position) {
-    if (!_mediaOn || _player == null) return;
+    if (!_mediaOn || !_active) return;
     final elapsed = DateTime.now().difference(_sentAt);
     final expected = player.state.playing
         ? _sentPosition + elapsed * player.state.rate
@@ -382,26 +400,23 @@ class VideoSessionService extends GetxService {
 
   /// Mini bar tap: back to the full player, same session.
   void reopen() {
-    if (_player == null) return;
+    if (!_active) return;
     Get.toNamed(Routes.videoPlayer, arguments: VideoPlaylist(items.toList(), index.value));
   }
 
   void _savePosition({bool finished = false}) {
     final item = current;
-    if (_player == null || item == null) return;
+    if (!_active || item == null) return;
     final total = player.state.duration;
     VideoResumeRepository.instance.save(item.resumeKey, finished ? total : player.state.position, total);
   }
 
-  void _disposePlayer() {
-    for (final s in _subs) {
-      s.cancel();
-    }
-    _subs.clear();
-    _player?.dispose();
-    _player = null;
+  /// Unloads the video; the player itself stays for the next one.
+  void _endSession() {
+    if (!_active) return;
+    _active = false;
     _videoOff = false;
-    _video = null;
+    _player?.stop();
     _outsideBuild(() => playing.value = false);
   }
 

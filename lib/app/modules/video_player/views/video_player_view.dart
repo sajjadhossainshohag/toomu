@@ -178,7 +178,9 @@ class _FullControls extends GetView<VideoPlaybackController> {
                 child: Row(
                   children: <Widget>[
                     IconButton(
-                      onPressed: Get.back,
+                      // Not Get.back: that closes at once, turning the
+                      // screen upright during the close animation.
+                      onPressed: controller.exit,
                       icon: const Icon(
                         Icons.arrow_back_rounded,
                         color: Colors.white,

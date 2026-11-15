@@ -45,7 +45,10 @@ class AppPages {
       name: _Paths.videoPlayer,
       page: () => const VideoPlayerView(),
       binding: VideoPlayerBinding(),
-      transition: Transition.fadeIn,
+      // No fade: the screen turns to landscape as the player opens, and
+      // during a fade the page behind is on screen too, so the whole app was
+      // laid out again mid-animation. Shown at once, only the player is.
+      transition: Transition.noTransition,
     ),
     GetPage(
       name: _Paths.videoFolder,
