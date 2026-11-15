@@ -65,6 +65,7 @@ class BrowserController extends GetxController {
   bool _refreshed = false;
 
   InAppWebViewController? web;
+  AppLifecycleListener? _lifecycle;
 
   final settings = InAppWebViewSettings(
     javaScriptEnabled: true,
@@ -102,10 +103,17 @@ class BrowserController extends GetxController {
     capture.onFound = _maybeRefresh;
     _detect(initialUrl);
     if (_blockRedirects) unawaited(Blocklist.load());
+    if (Platform.isAndroid) {
+      _lifecycle = AppLifecycleListener(
+        onHide: () => unawaited(_run(false)),
+        onShow: () => unawaited(_run(true)),
+      );
+    }
   }
 
   @override
   void onClose() {
+    _lifecycle?.dispose();
     address.dispose();
     super.onClose();
   }
@@ -266,6 +274,21 @@ class BrowserController extends GetxController {
     await e.openDownload(uri);
   }
 
+  Future<void> _run(bool on) async {
+    if (!Platform.isAndroid) return;
+    // Android keeps a hidden WebView running the page's scripts, ads and video;
+    // pauseTimers stops them for every WebView in the app until resumed.
+    final w = web;
+    if (w == null) return;
+    if (on) {
+      await w.resumeTimers();
+      await w.resume();
+    } else {
+      await w.pause();
+      await w.pauseTimers();
+    }
+  }
+
   Future<void> _pausePage() async {
     // So the page's video doesn't keep playing under a sheet.
     await web?.evaluateJavascript(
@@ -334,6 +357,7 @@ class BrowserController extends GetxController {
     // The player sends these headers with every piece and key of a stream,
     // whatever their host, so a stream gets no cookies.
     final cookies = m.isStream ? '' : await DownloadService.webCookies(m.url);
+    await _run(false);
     await Get.toNamed(
       Routes.videoPlayer,
       arguments: VideoPlaylist([
@@ -345,6 +369,7 @@ class BrowserController extends GetxController {
         ),
       ]),
     );
+    await _run(true);
   }
 
   Future<void> copyLink(CapturedMedia m) async {

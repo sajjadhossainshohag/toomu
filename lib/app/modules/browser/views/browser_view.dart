@@ -9,6 +9,7 @@ import '../../../core/theme/design_metrics.dart';
 import '../../../widgets/gradient_pill.dart';
 import '../../../widgets/round_icon_button.dart';
 import '../controllers/browser_controller.dart';
+import 'downloads_sheet.dart';
 
 class BrowserView extends GetView<BrowserController> {
   const BrowserView({super.key});
@@ -225,6 +226,7 @@ class _TopBar extends StatelessWidget {
                   tooltip: 'Forward',
                 )
               : const SizedBox.shrink()),
+          const BrowserDownloadsButton(),
         ],
       ),
     );
