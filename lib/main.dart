@@ -13,20 +13,21 @@ import 'app/services/settings_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // The app's screens are designed for portrait; the video player rotates
-  // itself as needed and restores this when it closes.
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-  await GetStorage.init();
   MediaKit.ensureInitialized(); // libmpv for the video player
-  await JustAudioBackground.init(
-    androidNotificationChannelId: AppConstants.playbackChannelId,
-    androidNotificationChannelName: AppConstants.playbackChannelName,
-    androidNotificationOngoing: true,
-    // Toomu mark in the status bar (android/app/src/main/res/drawable).
-    androidNotificationIcon: 'drawable/ic_stat_toomu',
-    notificationColor: const Color(0xFF7C4DFF),
-  );
+  await Future.wait([
+    // The app's screens are designed for portrait; the video player rotates
+    // itself as needed and restores this when it closes.
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
+    GetStorage.init(),
+    JustAudioBackground.init(
+      androidNotificationChannelId: AppConstants.playbackChannelId,
+      androidNotificationChannelName: AppConstants.playbackChannelName,
+      androidNotificationOngoing: true,
+      // Toomu mark in the status bar (android/app/src/main/res/drawable).
+      androidNotificationIcon: 'drawable/ic_stat_toomu',
+      notificationColor: const Color(0xFF7C4DFF),
+    ),
+  ]);
 
   // Global, app-lifetime services (storage, permissions, downloads, audio…).
   await AppServices.init();

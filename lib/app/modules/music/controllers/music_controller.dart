@@ -37,6 +37,10 @@ class MusicController extends GetxController {
   final query = ''.obs;
   final sort = SongSort.title.obs;
   final _all = <Track>[].obs;
+  // Sorting thousands of titles on every search keystroke stutters; the
+  // sorted library is kept until the songs or the sort order change.
+  List<Track>? _sorted;
+  SongSort? _sortedBy;
 
   @override
   void onReady() {
@@ -55,9 +59,12 @@ class MusicController extends GetxController {
     hasPermission.value = await PermissionService.to.requestAudio();
     if (hasPermission.value) {
       try {
-        _all.assignAll(await _provider.songs());
+        final found = await _provider.songs();
+        _sorted = null;
+        _all.assignAll(found);
       } catch (e) {
         debugPrint('[Music] library query failed: $e');
+        _sorted = null;
         _all.clear();
         showSnack('Music library', ErrorText.of(e));
       }
@@ -69,22 +76,32 @@ class MusicController extends GetxController {
 
   List<Track> get songs {
     final q = query.value.trim().toLowerCase();
-    final list = q.isEmpty
-        ? [..._all]
-        : _all
+    final sorted = _sortedSongs();
+    return q.isEmpty
+        ? [...sorted]
+        : sorted
             .where((t) =>
                 t.title.toLowerCase().contains(q) ||
                 t.displayAlbum.toLowerCase().contains(q))
             .toList();
-    switch (sort.value) {
+  }
+
+  List<Track> _sortedSongs() {
+    final by = sort.value;
+    final all = _all.toList(); // read on every call so Obx keeps listening
+    final cached = _sorted;
+    if (cached != null && _sortedBy == by) return cached;
+    switch (by) {
       case SongSort.title:
-        list.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        final keys = {for (final t in all) t: t.title.toLowerCase()};
+        all.sort((a, b) => keys[a]!.compareTo(keys[b]!));
       case SongSort.recent:
-        list.sort((a, b) => (b.dateAdded ?? 0).compareTo(a.dateAdded ?? 0));
+        all.sort((a, b) => (b.dateAdded ?? 0).compareTo(a.dateAdded ?? 0));
       case SongSort.duration:
-        list.sort((a, b) => (b.duration ?? Duration.zero).compareTo(a.duration ?? Duration.zero));
+        all.sort((a, b) => (b.duration ?? Duration.zero).compareTo(a.duration ?? Duration.zero));
     }
-    return list;
+    _sortedBy = by;
+    return _sorted = all;
   }
 
   List<MusicCollection> get albums => _group((t) => t.displayAlbum, null);
@@ -142,6 +159,7 @@ class MusicController extends GetxController {
     if (!ok) return;
     try {
       if (!await _provider.delete([id])) return; // declined in Android's dialog
+      _sorted = null;
       _all.removeWhere((s) => s.id == t.id);
       await audio.removeTrack(t.id);
       if (audio.favorites.contains(t.id)) audio.toggleFavorite(t);

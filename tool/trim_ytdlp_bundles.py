@@ -17,7 +17,7 @@ This removes:
 Everything else is copied byte for byte with its original zip metadata
 (Unix modes: the library recreates symlinks from them).
 
-Usage: python3 -I trim_ytdlp_bundles.py <merged native libs dir> [...]
+Usage: python3 -I trim_ytdlp_bundles.py [--abis=arm64-v8a,...] <merged native libs dir> [...]
 Python 3.8+ (macOS's bundled python3 works); standard library only.
 """
 
@@ -192,11 +192,17 @@ def trim_dir(lib_dir):
     return lines
 
 
-def main(dirs):
+def main(args):
+    abis = None
+    if args and args[0].startswith('--abis='):
+        abis = set(args[0][len('--abis='):].split(','))
+        args = args[1:]
     total = 0
-    for root in dirs:
+    for root in args:
         for dirpath, _, names in os.walk(root):
             if not any(a in names for a in ARCHIVES):
+                continue
+            if abis is not None and os.path.basename(dirpath) not in abis:
                 continue
             for abi, a, count, saved in trim_dir(dirpath):
                 total += saved

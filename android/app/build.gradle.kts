@@ -21,6 +21,12 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    // Lint writes nothing into the APK; CI release builds spent ~1 min on it.
+    // Run `./gradlew lint` when wanted.
+    lint {
+        checkReleaseBuilds = false
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.toomu"
@@ -95,12 +101,23 @@ tasks.configureEach {
     if (name.startsWith("merge") && name.endsWith("NativeLibs")) {
         // A changed trimming script re-runs the merge (fresh archives).
         inputs.file(project.file("../../tool/trim_ytdlp_bundles.py")).optional()
+        // Only the CPU types being built are trimmed (all four are merged).
+        val abiOf = mapOf(
+            "android-arm" to "armeabi-v7a",
+            "android-arm64" to "arm64-v8a",
+            "android-x64" to "x86_64",
+            "android-x86" to "x86",
+        )
+        val abis = (project.findProperty("target-platform") as String?)
+            ?.split(",")?.mapNotNull { abiOf[it.trim()] }.orEmpty()
+        inputs.property("trimAbis", abis.joinToString(","))
         doLast {
             val dirs = outputs.files.files.filter { it.isDirectory }.map { it.absolutePath }
             val script = project.file("../../tool/trim_ytdlp_bundles.py")
             if (dirs.isEmpty() || !script.exists()) return@doLast
             try {
-                val process = ProcessBuilder(listOf("python3", "-I", script.absolutePath) + dirs)
+                val only = if (abis.isEmpty()) emptyList() else listOf("--abis=" + abis.joinToString(","))
+                val process = ProcessBuilder(listOf("python3", "-I", script.absolutePath) + only + dirs)
                     .redirectErrorStream(true)
                     .start()
                 val output = process.inputStream.bufferedReader().readText()

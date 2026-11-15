@@ -58,7 +58,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
+
+      # Saves Gradle's caches after every main build (setup-java's cache only
+      # saved when the Gradle files changed), so tasks such as R8 are reused
+      # when only Dart code changed.
+      - uses: gradle/actions/setup-gradle@v4
 
       - uses: subosito/flutter-action@v2
         with:

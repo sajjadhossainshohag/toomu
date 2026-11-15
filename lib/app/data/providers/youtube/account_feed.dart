@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -43,6 +44,10 @@ class AccountFeed {
   /// The saved session (name → value), read for every request.
   final Future<Map<String, String>> Function() _cookies;
 
+  // One client keeps the connection to YouTube open between pages (no new
+  // TLS handshake per page). It holds no login state: cookies go per request.
+  final HttpClient _client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+
   static const _origin = 'https://www.youtube.com';
   static const _clientVersion = '2.20260708.00.00';
   static const _agent =
@@ -64,26 +69,29 @@ class AccountFeed {
   Future<AccountFeedPage> _browse(Map<String, Object> body, {bool withChips = false}) async {
     final cookies = await _cookies();
     if (cookies.isEmpty) throw StateError('Not signed in to YouTube.');
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final req = await _client.postUrl(Uri.parse('$_origin/youtubei/v1/browse?prettyPrint=false'));
+    headersFor(cookies).forEach(req.headers.set);
+    req.add(utf8.encode(jsonEncode({
+      'context': {
+        'client': {'clientName': 'WEB', 'clientVersion': _clientVersion, 'hl': 'en'},
+      },
+      ...body,
+    })));
+    final HttpClientResponse res;
+    final String text;
     try {
-      final req = await client.postUrl(Uri.parse('$_origin/youtubei/v1/browse?prettyPrint=false'));
-      headersFor(cookies).forEach(req.headers.set);
-      req.add(utf8.encode(jsonEncode({
-        'context': {
-          'client': {'clientName': 'WEB', 'clientVersion': _clientVersion, 'hl': 'en'},
-        },
-        ...body,
-      })));
-      final res = await req.close().timeout(const Duration(seconds: 15));
-      final text = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 15));
-      if (res.statusCode == 401 || res.statusCode == 403) {
-        throw StateError('Your YouTube sign-in has expired. Sign in again in Settings → YouTube account.');
-      }
-      if (res.statusCode != 200) throw HttpException('YouTube answered ${res.statusCode}');
-      return parse(this, jsonDecode(text), withChips: withChips);
-    } finally {
-      client.close(force: true);
+      res = await req.close().timeout(const Duration(seconds: 15));
+      text = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 15));
+    } catch (_) {
+      req.abort(); // the shared client would otherwise keep the stalled connection
+      rethrow;
     }
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      throw StateError('Your YouTube sign-in has expired. Sign in again in Settings → YouTube account.');
+    }
+    if (res.statusCode != 200) throw HttpException('YouTube answered ${res.statusCode}');
+    // A page is up to ~1 MB of JSON: decoding it here would stall scrolling.
+    return parse(this, await Isolate.run(() => jsonDecode(text)), withChips: withChips);
   }
 
   /// Headers of a signed-in request from youtube.com (as yt-dlp builds them).

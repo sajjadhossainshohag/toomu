@@ -18,9 +18,10 @@ class VideoResumeRepository {
   Map<String, int> _all() =>
       Map<String, int>.from((_storage.read<Map>(_key) ?? const {}).cast<String, int>());
 
+  // Called for every video tile while scrolling: no copy of the whole map.
   Duration? positionOf(String key) {
-    final ms = _all()[key];
-    return ms == null ? null : Duration(milliseconds: ms);
+    final ms = _storage.read<Map>(_key)?[key];
+    return ms is int ? Duration(milliseconds: ms) : null;
   }
 
   /// 0..1 watched fraction for list thumbnails, or null if not started.

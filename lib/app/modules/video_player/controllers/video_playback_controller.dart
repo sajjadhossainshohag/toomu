@@ -109,6 +109,8 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   final _resume = VideoResumeRepository.instance;
   final List<StreamSubscription<dynamic>> _subs = [];
   Timer? _hideTimer, _feedbackTimer, _rippleTimer, _resumeTimer, _saveTimer;
+  String? _savedKey;
+  Duration? _savedAt;
 
   @override
   void onInit() {
@@ -173,7 +175,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       }),
     ]);
     _platform.invokeMethod<bool>('pipSupported').then((v) => pipSupported.value = v ?? false);
-    _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _savePosition());
+    _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _savePosition(onlyIfMoved: true));
     if (rejoined) {
       // Back from the mini bar: same file, keep playing where it is.
       playing.value = player.state.playing;
@@ -412,9 +414,16 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     player.seek(Duration.zero);
   }
 
-  void _savePosition() {
+  // Each save rewrites the whole storage file, so a paused video isn't
+  // saved again and again.
+  void _savePosition({bool onlyIfMoved = false}) {
     if (items.isEmpty || duration.value == Duration.zero) return;
-    _resume.save(current.resumeKey, position.value, duration.value);
+    final key = current.resumeKey;
+    final at = position.value;
+    if (onlyIfMoved && key == _savedKey && at == _savedAt) return;
+    _savedKey = key;
+    _savedAt = at;
+    _resume.save(key, at, duration.value);
   }
 
   // -------------------------------------------------------------- controls

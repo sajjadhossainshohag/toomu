@@ -44,6 +44,11 @@ class StreamDownloader {
     void Function(DownloadPhase phase)? onPhase,
   }) async {
     final token = cancel ?? CancelToken();
+    final muxed = '$work/muxed.mp4';
+    if (File(muxed).existsSync()) {
+      onPhase?.call(DownloadPhase.merging);
+      return _finish(muxed, work, audioOnly);
+    }
     // The page's cookies only go to its own host, not to CDNs.
     final host = Uri.parse(url).host;
     Map<String, String> headersFor(String u) =>
@@ -106,15 +111,27 @@ class StreamDownloader {
     _check(token);
 
     onPhase?.call(DownloadPhase.merging);
-    final muxed = '$work/muxed.mp4';
     // With only video runs, a muxed stream's own audio is used.
     final audioOnlyFromVideo = audioOnly && files['audio']!.isEmpty;
     await _mux(
       audioOnlyFromVideo ? const [] : files['video']!,
       audioOnlyFromVideo ? files['video']! : files['audio']!,
-      muxed,
+      '$muxed.part',
       audioOnly,
     );
+    await File('$muxed.part').rename(muxed);
+    // Everything is in muxed.mp4 now: freeing the pieces before `finish`
+    // writes its copy halves the free space a long stream needs.
+    for (final run in [...files['video']!, ...files['audio']!]) {
+      for (final path in [run, '$run.samples.video', '$run.samples.audio']) {
+        final f = File(path);
+        if (f.existsSync()) await f.delete();
+      }
+    }
+    return _finish(muxed, work, audioOnly);
+  }
+
+  Future<String> _finish(String muxed, String work, bool audioOnly) async {
     final out = '$work/out.${audioOnly ? 'm4a' : 'mp4'}';
     final converted = await native.invokeMethod<bool>('finish', {
       'input': muxed,

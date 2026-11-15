@@ -31,8 +31,6 @@ class MiniPlayer extends StatelessWidget {
       if (VideoSessionService.to.inBackground.value) return const _VideoMiniBar();
       final track = audio.current;
       if (track == null) return const SizedBox.shrink();
-      final total = audio.duration.value.inMilliseconds;
-      final progress = total <= 0 ? 0.0 : audio.position.value.inMilliseconds / total;
 
       return GestureDetector(
         onTap: () => Get.toNamed(Routes.player),
@@ -126,18 +124,23 @@ class MiniPlayer extends StatelessWidget {
                 ),
                 SizedBox(
                   height: 2.5 * scale,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FractionallySizedBox(
-                      widthFactor: progress.clamp(0, 1).toDouble(),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: BrandColors.of(context).progressGradient,
+                  // Position ticks several times a second: only the bar redraws.
+                  child: Obx(() {
+                    final total = audio.duration.value.inMilliseconds;
+                    final progress = total <= 0 ? 0.0 : audio.position.value.inMilliseconds / total;
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: progress.clamp(0, 1).toDouble(),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: BrandColors.of(context).progressGradient,
+                          ),
+                          child: const SizedBox.expand(),
                         ),
-                        child: const SizedBox.expand(),
                       ),
-                    ),
-                  ),
+                    );
+                  }),
                 ),
               ],
             ),

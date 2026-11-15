@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -307,7 +308,9 @@ class YtDlpService extends GetxService {
     );
     if (_infoCanceled.contains(url)) throw const YtDlpCanceled();
     if (!r.ok) throw YtDlpException(r.err);
-    final info = YtInfo.fromJson(jsonDecode(r.out) as Map<String, dynamic>);
+    final out = r.out;
+    // Several MB of JSON for long videos: decoded off the UI thread.
+    final info = YtInfo.fromJson(await Isolate.run(() => jsonDecode(out) as Map<String, dynamic>));
     debugPrint('[yt-dlp] info in ${sw.elapsedMilliseconds} ms');
     _infoCache[url] = (at: DateTime.now(), info: info, json: r.out);
     if (_infoCache.length > 50) _infoCache.remove(_infoCache.keys.first);
