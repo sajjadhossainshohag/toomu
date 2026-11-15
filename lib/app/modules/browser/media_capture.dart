@@ -134,9 +134,12 @@ class MediaCapture {
       items.removeWhere((i) => parts.contains(i.url));
       // Master playlists carry no duration or keys: read the best quality's.
       try {
+        final bestUrl = info.variants.first.url;
+        // The variant may be on another host: send only that host's cookies.
+        final cookies = await DownloadService.webCookies(bestUrl);
         final best = MediaManifest.parseHls(
-          await _text(info.variants.first.url, request),
-          Uri.parse(info.variants.first.url),
+          await _text(bestUrl, {...headers, if (cookies.isNotEmpty) 'Cookie': cookies}),
+          Uri.parse(bestUrl),
         );
         duration = best.duration;
         protected = protected || best.protected;

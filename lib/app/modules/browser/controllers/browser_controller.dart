@@ -269,7 +269,9 @@ class BrowserController extends GetxController {
   }
 
   Future<void> preview(CapturedMedia m) async {
-    final cookies = await DownloadService.webCookies(m.url);
+    // The player sends these headers with every piece and key of a stream,
+    // whatever their host, so a stream gets no cookies.
+    final cookies = m.isStream ? '' : await DownloadService.webCookies(m.url);
     await Get.toNamed(
       Routes.videoPlayer,
       arguments: VideoPlaylist([

@@ -1,5 +1,6 @@
 # Builds Toomu automatically.
-#  - Android APKs (arm64 + armv7): every push to main, every v* tag, or by hand.
+#  - Android APKs: every push to main or by hand (arm64 only, for speed);
+#    every v* tag (arm64 + armv7). Analyze + tests run alongside the build.
 #  - iOS (unsigned .ipa): v* tags or by hand only — macOS minutes count 10×
 #    on private repositories.
 #  - A v* tag (e.g. v1.2.0) also publishes a GitHub Release with the files.
@@ -29,9 +30,27 @@ env:
   FLUTTER_VERSION: '3.41.1'
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze --no-pub
+      - run: flutter test --no-pub
+
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      PLATFORMS: ${{ startsWith(github.ref, 'refs/tags/v') && 'android-arm,android-arm64' || 'android-arm64' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,8 +79,6 @@ jobs:
           fi
 
       - run: flutter pub get
-      - run: flutter analyze --no-pub
-      - run: flutter test --no-pub
 
       - name: Build APKs (trimmed, obfuscated; see tool/build_release.sh)
         env:
@@ -70,12 +87,14 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           flutter build apk --release --split-per-abi \
-            --target-platform android-arm,android-arm64 \
+            --target-platform "$PLATFORMS" \
             --obfuscate --split-debug-info=build/symbols \
             --dart-define=TOOMU_BUILD="ci ${GITHUB_SHA::7} $(date -u '+%m-%d %H:%M')"
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/toomu-arm64-v8a.apk
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/toomu-armeabi-v7a.apk
+          if [ -f build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ]; then
+            cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/toomu-armeabi-v7a.apk
+          fi
           (cd build && zip -qr ../dist/debug-symbols-android.zip symbols)
           ls -lh dist
 
@@ -120,7 +139,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [android, ios]
+    needs: [check, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write

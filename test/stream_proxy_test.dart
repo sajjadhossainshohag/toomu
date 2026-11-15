@@ -37,6 +37,7 @@ class FakeYoutube {
         return;
       }
       final refused = m == null ||
+          q['kind'] == 'expired' ||
           req.headers.value('range') != null ||
           to - from + 1 > 10 << 20 ||
           to >= length ||
@@ -166,6 +167,16 @@ void main() {
     expect(status, 206);
     expect(body.length, lessThan(length));
     expect(body.length, lessThanOrEqualTo(free));
+    expect(matches(body, 0), isTrue);
+  });
+
+  test('a newer link for the same file replaces an expired one', () async {
+    lookupDone.complete();
+    final old = proxy.wrap(yt.url('expired'), videoId: 'abc');
+    final local = proxy.wrap(yt.url('full'), videoId: 'abc');
+    expect(local, old);
+    final (status, body, _) = await fetch(local, range: 'bytes=0-99');
+    expect(status, 206);
     expect(matches(body, 0), isTrue);
   });
 

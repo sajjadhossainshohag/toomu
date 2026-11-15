@@ -36,6 +36,16 @@ class _Stopped implements Exception {
   const _Stopped();
 }
 
+// A 200 to a range that doesn't start at 0 is the whole file (or an expired
+// link's HTML page); writing it at the requested offset would corrupt the file.
+class _RangeIgnored implements Exception {
+  const _RangeIgnored(this.status);
+  final int? status;
+
+  @override
+  String toString() => "The server didn't send the requested part (HTTP $status). The link may have expired.";
+}
+
 typedef _RangeRequest =
     ({Uri url, Map<String, String> headers}) Function(int from, int to);
 
@@ -536,9 +546,11 @@ class DownloadService extends GetxService {
       task.speed.value = 0;
       task.phase.value = DownloadPhase.idle;
       if (task.status.value != DownloadStatus.completed) {
-        task.receivedBytes.value = await _bytesOnDisk(task);
+        final onDisk = await _bytesOnDisk(task);
+        // A quick resume may have started a new run during the await.
+        if (_running[task.id] == token) task.receivedBytes.value = onDisk;
       }
-      _running.remove(task.id);
+      if (_running[task.id] == token) _running.remove(task.id);
       if (task.status.value != DownloadStatus.canceled) await _persist();
       _pump();
       _updateNotification();
@@ -570,6 +582,7 @@ class DownloadService extends GetxService {
       switch (e) {
         DioException(:final response) => const {401, 403, 404, 410}.contains(response?.statusCode),
         YtDlpException(:final message) => _expiredStatus.hasMatch(message),
+        _RangeIgnored() => true,
         _ => false,
       };
 
@@ -1192,6 +1205,13 @@ class DownloadService extends GetxService {
     final uri = Uri.parse(task.url!);
     final headers = await _requestHeaders(task);
     final info = await _probeDirect(uri, token, headers);
+    // A different size means the file at this link changed: its old bytes
+    // must not be joined with the new ones.
+    if (info.total > 0 && task.totalBytes.value > 0 && info.total != task.totalBytes.value) {
+      for (final p in _tempPathsOf(task)) {
+        await _deleteQuietly(p);
+      }
+    }
     task.totalBytes.value = info.total;
     await _fetch(
       total: info.total,
@@ -1353,6 +1373,7 @@ class DownloadService extends GetxService {
               headers: req.headers,
             ),
           );
+          if (response.statusCode != 206 && received > 0) throw _RangeIgnored(response.statusCode);
           await for (final chunk in response.data!.stream) {
             await raf.writeFrom(chunk);
             received += chunk.length;
@@ -1440,6 +1461,7 @@ class DownloadService extends GetxService {
               headers: req.headers,
             ),
           );
+          if (response.statusCode != 206 && p.start + p.written > 0) throw _RangeIgnored(response.statusCode);
           await for (final chunk in response.data!.stream) {
             final room = p.remaining; // shrinks when a steal takes the tail
             if (room <= 0) break;
