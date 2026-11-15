@@ -1,8 +1,39 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/services.dart';
 
+import '../../services/download_service.dart';
 import '../models/track.dart';
+
+Future<List<Map<String, dynamic>>> appFolderItems(String sub) {
+  final path = '${DownloadService.to.downloadRoot}/$sub';
+  return Isolate.run(() => _folderItems(path, sub));
+}
+
+List<Map<String, dynamic>> _folderItems(String path, String sub) {
+  final dir = Directory(path);
+  if (!dir.existsSync()) return const [];
+  return [
+    for (final f in dir.listSync().whereType<File>())
+      if (!f.path.endsWith('.part'))
+        () {
+          final name = f.uri.pathSegments.last;
+          final dot = name.lastIndexOf('.');
+          return <String, dynamic>{
+            // Relative key: the app container path changes between installs.
+            'id': '$sub/$name'.codeUnits.fold<int>(0, (h, c) => (h * 31 + c) & 0x7fffffffffff),
+            'path': f.path,
+            'uri': Uri.file(f.path).toString(),
+            'name': name,
+            'title': dot > 0 ? name.substring(0, dot) : name,
+            'size': f.lengthSync(),
+            'dateAdded': f.lastModifiedSync().millisecondsSinceEpoch ~/ 1000,
+            'folder': 'Toomu',
+          };
+        }(),
+  ];
+}
 
 /// Reads the device music library (Android MediaStore) through our own
 /// native channel in MainActivity.kt.
@@ -10,15 +41,23 @@ class LocalMusicProvider {
   static const _channel = MethodChannel('toomu/media_library');
 
   Future<List<Track>> songs() async {
-    if (!Platform.isAndroid) return const [];
-    final raw = await _channel.invokeListMethod<Map<dynamic, dynamic>>('songs') ?? const [];
+    final raw = Platform.isAndroid
+        ? await _channel.invokeListMethod<Map<dynamic, dynamic>>('songs') ?? const []
+        : await appFolderItems('Audio');
     return raw.map((m) => Track.fromMediaStore(Map<String, dynamic>.from(m))).toList();
   }
 
   /// Deletes songs from the device; Android may show a confirmation.
   /// True if deleted, false if the user declined.
-  Future<bool> delete(List<int> ids) async =>
-      (await _channel.invokeMethod<bool>('delete', {'ids': ids})) ?? false;
+  Future<bool> delete(List<int> ids) async {
+    if (!Platform.isAndroid) {
+      for (final m in await appFolderItems('Audio')) {
+        if (ids.contains(m['id'])) await File(m['path'] as String).delete();
+      }
+      return true;
+    }
+    return (await _channel.invokeMethod<bool>('delete', {'ids': ids})) ?? false;
+  }
 }
 
 /// In-memory LRU cache of cover art so list scrolling doesn't re-query.

@@ -6,10 +6,20 @@ Android layer** (Kotlin) and the **yt-dlp engine**, which is bundled for
 Android only. This document lists each piece, what replaces it on iOS, and a
 suggested order of work.
 
-Status (Nov 2026): CI can build an **unsigned `.ipa`** (`.github/workflows/build.yml`,
-iOS job on `v*` tags or by hand). That build has not been run yet, so the
-first run may need iOS setup fixes. Even when it builds, downloading, the
-bubble and the media library are missing (see below).
+Status (Nov 2026): steps 1, 2, 4 and 5 below are implemented but not yet
+run on a device. CI builds an **unsigned `.ipa`** (`.github/workflows/build.yml`,
+iOS job on `v*` tags or by hand).
+
+- Info.plist: local networking (ATS), background audio, Files app sharing.
+- `toomu/video`, `toomu/download_notify` and `toomu/intents` answer `nil`
+  on iOS (`AppDelegate.swift`), so PiP, notifications and share intents are
+  simply off. Android-only settings are hidden.
+- YouTube downloads (Route A): fast-lookup links through the stream proxy,
+  fetched with the existing piece downloader, joined by `toomu/media_merge`
+  (AVFoundation passthrough). H.264 up to 1080p; audio as M4A only.
+- Music/Videos tabs list Toomu's own `Audio`/`Video` folders.
+- Not done: TikTok downloads, Share Extension (step 6), background
+  transfers (step 7), media controls for video, Route B.
 
 ## 1. Distribution comes first
 

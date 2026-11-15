@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'download_task.dart';
@@ -57,6 +58,8 @@ class MediaFormat {
     final byClass = <int, List<YtFormat>>{};
     for (final f in info.videoFormats) {
       if (f.height! < 100) continue;
+      // iOS joins with AVFoundation: MP4-family (H.264) only.
+      if (Platform.isIOS && !(f.vcodec?.startsWith('avc1') ?? false)) continue;
       byClass.putIfAbsent(qualityClass(f.width, f.height!), () => []).add(f);
     }
     final classes = byClass.keys.toList()..sort((a, b) => b.compareTo(a));
@@ -84,7 +87,9 @@ class MediaFormat {
     final seconds = info.duration?.inSeconds ?? 0;
     int mp3Size(int kbps) => seconds > 0 ? seconds * kbps * 1000 ~/ 8 : (audio?.filesize ?? 0);
     return [
-      for (final kbps in const [320, 192, 128])
+      // iOS has no MP3 encoder.
+      if (!Platform.isIOS)
+        for (final kbps in const [320, 192, 128])
         MediaFormat(
           kind: DownloadKind.audio,
           label: 'MP3 $kbps kbps',
@@ -94,7 +99,7 @@ class MediaFormat {
           selector: 'ba/b',
           convert: 'mp3:$kbps',
         ),
-      if (audio != null)
+      if (audio != null && (!Platform.isIOS || audio.ext == 'm4a'))
         MediaFormat(
           kind: DownloadKind.audio,
           label: 'M4A ${audio.abr?.round() ?? ''} kbps'.trim(),

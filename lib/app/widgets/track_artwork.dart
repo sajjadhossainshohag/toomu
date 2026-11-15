@@ -39,6 +39,7 @@ class TrackArtwork extends StatelessWidget {
         width: s,
         height: s,
         fit: BoxFit.cover,
+        memCacheWidth: (s * MediaQuery.devicePixelRatioOf(context)).round(),
         placeholder: (_, _) => placeholder,
         errorWidget: (_, _, _) => placeholder,
       );

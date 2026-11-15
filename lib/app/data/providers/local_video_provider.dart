@@ -3,14 +3,16 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import '../models/video_item.dart';
+import 'local_music_provider.dart';
 
 /// Device videos via MediaStore (native, MainActivity.kt).
 class LocalVideoProvider {
   static const _channel = MethodChannel('toomu/media_library');
 
   Future<List<VideoItem>> videos() async {
-    if (!Platform.isAndroid) return const [];
-    final raw = await _channel.invokeListMethod<Map<dynamic, dynamic>>('videos') ?? const [];
+    final raw = Platform.isAndroid
+        ? await _channel.invokeListMethod<Map<dynamic, dynamic>>('videos') ?? const []
+        : await appFolderItems('Video');
     return raw.map((m) => VideoItem.fromMediaStore(Map<String, dynamic>.from(m))).toList();
   }
 }

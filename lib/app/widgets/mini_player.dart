@@ -192,6 +192,7 @@ class _VideoMiniBar extends StatelessWidget {
                         : CachedNetworkImage(
                             imageUrl: item.thumbnailUrl!,
                             fit: BoxFit.cover,
+                            memCacheWidth: (64 * scale * MediaQuery.devicePixelRatioOf(context)).round(),
                             errorWidget: (_, _, _) =>
                                 const ArtworkPlaceholder(size: 64, radius: 0, icon: Icons.movie_rounded),
                           ))

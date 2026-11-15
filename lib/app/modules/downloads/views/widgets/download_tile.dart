@@ -242,6 +242,7 @@ class _Thumb extends StatelessWidget {
                 : CachedNetworkImage(
                     imageUrl: url,
                     fit: BoxFit.cover,
+                    memCacheWidth: (84 * scale * MediaQuery.devicePixelRatioOf(context)).round(),
                     errorWidget: (_, _, _) =>
                         ArtworkPlaceholder(size: 84, radius: 0, icon: icon),
                   ),
