@@ -1,8 +1,8 @@
 # Builds Toomu automatically.
 #  - Android APKs: every push to main or by hand (arm64 only, for speed);
 #    every v* tag (arm64 + armv7). Analyze + tests run alongside the build.
-#  - iOS (unsigned .ipa): v* tags or by hand only — macOS minutes count 10×
-#    on private repositories.
+#  - iOS (unsigned .ipa): every push to main, every v* tag, or by hand
+#    (the repository is public, so macOS minutes are free).
 #  - Every successful build of main publishes a GitHub Release under a new
 #    tag (vYYYY.MM.DD-HHMM, Bangladesh time) with the APK; a pushed v* tag
 #    publishes one under that tag with all files.
@@ -18,11 +18,6 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      ios:
-        description: Also build iOS
-        type: boolean
-        default: false
 
 concurrency:
   group: build-${{ github.ref }}
@@ -88,11 +83,6 @@ jobs:
 
       - run: flutter pub get
 
-      # Kotlin unit tests (android/app/src/test), e.g. the yt-dlp file repair.
-      - name: Android unit tests
-        working-directory: android
-        run: ./gradlew :app:testDebugUnitTest
-
       # The app compares this with GitHub's latest release to offer updates.
       - name: Release tag
         id: tag
@@ -122,6 +112,12 @@ jobs:
           (cd build && zip -qr ../dist/debug-symbols-android.zip symbols)
           ls -lh dist
 
+      # Kotlin unit tests (android/app/src/test), e.g. the yt-dlp file repair.
+      # After the build: android/gradlew isn't in git, Flutter writes it.
+      - name: Android unit tests
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest
+
       - uses: actions/upload-artifact@v4
         with:
           name: toomu-android
@@ -129,7 +125,6 @@ jobs:
           retention-days: 14
 
   ios:
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.ios)
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -162,11 +157,7 @@ jobs:
           retention-days: 14
 
   release:
-    # ios is skipped on main, and a skipped need would skip this job.
-    if: >-
-      always() && needs.check.result == 'success' && needs.android.result == 'success' &&
-      contains(fromJSON('["success", "skipped"]'), needs.ios.result) &&
-      (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
     needs: [check, android, ios]
     runs-on: ubuntu-latest
     permissions:
