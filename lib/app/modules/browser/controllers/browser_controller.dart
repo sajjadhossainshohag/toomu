@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
 
@@ -25,6 +26,7 @@ import '../../../widgets/option_sheet.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
 import '../media_capture.dart';
 import '../media_sniffer.dart';
+import '../redirect_guard.dart';
 import '../views/media_sheet.dart';
 
 /// Snaptube-style in-app browser. Sites load in a real WebView (real
@@ -47,6 +49,11 @@ class BrowserController extends GetxController {
   final canGoForward = false.obs;
   final extractor = Rxn<MediaExtractor>();
   final capture = MediaCapture();
+  final guard = RedirectGuard();
+  final bool _blockRedirects = SettingsService.to.blockRedirects.value;
+  String? _allowNext;
+  String _lastBlocked = '';
+  DateTime _lastBlockedAt = DateTime(0);
 
   final webKey = 0.obs;
   String restoreUrl = '';
@@ -67,12 +74,20 @@ class BrowserController extends GetxController {
     allowsInlineMediaPlayback: true,
     supportZoom: false,
     useShouldOverrideUrlLoading: true,
+    // Popups then open in this tab, where onNavigate can block them.
+    supportMultipleWindows: false,
   );
 
   final userScripts = UnmodifiableListView<UserScript>([
     if (SettingsService.to.captureMedia.value)
       UserScript(
         source: mediaSnifferJs,
+        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+        forMainFrameOnly: false,
+      ),
+    if (SettingsService.to.blockRedirects.value)
+      UserScript(
+        source: tapRecorderJs,
         injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
         forMainFrameOnly: false,
       ),
@@ -86,6 +101,7 @@ class BrowserController extends GetxController {
     address.text = initialUrl;
     capture.onFound = _maybeRefresh;
     _detect(initialUrl);
+    if (_blockRedirects) unawaited(Blocklist.load());
   }
 
   @override
@@ -103,6 +119,13 @@ class BrowserController extends GetxController {
       callback: (List<dynamic> args) {
         final m = args.isEmpty ? null : args.first;
         if (m is Map) capture.onReport(Map<String, dynamic>.from(m));
+        return null;
+      },
+    );
+    c.addJavaScriptHandler(
+      handlerName: 'toomuTap',
+      callback: (List<dynamic> args) {
+        guard.onTap(args.isEmpty ? '' : '${args.first}');
         return null;
       },
     );
@@ -142,10 +165,49 @@ class BrowserController extends GetxController {
 
   /// Opens app links (intent://, market://) outside instead of erroring.
   NavigationActionPolicy onNavigate(NavigationAction action) {
-    final scheme = action.request.url?.scheme ?? 'https';
-    return scheme == 'http' || scheme == 'https' || scheme == 'about' || scheme == 'data'
-        ? NavigationActionPolicy.ALLOW
-        : NavigationActionPolicy.CANCEL;
+    final target = action.request.url;
+    final scheme = target?.scheme ?? 'https';
+    if (scheme != 'http' && scheme != 'https' && scheme != 'about' && scheme != 'data') {
+      return NavigationActionPolicy.CANCEL;
+    }
+    if (target == null || !_blockRedirects || !action.isForMainFrame || !scheme.startsWith('http')) {
+      return NavigationActionPolicy.ALLOW;
+    }
+    if (target.toString() == _allowNext) {
+      _allowNext = null;
+      return NavigationActionPolicy.ALLOW;
+    }
+    if (!guard.blocks(from: url.value, to: target, redirect: action.isRedirect ?? false)) {
+      return NavigationActionPolicy.ALLOW;
+    }
+    _showBlocked(target.toString(), target.host);
+    return NavigationActionPolicy.CANCEL;
+  }
+
+  void _showBlocked(String target, String host) {
+    debugPrint('[Browser] blocked redirect to $host');
+    final now = DateTime.now();
+    if (host == _lastBlocked && now.difference(_lastBlockedAt) < const Duration(seconds: 4)) return;
+    _lastBlocked = host;
+    _lastBlockedAt = now;
+    showSnack(
+      'Blocked redirect',
+      host,
+      duration: const Duration(seconds: 5),
+      mainButton: TextButton(
+        onPressed: () {
+          Get.closeCurrentSnackbar();
+          _open(target);
+        },
+        child: const Text('Open'),
+      ),
+    );
+  }
+
+  void _open(String target) {
+    // iOS asks shouldOverrideUrlLoading about loadUrl too.
+    _allowNext = target;
+    web?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
   }
 
   /// A link the site serves as a file download.
@@ -180,7 +242,7 @@ class BrowserController extends GetxController {
     } else {
       target = 'https://www.google.com/search?q=${Uri.encodeQueryComponent(text)}';
     }
-    web?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
+    _open(target);
   }
 
   String? get fabLabel {

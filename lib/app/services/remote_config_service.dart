@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 import '../core/values/app_constants.dart';
 import 'ytdlp_service.dart';
 import '../extractors/extractors.dart';
+import '../modules/browser/redirect_guard.dart';
 import 'settings_service.dart';
 import 'storage_service.dart';
 
@@ -20,6 +21,7 @@ import 'storage_service.dart';
 ///   "ytdlpArgs": ["--extractor-args", "youtube:player_client=default,tv"],
 ///   "ytdlpChannel": "stable",
 ///   "connectionsPerDownload": 4,
+///   "blocklistUrl": "https://example.com/hosts",
 ///   "sites": [{"name": "YouTube", "url": "https://m.youtube.com/", "icon": "video", "color": "#FF0033"}],
 ///   "feedCategories": [{"label": "Music", "query": "new music video"}]
 /// }
@@ -82,6 +84,9 @@ class RemoteConfigService extends GetxService {
     if (siteList != null) {
       sites.assignAll(siteList.whereType<Map>().map((m) => SiteShortcut.fromJson(m.cast())));
     }
+
+    final blocklist = json['blocklistUrl'];
+    if (blocklist is String && blocklist.startsWith('https://')) Blocklist.url = blocklist;
 
     final cats = json['feedCategories'] as List?;
     if (cats != null) {

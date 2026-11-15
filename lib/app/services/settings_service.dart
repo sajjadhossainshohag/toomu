@@ -20,6 +20,7 @@ class SettingsService extends GetxService {
 
   final captureMedia = true.obs;
   final clipboardLinks = true.obs;
+  final blockRedirects = true.obs;
 
   /// Parallel connections per file (1DM-style segmented download).
   final connectionsPerDownload = AppConstants.defaultConnectionsPerDownload.obs;
@@ -36,7 +37,13 @@ class SettingsService extends GetxService {
     videoAutoPip.value = _storage.read<bool>(AppConstants.kVideoAutoPip) ?? true;
     captureMedia.value = _storage.read<bool>(AppConstants.kCaptureMedia) ?? true;
     clipboardLinks.value = _storage.read<bool>(AppConstants.kClipboardLinks) ?? true;
+    blockRedirects.value = _storage.read<bool>(AppConstants.kBlockRedirects) ?? true;
     return this;
+  }
+
+  void setBlockRedirects(bool v) {
+    blockRedirects.value = v;
+    _storage.write(AppConstants.kBlockRedirects, v);
   }
 
   void setCaptureMedia(bool v) {

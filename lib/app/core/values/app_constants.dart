@@ -15,6 +15,8 @@ abstract class AppConstants {
   /// the built-in defaults. See `remote_config.example.json`.
   static const String? remoteConfigUrl = null;
 
+  static const blocklistUrl = 'https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling/hosts';
+
   // Storage keys
   static const kDownloadTasks = 'download_tasks';
   static const kThemeMode = 'theme_mode';
@@ -31,6 +33,7 @@ abstract class AppConstants {
   static const kVideoAutoPip = 'video_auto_pip';
   static const kCaptureMedia = 'browser_capture_media';
   static const kClipboardLinks = 'clipboard_links';
+  static const kBlockRedirects = 'browser_block_redirects';
   static const kBubbleNowPlayingAsked = 'floating_button_now_playing_asked';
   static const kYtdlpUpdatedAt = 'ytdlp_updated_at';
 

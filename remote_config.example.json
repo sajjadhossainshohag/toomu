@@ -2,6 +2,7 @@
   "ytdlpArgs": [],
   "ytdlpChannel": "stable",
   "connectionsPerDownload": 4,
+  "blocklistUrl": "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling/hosts",
   "sites": [
     { "name": "YouTube", "url": "https://m.youtube.com/", "icon": "video", "color": "#FF0033" },
     { "name": "YT Music", "url": "https://music.youtube.com/", "icon": "music", "color": "#E5484D" },

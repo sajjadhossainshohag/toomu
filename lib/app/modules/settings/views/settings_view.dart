@@ -80,6 +80,14 @@ class SettingsView extends GetView<SettingsController> {
                             .setCaptureMedia(!controller.settings.captureMedia.value),
                       ),
                       AppRow(
+                        icon: Icons.block_rounded,
+                        tint: ColorConstants.tileVideo,
+                        label: 'Block popups & redirects',
+                        toggled: controller.settings.blockRedirects.value,
+                        onTap: () => controller.settings
+                            .setBlockRedirects(!controller.settings.blockRedirects.value),
+                      ),
+                      AppRow(
                         icon: Icons.content_paste_search_rounded,
                         tint: ColorConstants.tileShare,
                         label: 'Detect copied links',
