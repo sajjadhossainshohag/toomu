@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -522,7 +523,7 @@ class YoutubeController extends GetxController {
       return;
     }
 
-    formatsStatus.value = !ytdlp.ready.value
+    formatsStatus.value = !Platform.isIOS && !ytdlp.ready.value
         ? 'Preparing downloader (first run)…'
         : ytdlp.updating.value
         ? 'Updating downloader…'

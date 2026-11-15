@@ -21,14 +21,18 @@ abstract class AppServices {
     Get.put(StorageService(), permanent: true);
     Get.put(DiagnosticsService().init(), permanent: true); // before anything logs
     Get.put(SettingsService().init(), permanent: true);
-    await Get.putAsync(() => YoutubeAccountService().init(), permanent: true);
+    await Future.wait([
+      Get.putAsync(() => YoutubeAccountService().init(), permanent: true),
+      Get.putAsync(() => StreamProxy().init(), permanent: true), // 127.0.0.1, instant
+      Get.putAsync(() => PermissionService().init(), permanent: true),
+    ]);
     Get.put(YtDlpService().init(), permanent: true); // unpacks in background
-    await Get.putAsync(() => StreamProxy().init(), permanent: true); // 127.0.0.1, instant
     Get.put(RemoteConfigService().init(), permanent: true);
-    await Get.putAsync(() => PermissionService().init(), permanent: true);
     Get.put(MediaScannerService(), permanent: true);
-    await Get.putAsync(() => AudioPlayerService().init(), permanent: true);
-    await Get.putAsync(() => DownloadService().init(), permanent: true);
+    await Future.wait([
+      Get.putAsync(() => AudioPlayerService().init(), permanent: true),
+      Get.putAsync(() => DownloadService().init(), permanent: true),
+    ]);
     Get.put(FloatingButtonService().init(), permanent: true);
     Get.put(VideoSessionService().init(), permanent: true);
   }

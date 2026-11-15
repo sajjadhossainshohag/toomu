@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -69,6 +71,7 @@ class SettingsView extends GetView<SettingsController> {
                         value: '${controller.settings.maxConcurrentDownloads.value}',
                         onTap: controller.pickConcurrent,
                       ),
+                      if (Platform.isAndroid) ...[
                       AppRow(
                         icon: Icons.call_split_rounded,
                         tint: ColorConstants.tileEqualizer,
@@ -83,6 +86,7 @@ class SettingsView extends GetView<SettingsController> {
                         value: 'Download/${AppConstants.downloadFolderName}',
                         onTap: controller.showFolder,
                       ),
+                      ],
                       AppRow(
                         icon: Icons.cleaning_services_rounded,
                         tint: ColorConstants.tileFolder,
@@ -95,6 +99,7 @@ class SettingsView extends GetView<SettingsController> {
                   AppGroup(
                     title: 'YouTube app',
                     rows: <Widget>[
+                      if (Platform.isAndroid) ...[
                       AppRow(
                         icon: Icons.bubble_chart_rounded,
                         tint: ColorConstants.siteYoutube,
@@ -116,6 +121,7 @@ class SettingsView extends GetView<SettingsController> {
                         value: 'How',
                         onTap: controller.explainShare,
                       ),
+                      ],
                       AppRow(
                         icon: Icons.account_circle_rounded,
                         tint: ColorConstants.siteYoutube,
@@ -133,6 +139,7 @@ class SettingsView extends GetView<SettingsController> {
                   AppGroup(
                     title: 'Downloader',
                     rows: <Widget>[
+                      if (Platform.isAndroid) ...[
                       AppRow(
                         icon: Icons.system_update_alt_rounded,
                         tint: ColorConstants.tileDownloads,
@@ -148,6 +155,7 @@ class SettingsView extends GetView<SettingsController> {
                         value: controller.ytdlp.channel.value == 'nightly' ? 'Nightly' : 'Stable',
                         onTap: controller.pickUpdateChannel,
                       ),
+                      ],
                       AppRow(
                         icon: Icons.bug_report_rounded,
                         tint: ColorConstants.tileAbout,
@@ -161,6 +169,7 @@ class SettingsView extends GetView<SettingsController> {
                   AppGroup(
                     title: 'Video player',
                     rows: <Widget>[
+                      if (Platform.isAndroid)
                       AppRow(
                         icon: Icons.picture_in_picture_alt_rounded,
                         tint: ColorConstants.tileVideo,
@@ -183,6 +192,7 @@ class SettingsView extends GetView<SettingsController> {
                   AppGroup(
                     title: 'Player',
                     rows: <Widget>[
+                      if (Platform.isAndroid)
                       AppRow(
                         icon: Icons.equalizer_rounded,
                         tint: ColorConstants.tileEqualizer,

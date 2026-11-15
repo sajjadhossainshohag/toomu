@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -16,6 +17,7 @@ import '../data/models/download_task.dart';
 import '../data/models/tiktok_item.dart';
 import '../data/models/media_format.dart';
 import '../data/models/video_meta.dart';
+import '../data/models/yt_info.dart';
 import '../data/providers/youtube_provider.dart';
 import '../data/providers/ytdlp/ytdlp_bridge.dart';
 import '../data/repositories/download_repository.dart';
@@ -66,6 +68,7 @@ class DownloadService extends GetxService {
 
   /// Why a running task was stopped ('pause' | 'cancel'), read by [_start].
   final Map<String, String> _stopReasons = {};
+  final Map<String, void Function()> _speedTicks = {};
 
   late Directory _videoDir;
   late Directory _audioDir;
@@ -73,6 +76,7 @@ class DownloadService extends GetxService {
 
   /// Progress notification (native DownloadProgressService).
   static const _notify = MethodChannel('toomu/download_notify');
+  static const _merge = MethodChannel('toomu/media_merge');
   Timer? _notifyTimer;
 
   Future<DownloadService> init() async {
@@ -93,10 +97,10 @@ class DownloadService extends GetxService {
     // Work folders live under yt-dlp's temp root, known once it's started.
     unawaited(
       YtDlpService.to.whenReady
-          .then((_) {
+          .then((_) async {
             for (final t in tasks) {
               if (t.status.value != DownloadStatus.completed) {
-                t.receivedBytes.value = _bytesOnDisk(t);
+                t.receivedBytes.value = await _bytesOnDisk(t);
               }
             }
             return cleanTemporaryFiles(); // sweep leftovers from killed sessions
@@ -335,36 +339,28 @@ class DownloadService extends GetxService {
 
   /// Deletes leftover temp files/folders that no download in the list owns
   /// any more. Partial data of paused/failed downloads is kept for resume.
-  Future<int> cleanTemporaryFiles() async {
+  Future<int> cleanTemporaryFiles() {
     final owned = <String>{for (final t in tasks) ..._tempPathsOf(t)};
-    var freed = 0;
-    final dirs = [_videoDir, _audioDir, _filesDir, _videoDir.parent];
-    for (final dir in dirs) {
-      if (!dir.existsSync()) continue;
-      for (final entity in dir.listSync(followLinks: false)) {
-        final name = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
-        final isTemp =
-            name.endsWith('.part') ||
-            name.endsWith('.chunks') ||
-            name.endsWith('.ytdl') ||
-            name.startsWith('.merging_') ||
-            name == '.probe';
-        if (isTemp && !owned.contains(entity.path)) {
-          freed += await _deleteQuietly(entity.path);
-        }
-      }
-    }
-    // yt-dlp work folders of tasks that no longer exist.
-    final root = YtDlpService.to.workRoot;
-    final work = Directory(root);
-    if (root.isNotEmpty && work.existsSync()) {
-      for (final entity in work.listSync(followLinks: false)) {
-        if (!owned.contains(entity.path)) {
-          freed += await _deleteQuietly(entity.path);
-        }
-      }
-    }
-    return freed;
+    final dirs = [_videoDir, _audioDir, _filesDir, _videoDir.parent].map((d) => d.path).toList();
+    final work = YtDlpService.to.workRoot;
+    return Isolate.run(() {
+      bool isTemp(String name) =>
+          name.endsWith('.part') ||
+          name.endsWith('.chunks') ||
+          name.endsWith('.ytdl') ||
+          name.startsWith('.merging_') ||
+          name == '.probe';
+      List<FileSystemEntity> list(String dir) =>
+          Directory(dir).existsSync() ? Directory(dir).listSync(followLinks: false) : const [];
+      final stale = [
+        for (final dir in dirs)
+          for (final e in list(dir))
+            if (isTemp(e.uri.pathSegments.where((s) => s.isNotEmpty).last)) e.path,
+        // yt-dlp work folders of tasks that no longer exist.
+        if (work.isNotEmpty) ...list(work).map((e) => e.path),
+      ].where((p) => !owned.contains(p));
+      return stale.fold<int>(0, (freed, p) => freed + _deleteSync(p));
+    });
   }
 
   // ------------------------------------------------------------------ engine
@@ -374,7 +370,7 @@ class DownloadService extends GetxService {
     if (token == null) return;
     _stopReasons[task.id] = reason;
     token.cancel(reason);
-    if (task.source != DownloadSource.direct) {
+    if (task.source != DownloadSource.direct && Platform.isAndroid) {
       unawaited(YtDlpBridge.cancel(task.id));
     }
   }
@@ -396,19 +392,21 @@ class DownloadService extends GetxService {
     task.status.value = DownloadStatus.running;
     task.error.value = null;
     // After the status change, so the first snapshot sees this task.
-    _notifyTimer ??= Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => _updateNotification(),
-    );
+    _notifyTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      for (final tick in _speedTicks.values.toList()) {
+        tick();
+      }
+      _updateNotification();
+    });
     _updateNotification();
 
     var current = task.receivedBytes.value;
     var lastTick = current;
-    final speedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _speedTicks[task.id] = () {
       task.speed.value = (current - lastTick).clamp(0, 1 << 40);
       lastTick = current;
       task.receivedBytes.value = current;
-    });
+    };
     void onBytes(int b) => current = b;
 
     try {
@@ -416,6 +414,8 @@ class DownloadService extends GetxService {
         task.phase.value = DownloadPhase.video;
         await _downloadDirect(task, token, onBytes);
         await File(task.partPath).rename(task.filePath);
+      } else if (Platform.isIOS) {
+        await _downloadNative(task, token, onBytes);
       } else if (task.source == DownloadSource.tiktok) {
         await _downloadSite(task, token, onBytes);
       } else {
@@ -442,12 +442,12 @@ class DownloadService extends GetxService {
         // No notification for failures: the Downloads tab shows the error.
       }
     } finally {
-      speedTimer.cancel();
+      _speedTicks.remove(task.id);
       _stopReasons.remove(task.id);
       task.speed.value = 0;
       task.phase.value = DownloadPhase.idle;
       if (task.status.value != DownloadStatus.completed) {
-        task.receivedBytes.value = _bytesOnDisk(task);
+        task.receivedBytes.value = await _bytesOnDisk(task);
       }
       _running.remove(task.id);
       if (task.status.value != DownloadStatus.canceled) await _persist();
@@ -755,6 +755,81 @@ class DownloadService extends GetxService {
     if (!result.ok) throw YtDlpException(result.err);
 
     _findOutput(task, target, dir, base);
+    await _deleteQuietly(work);
+  }
+
+  Future<void> _downloadNative(
+    DownloadTask task,
+    CancelToken token,
+    void Function(int) onBytes,
+  ) async {
+    if (task.source == DownloadSource.tiktok) {
+      throw StateError('TikTok downloads are not available on iPhone yet.');
+    }
+    task.phase.value = DownloadPhase.lookingUp;
+    await YtDlpService.to.whenReady;
+    final fast = await _youtube
+        .fastLinks(task.videoId)
+        .timeout(const Duration(seconds: 15), onTimeout: () => null);
+    _checkStopped(token);
+    if (fast == null || !fast.full) {
+      throw StateError("YouTube didn't give download links for this video. Try again later.");
+    }
+    final audio = fast.info.bestAudio;
+    if (audio == null || audio.ext != 'm4a' || !audio.isDirect) {
+      throw StateError('No AAC audio for this video.');
+    }
+    YtFormat? video;
+    if (task.kind == DownloadKind.video) {
+      final maxClass = int.tryParse(task.qualityLabel.replaceAll('p', '')) ?? 1080;
+      final avc = fast.info.videoFormats
+          .where((f) =>
+              f.isDirect &&
+              !f.hasAudio &&
+              (f.vcodec?.startsWith('avc1') ?? false) &&
+              MediaFormat.qualityClass(f.width, f.height!) <= maxClass)
+          .toList()
+        ..sort((a, b) => b.height!.compareTo(a.height!));
+      if (avc.isEmpty) throw StateError("That quality isn't available right now. Pick another one.");
+      video = avc.first;
+    }
+
+    final work = _workDirOf(task);
+    await Directory(work).create(recursive: true);
+    final parts = [
+      if (video != null) (format: video, path: '$work/video.mp4', phase: DownloadPhase.video),
+      (format: audio, path: '$work/audio.m4a', phase: DownloadPhase.audio),
+    ];
+    task.totalBytes.value = parts.fold<int>(0, (s, p) => s + (p.format.filesize ?? 0));
+    var done = 0;
+    for (final p in parts) {
+      task.phase.value = p.phase;
+      final f = p.format;
+      final uri = Uri.parse(StreamProxy.to.wrap(f.url!, headers: f.httpHeaders, videoId: task.videoId));
+      final before = done;
+      await _fetch(
+        total: f.filesize ?? 0,
+        partPath: p.path,
+        token: token,
+        onBytes: (b) => onBytes(before + b),
+        request: (from, to) => (url: uri, headers: {...f.httpHeaders, 'Range': 'bytes=$from-$to'}),
+      );
+      done += File(p.path).lengthSync();
+    }
+    _checkStopped(token);
+
+    if (video != null) {
+      task.phase.value = DownloadPhase.merging;
+      final merged = '$work/merged.mp4';
+      await _merge.invokeMethod<void>('merge', {
+        'video': parts.first.path,
+        'audio': parts.last.path,
+        'out': merged,
+      });
+      await File(merged).rename(task.filePath);
+    } else {
+      await File(parts.last.path).rename(task.filePath);
+    }
     await _deleteQuietly(work);
   }
 
@@ -1188,14 +1263,21 @@ class DownloadService extends GetxService {
 
   // ----------------------------------------------------------------- helpers
 
-  Future<void> _persist() => _repo.save(tasks);
+  static const _keepFinished = 200;
 
-  int _bytesOnDisk(DownloadTask t) {
-    if (t.source != DownloadSource.direct) {
-      final work = _workDirOf(t);
-      return work.isEmpty ? 0 : _sizeOf(work);
-    }
-    return _sizeOf(t.partPath) + _sizeOf(DownloadTask.chunksDirOf(t.partPath));
+  // Files stay on disk; only the oldest finished entries leave the list.
+  Future<void> _persist() {
+    final old = tasks.where((t) => t.status.value == DownloadStatus.completed).skip(_keepFinished).toSet();
+    if (old.isNotEmpty) tasks.removeWhere(old.contains);
+    return _repo.save(tasks);
+  }
+
+  Future<int> _bytesOnDisk(DownloadTask t) {
+    final work = _workDirOf(t);
+    final paths = t.source != DownloadSource.direct
+        ? [if (work.isNotEmpty) work]
+        : [t.partPath, DownloadTask.chunksDirOf(t.partPath)];
+    return Isolate.run(() => paths.fold<int>(0, (s, p) => s + _sizeOf(p)));
   }
 
   /// Size of a file, or of all files in a folder; 0 if missing.
@@ -1253,14 +1335,16 @@ class DownloadService extends GetxService {
   }
 
   /// Deletes a file or folder; returns the bytes freed (0 if missing/failed).
-  Future<int> _deleteQuietly(String path) async {
+  Future<int> _deleteQuietly(String path) => Isolate.run(() => _deleteSync(path));
+
+  static int _deleteSync(String path) {
     final size = _sizeOf(path);
     try {
       switch (FileSystemEntity.typeSync(path, followLinks: false)) {
         case FileSystemEntityType.file:
-          await File(path).delete();
+          File(path).deleteSync();
         case FileSystemEntityType.directory:
-          await Directory(path).delete(recursive: true);
+          Directory(path).deleteSync(recursive: true);
         default:
           return 0;
       }

@@ -310,6 +310,7 @@ class _RecentCard extends StatelessWidget {
                         : CachedNetworkImage(
                             imageUrl: task.thumbnailUrl,
                             fit: BoxFit.cover,
+                            memCacheWidth: (148 * scale * MediaQuery.devicePixelRatioOf(context)).round(),
                             errorWidget: (_, _, _) => ArtworkPlaceholder(size: 148, radius: 0, icon: icon),
                           ),
                     Center(

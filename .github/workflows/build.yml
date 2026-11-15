@@ -137,5 +137,5 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" --title "Toomu ${GITHUB_REF_NAME}" \
             --notes "Built by CI from ${GITHUB_SHA::7}.
           - toomu-arm64-v8a.apk — most phones · toomu-armeabi-v7a.apk — older 32-bit phones
-          - toomu-unsigned.ipa — iOS, unsigned (YouTube downloading is Android-only)
+          - toomu-unsigned.ipa — iOS, unsigned (YouTube downloads up to 1080p; no TikTok downloads, bubble or PiP)
           - debug-symbols-*.zip — to read crash stack traces"

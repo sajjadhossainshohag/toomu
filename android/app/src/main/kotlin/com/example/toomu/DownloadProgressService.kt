@@ -310,6 +310,11 @@ class DownloadProgressService : Service() {
         return START_NOT_STICKY
     }
 
+    // Android 15+: dataSync services get 6 h per day; not stopping here crashes the app.
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        stopSelf()
+    }
+
     override fun onDestroy() {
         running = false
         clearCards(this)

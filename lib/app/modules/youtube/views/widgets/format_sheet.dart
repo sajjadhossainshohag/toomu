@@ -148,7 +148,7 @@ class _VideoHeader extends StatelessWidget {
             height: 63 * scale,
             child: thumb == null
                 ? const ArtworkPlaceholder(size: 112, radius: 0, icon: Icons.smart_display_rounded)
-                : CachedNetworkImage(imageUrl: thumb!, fit: BoxFit.cover),
+                : CachedNetworkImage(imageUrl: thumb!, fit: BoxFit.cover, memCacheWidth: (112 * scale * MediaQuery.devicePixelRatioOf(context)).round()),
           ),
         ),
         SizedBox(width: 12 * scale),
@@ -348,7 +348,11 @@ class _CandidateTile extends StatelessWidget {
                   child: SizedBox(
                     width: 96 * scale,
                     height: 54 * scale,
-                    child: CachedNetworkImage(imageUrl: video.thumbnails.mediumResUrl, fit: BoxFit.cover),
+                    child: CachedNetworkImage(
+                      imageUrl: video.thumbnails.mediumResUrl,
+                      fit: BoxFit.cover,
+                      memCacheWidth: (96 * scale * MediaQuery.devicePixelRatioOf(context)).round(),
+                    ),
                   ),
                 ),
                 SizedBox(width: 10 * scale),
