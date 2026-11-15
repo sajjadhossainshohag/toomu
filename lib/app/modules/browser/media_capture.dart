@@ -9,10 +9,16 @@ import '../../core/utils/media_manifest.dart';
 import '../../data/models/captured_media.dart';
 import '../../data/models/download_task.dart';
 import '../../services/download_service.dart';
+import 'media_title.dart';
 
 class MediaCapture {
   final items = <CapturedMedia>[].obs;
   void Function(CapturedMedia media)? onFound;
+
+  /// The page the user is on (its title names the video; a player frame's
+  /// doesn't).
+  String Function() pageTitle = () => '';
+  String Function() pageUrl = () => '';
 
   String userAgent = '';
 
@@ -112,7 +118,13 @@ class MediaCapture {
       media = await _file(url, page, headers, request, path);
     }
     if (media == null || generation != _generation) return;
-    media.title = _titleOf(m, url);
+    media.title = mediaTitle(
+      frameTitle: '${m['title'] ?? ''}',
+      frameUrl: '${m['page'] ?? ''}',
+      pageTitle: pageTitle(),
+      pageUrl: pageUrl(),
+      mediaUrl: url,
+    );
     _applyElement(media, m);
     _add(media, fromRequest: m['source'] == 'request');
   }
@@ -268,17 +280,5 @@ class MediaCapture {
     }
     final poster = m['poster'];
     if (poster is String && poster.startsWith('http') && media.poster.isEmpty) media.poster = poster;
-  }
-
-  static String _titleOf(Map<String, dynamic> m, String url) {
-    final title = '${m['title'] ?? ''}'.trim();
-    if (title.isNotEmpty) return title;
-    final segments = Uri.tryParse(url)?.pathSegments.where((s) => s.isNotEmpty) ?? const <String>[];
-    if (segments.isEmpty) return 'Video';
-    try {
-      return Uri.decodeComponent(segments.last);
-    } catch (_) {
-      return segments.last;
-    }
   }
 }

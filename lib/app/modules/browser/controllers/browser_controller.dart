@@ -27,6 +27,7 @@ import '../../video_player/controllers/video_playback_controller.dart';
 import '../ad_blocker.dart';
 import '../media_button.dart';
 import '../media_capture.dart';
+import '../media_title.dart';
 import '../media_sniffer.dart';
 import '../redirect_guard.dart';
 import '../views/media_sheet.dart';
@@ -112,6 +113,8 @@ class BrowserController extends GetxController {
     restoreUrl = initialUrl;
     address.text = initialUrl;
     capture.onFound = _maybeRefresh;
+    capture.pageTitle = () => title.value;
+    capture.pageUrl = () => url.value;
     // Something new found: show the button even mid-scroll.
     ever(capture.items, (_) {
       if (capture.items.isNotEmpty) mediaButtonShown.value = true;
@@ -325,9 +328,17 @@ class BrowserController extends GetxController {
   /// A link the site serves as a file download.
   Future<void> onDownloadStart(DownloadStartRequest request) {
     final ua = request.userAgent ?? capture.userAgent;
+    final link = request.url.toString();
     return DirectFileExtractor.confirmAndDownload(
-      request.url.toString(),
-      fileName: request.suggestedFilename,
+      link,
+      // Servers often name files with a code: the page's title instead.
+      fileName: downloadName(
+            suggested: request.suggestedFilename,
+            url: link,
+            pageTitle: title.value,
+            pageUrl: url.value,
+          ) ??
+          request.suggestedFilename,
       size: request.contentLength,
       pageUrl: url.value,
       headers: {if (ua.isNotEmpty) 'User-Agent': ua, 'Referer': url.value},
