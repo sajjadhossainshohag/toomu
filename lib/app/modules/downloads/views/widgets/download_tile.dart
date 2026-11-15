@@ -127,6 +127,13 @@ class DownloadTile extends StatelessWidget {
             icon: Icons.share_rounded,
           ),
         ],
+        if (!done && !task.isActive && task.pageUrl != null && task.url != task.pageUrl)
+          const SheetOption(
+            value: 'refresh',
+            label: 'Refresh link',
+            subtitle: 'Reopen the page to get a fresh link',
+            icon: Icons.link_rounded,
+          ),
         SheetOption(
           value: 'delete',
           label: done ? 'Delete' : 'Cancel download',
@@ -139,6 +146,8 @@ class DownloadTile extends StatelessWidget {
         controller.open(task);
       case 'share':
         controller.share(task);
+      case 'refresh':
+        controller.refreshLink(task);
       case 'delete':
         controller.delete(task);
     }

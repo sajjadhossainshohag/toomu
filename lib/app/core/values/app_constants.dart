@@ -29,6 +29,8 @@ abstract class AppConstants {
   static const kBubbleEnabled = 'floating_button_enabled';
   static const kVideoBackgroundPlay = 'video_background_play';
   static const kVideoAutoPip = 'video_auto_pip';
+  static const kCaptureMedia = 'browser_capture_media';
+  static const kClipboardLinks = 'clipboard_links';
   static const kBubbleNowPlayingAsked = 'floating_button_now_playing_asked';
   static const kYtdlpUpdatedAt = 'ytdlp_updated_at';
 

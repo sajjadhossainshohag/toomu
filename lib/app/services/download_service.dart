@@ -7,6 +7,7 @@ import 'dart:isolate';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart' show CookieManager, WebUri;
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -24,6 +25,7 @@ import '../data/repositories/download_repository.dart';
 import 'media_scanner_service.dart';
 import 'permission_service.dart';
 import 'settings_service.dart';
+import 'stream_downloader.dart';
 import 'stream_proxy.dart';
 import 'tiktok_service.dart';
 import 'storage_service.dart';
@@ -50,6 +52,7 @@ class DownloadService extends GetxService {
 
   /// Bytes per HTTP range request for direct downloads.
   static const _chunk = 10 * 1024 * 1024;
+  static const _minSteal = 2 * 1024 * 1024;
 
   late final DownloadRepository _repo = DownloadRepository(StorageService.to);
   final Dio _dio = Dio(
@@ -70,6 +73,15 @@ class DownloadService extends GetxService {
   final Map<String, String> _stopReasons = {};
   final Map<String, void Function()> _speedTicks = {};
 
+  static const networkWaitText =
+      "Connection lost. It resumes by itself when you're back online.";
+  static const linkExpiredText =
+      'The link expired. Open the menu and tap "Refresh link".';
+  static const _maxNetworkRetries = 20;
+  final Map<String, int> _networkRetries = {};
+  Timer? _networkTimer;
+  bool _checkingNetwork = false;
+
   late Directory _videoDir;
   late Directory _audioDir;
   late Directory _filesDir;
@@ -87,6 +99,7 @@ class DownloadService extends GetxService {
 
     final saved = _repo.load();
     tasks.assignAll(saved);
+    if (saved.any((t) => t.error.value == networkWaitText)) _watchNetwork();
     for (final t in saved) {
       // Anything interrupted by an app kill becomes paused; user resumes.
       if (t.status.value == DownloadStatus.running ||
@@ -187,6 +200,9 @@ class DownloadService extends GetxService {
     required String url,
     String? fileName,
     int size = 0,
+    String? pageUrl,
+    Map<String, String> headers = const {},
+    String thumbnailUrl = '',
   }) async {
     await PermissionService.to.requestStorageWrite();
     final uri = Uri.parse(url);
@@ -213,8 +229,11 @@ class DownloadService extends GetxService {
         id: DateTime.now().microsecondsSinceEpoch.toString(),
         source: DownloadSource.direct,
         url: url,
+        pageUrl: pageUrl,
+        headers: headers,
         title: base,
         author: uri.host,
+        thumbnailUrl: thumbnailUrl,
         kind: kind,
         extension: ext,
         qualityLabel: ext.toUpperCase(),
@@ -223,6 +242,64 @@ class DownloadService extends GetxService {
         totalBytes: size,
       ),
     );
+  }
+
+  Future<DownloadTask> enqueueStream({
+    required String url,
+    required String title,
+    required String format,
+    DownloadKind kind = DownloadKind.video,
+    String extension = 'mp4',
+    String? convert,
+    String qualityLabel = '',
+    String thumbnailUrl = '',
+    int size = 0,
+    String? pageUrl,
+    Map<String, String> headers = const {},
+  }) async {
+    await PermissionService.to.requestStorageWrite();
+    final dir = kind == DownloadKind.audio ? _audioDir : _videoDir;
+    final base = Formatters.fileName(title);
+    final suffix = kind == DownloadKind.video && qualityLabel.isNotEmpty ? ' ($qualityLabel)' : '';
+    return _add(
+      DownloadTask(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        source: DownloadSource.stream,
+        url: url,
+        pageUrl: pageUrl,
+        headers: headers,
+        title: title,
+        author: Uri.tryParse(pageUrl ?? url)?.host ?? '',
+        thumbnailUrl: thumbnailUrl,
+        format: format,
+        convert: convert,
+        kind: kind,
+        extension: extension,
+        qualityLabel: qualityLabel,
+        filePath: _uniquePath(dir.path, '$base$suffix', extension),
+        createdAt: DateTime.now(),
+        totalBytes: size,
+      ),
+    );
+  }
+
+  Future<void> replaceLink(
+    DownloadTask task,
+    String url,
+    Map<String, String> headers, {
+    int size = 0,
+  }) async {
+    if (task.isActive) return;
+    // Partial data is only trusted when the new file is the same size.
+    if (size <= 0 || size != task.totalBytes.value) {
+      for (final p in _tempPathsOf(task)) {
+        await _deleteQuietly(p);
+      }
+      task.receivedBytes.value = 0;
+    }
+    task.url = url;
+    task.headers = headers;
+    resume(task);
   }
 
   Future<DownloadTask> _add(DownloadTask task) async {
@@ -271,6 +348,11 @@ class DownloadService extends GetxService {
   }
 
   void resume(DownloadTask task) {
+    _networkRetries.remove(task.id);
+    _resume(task);
+  }
+
+  void _resume(DownloadTask task) {
     if (task.status.value == DownloadStatus.paused ||
         task.status.value == DownloadStatus.failed) {
       task.error.value = null;
@@ -416,14 +498,15 @@ class DownloadService extends GetxService {
         await File(task.partPath).rename(task.filePath);
       } else if (Platform.isIOS) {
         await _downloadNative(task, token, onBytes);
-      } else if (task.source == DownloadSource.tiktok) {
-        await _downloadSite(task, token, onBytes);
-      } else {
+      } else if (task.source == DownloadSource.youtube) {
         await _downloadYtDlp(task, token, onBytes);
+      } else {
+        await _downloadSite(task, token, onBytes);
       }
 
       task.receivedBytes.value = task.totalBytes.value;
       task.status.value = DownloadStatus.completed;
+      _networkRetries.remove(task.id);
       MediaScannerService.to.scan(task.filePath);
       _notifyFinished(task);
     } on Object catch (e) {
@@ -435,10 +518,16 @@ class DownloadService extends GetxService {
         task.status.value = _stopReasons[task.id] == 'cancel'
             ? DownloadStatus.canceled
             : DownloadStatus.paused;
+      } else if (_isNetworkError(e) &&
+          (_networkRetries[task.id] ?? 0) < _maxNetworkRetries) {
+        debugPrint('[Download] ${task.title}: connection lost ($e)');
+        task.status.value = DownloadStatus.failed;
+        task.error.value = networkWaitText;
+        _watchNetwork();
       } else {
         debugPrint('[Download] ${task.title} failed: $e');
         task.status.value = DownloadStatus.failed;
-        task.error.value = ErrorText.of(e);
+        task.error.value = _linkExpired(task, e) ? linkExpiredText : ErrorText.of(e);
         // No notification for failures: the Downloads tab shows the error.
       }
     } finally {
@@ -453,6 +542,73 @@ class DownloadService extends GetxService {
       if (task.status.value != DownloadStatus.canceled) await _persist();
       _pump();
       _updateNotification();
+    }
+  }
+
+  // ------------------------------------------------------- network recovery
+
+  static final _networkMarkers = RegExp(
+    'unable to connect|timed out|network is unreachable|name resolution|'
+    'name or service not known|failed to resolve|no address associated|'
+    'connection (reset|refused|aborted)|getaddrinfo|remote end closed',
+  );
+
+  static bool _isNetworkError(Object e) => switch (e) {
+    SocketException() || HttpException() || HandshakeException() || TimeoutException() => true,
+    DioException(:final type, :final response) =>
+      response == null && type != DioExceptionType.cancel && type != DioExceptionType.badCertificate,
+    YtDlpException(:final message) => _networkMarkers.hasMatch(message.toLowerCase()),
+    StateError(:final message) => message.contains('ended early'),
+    _ => false,
+  };
+
+  static final _expiredStatus = RegExp(r'HTTP Error (401|403|404|410)');
+
+  static bool _linkExpired(DownloadTask t, Object e) =>
+      t.pageUrl != null &&
+      t.url != t.pageUrl && // page downloads re-extract by themselves on retry
+      switch (e) {
+        DioException(:final response) => const {401, 403, 404, 410}.contains(response?.statusCode),
+        YtDlpException(:final message) => _expiredStatus.hasMatch(message),
+        _ => false,
+      };
+
+  void _watchNetwork() {
+    _networkTimer ??= Timer.periodic(const Duration(seconds: 15), (_) => _retryWaiting());
+  }
+
+  Future<void> _retryWaiting() async {
+    final waiting = tasks
+        .where((t) => t.status.value == DownloadStatus.failed && t.error.value == networkWaitText)
+        .toList();
+    if (waiting.isEmpty) {
+      _networkTimer?.cancel();
+      _networkTimer = null;
+      return;
+    }
+    if (_checkingNetwork) return;
+    _checkingNetwork = true;
+    try {
+      final host = Uri.tryParse(waiting.first.url ?? '')?.host ?? '';
+      if (!await _online(host.isEmpty ? 'www.youtube.com' : host)) return;
+    } finally {
+      _checkingNetwork = false;
+    }
+    debugPrint('[Download] back online: resuming ${waiting.length}');
+    for (final t in waiting) {
+      _networkRetries[t.id] = (_networkRetries[t.id] ?? 0) + 1;
+      _resume(t);
+    }
+  }
+
+  static Future<bool> _online(String host) async {
+    // A real connection, not a DNS lookup: phones answer those from cache.
+    try {
+      final socket = await Socket.connect(host, 443, timeout: const Duration(seconds: 5));
+      socket.destroy();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -763,7 +919,8 @@ class DownloadService extends GetxService {
     CancelToken token,
     void Function(int) onBytes,
   ) async {
-    if (task.source == DownloadSource.tiktok) {
+    if (task.source == DownloadSource.stream) return _downloadStreamIos(task, token, onBytes);
+    if (task.source != DownloadSource.youtube) {
       throw StateError('TikTok downloads are not available on iPhone yet.');
     }
     task.phase.value = DownloadPhase.lookingUp;
@@ -833,6 +990,44 @@ class DownloadService extends GetxService {
     await _deleteQuietly(work);
   }
 
+  Future<void> _downloadStreamIos(
+    DownloadTask task,
+    CancelToken token,
+    void Function(int) onBytes,
+  ) async {
+    final work = _workDirOf(task);
+    final downloader = StreamDownloader(
+      dio: _dio,
+      native: _merge,
+      connections: SettingsService.to.connectionsPerDownload.value,
+      fetchFile: (url, headers, path, token, onFile) async {
+        final uri = Uri.parse(url);
+        final info = await _probeDirect(uri, token, headers);
+        await _fetch(
+          total: info.total,
+          partPath: path,
+          token: token,
+          onBytes: onFile,
+          request: (from, to) => (url: uri, headers: {...headers, 'Range': 'bytes=$from-$to'}),
+          rangeSupported: info.ranges,
+        );
+      },
+    );
+    final result = await downloader.download(
+      url: task.url!,
+      headers: await _requestHeaders(task),
+      work: work,
+      maxHeight: int.tryParse(task.qualityLabel.replaceAll('p', '')) ?? 0,
+      audioOnly: task.kind == DownloadKind.audio,
+      cancel: token,
+      onBytes: onBytes,
+      onTotal: (total) => task.totalBytes.value = total,
+      onPhase: (phase) => task.phase.value = phase,
+    );
+    await File(result).rename(task.filePath);
+    await _deleteQuietly(work);
+  }
+
   static const _progressTemplate =
       'download:[toomu] %(info.format_id)s %(progress.downloaded_bytes)s '
       '%(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s';
@@ -860,8 +1055,6 @@ class DownloadService extends GetxService {
     task.filePath = found.first.path;
   }
 
-  /// TikTok: one yt-dlp run on the video's page (no watermark; yt-dlp
-  /// fetches fresh links itself).
   Future<void> _downloadSite(
     DownloadTask task,
     CancelToken token,
@@ -902,7 +1095,9 @@ class DownloadService extends GetxService {
         '-o', '${base.replaceAll('%', '%%')}.%(ext)s',
         '--progress-template', _progressTemplate,
         // TikTok's firewall pass from the link check, same browser identity.
-        ...await TiktokService.ytDlpArgs(),
+        ...task.source == DownloadSource.tiktok
+            ? await TiktokService.ytDlpArgs()
+            : headerArgs(await _requestHeaders(task)),
       ],
       task.url!,
       onLine: progress.onLine,
@@ -995,29 +1190,55 @@ class DownloadService extends GetxService {
     void Function(int) onBytes,
   ) async {
     final uri = Uri.parse(task.url!);
-    final info = await _probeDirect(uri, token);
+    final headers = await _requestHeaders(task);
+    final info = await _probeDirect(uri, token, headers);
     task.totalBytes.value = info.total;
     await _fetch(
       total: info.total,
       partPath: task.partPath,
       token: token,
       onBytes: onBytes,
-      request: (from, to) => (url: uri, headers: {'Range': 'bytes=$from-$to'}),
+      request: (from, to) => (url: uri, headers: {...headers, 'Range': 'bytes=$from-$to'}),
       rangeSupported: info.ranges,
     );
   }
 
+  Future<Map<String, String>> _requestHeaders(DownloadTask t) async {
+    if (t.pageUrl == null && t.headers.isEmpty) return const {};
+    final cookies = await webCookies(t.url!);
+    return {...t.headers, if (cookies.isNotEmpty) 'Cookie': cookies};
+  }
+
+  static Future<String> webCookies(String url) async {
+    try {
+      final list = await CookieManager.instance().getCookies(url: WebUri(url));
+      return list.map((c) => '${c.name}=${c.value}').join('; ');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static List<String> headerArgs(Map<String, String> headers) => [
+    for (final e in headers.entries)
+      ...switch (e.key.toLowerCase()) {
+        'user-agent' => ['--user-agent', e.value],
+        'referer' => ['--referer', e.value],
+        _ => ['--add-header', '${e.key}:${e.value}'],
+      },
+  ];
+
   /// Size and range support of a direct URL, from a 1-byte range request.
   Future<({int total, bool ranges})> _probeDirect(
     Uri uri,
-    CancelToken token,
-  ) async {
+    CancelToken token, [
+    Map<String, String> headers = const {},
+  ]) async {
     final r = await _dio.get<ResponseBody>(
       uri.toString(),
       cancelToken: token,
       options: Options(
         responseType: ResponseType.stream,
-        headers: {'Range': 'bytes=0-0'},
+        headers: {...headers, 'Range': 'bytes=0-0'},
       ),
     );
     unawaited(r.data?.stream.listen(null).cancel());
@@ -1080,7 +1301,10 @@ class DownloadService extends GetxService {
     final response = await _dio.get<ResponseBody>(
       req.url.toString(),
       cancelToken: token,
-      options: Options(responseType: ResponseType.stream),
+      options: Options(
+        responseType: ResponseType.stream,
+        headers: {...req.headers}..remove('Range'),
+      ),
     );
     final sink = File(partPath).openWrite();
     var received = 0;
@@ -1156,78 +1380,115 @@ class DownloadService extends GetxService {
     await chunksDir.create(recursive: true);
     const size = _chunk;
     final count = (total + size - 1) ~/ size;
-    int expected(int i) => i == count - 1 ? total - i * size : size;
-    File fileOf(int i) => File('${chunksDir.path}/$i');
+    // Tails split off in an interrupted run; the chunk they came from
+    // fetches those bytes again.
+    for (final f in chunksDir.listSync().whereType<File>()) {
+      if (f.uri.pathSegments.last.contains('.')) await f.delete();
+    }
 
+    final pieces = <_Piece>[];
     var done = 0;
-    final pending = Queue<int>();
     for (var i = 0; i < count; i++) {
-      final f = fileOf(i);
+      final start = i * size;
+      final end = start + size > total ? total - 1 : start + size - 1;
+      final f = File('${chunksDir.path}/$i');
       var have = f.existsSync() ? f.lengthSync() : 0;
-      if (have > expected(i)) {
+      if (have > end - start + 1) {
         await f.delete();
         have = 0;
       }
+      pieces.add(_Piece(f, start, end, have));
       done += have;
-      if (have < expected(i)) pending.add(i);
     }
     onBytes(done);
+
+    final pending = Queue<_Piece>.of(pieces.where((p) => !p.complete));
+    final active = <_Piece>{};
+    var splits = 0;
 
     // Lets a failing worker stop its siblings without looking like a pause.
     final local = CancelToken();
     unawaited(token.whenCancel.then((e) => local.cancel(e.error)));
 
+    _Piece? steal() {
+      // End game: an idle connection takes the second half of the piece with
+      // the most left, so one throttled connection can't stall the last percent.
+      _Piece? most;
+      for (final p in active) {
+        if (most == null || p.remaining > most.remaining) most = p;
+      }
+      if (most == null || most.remaining < _minSteal) return null;
+      final mid = most.start + most.written + most.remaining ~/ 2;
+      final tail = _Piece(File('${most.file.path}.${++splits}'), mid, most.end, 0);
+      most.end = mid - 1;
+      pieces.add(tail);
+      return tail;
+    }
+
+    Future<void> fetchPiece(_Piece p) async {
+      active.add(p);
+      final raf = await p.file.open(mode: FileMode.append);
+      try {
+        await _withRetries(() async {
+          if (p.complete) return;
+          final req = request(p.start + p.written, p.end);
+          final response = await _dio.get<ResponseBody>(
+            req.url.toString(),
+            cancelToken: local,
+            options: Options(
+              responseType: ResponseType.stream,
+              headers: req.headers,
+            ),
+          );
+          await for (final chunk in response.data!.stream) {
+            final room = p.remaining; // shrinks when a steal takes the tail
+            if (room <= 0) break;
+            final bytes = chunk.length > room ? chunk.sublist(0, room) : chunk;
+            // Counted before the write: a steal during it splits after these.
+            p.written += bytes.length;
+            done += bytes.length;
+            await raf.writeFrom(bytes);
+            onBytes(done);
+            if (p.complete) break;
+          }
+        }, label: 'piece at ${p.start}');
+      } finally {
+        active.remove(p);
+        await raf.close();
+      }
+      if (!p.complete) throw StateError('Piece at ${p.start} ended early.');
+    }
+
     Future<void> worker() async {
-      while (pending.isNotEmpty) {
+      while (!local.isCancelled) {
         _checkStopped(token);
-        final i = pending.removeFirst();
-        final f = fileOf(i);
-        final raf = await f.open(mode: FileMode.append);
-        try {
-          await _withRetries(() async {
-            final have = f.lengthSync();
-            if (have >= expected(i)) return;
-            final req = request(i * size + have, i * size + expected(i) - 1);
-            final response = await _dio.get<ResponseBody>(
-              req.url.toString(),
-              cancelToken: local,
-              options: Options(
-                responseType: ResponseType.stream,
-                headers: req.headers,
-              ),
-            );
-            await for (final chunk in response.data!.stream) {
-              await raf.writeFrom(chunk);
-              done += chunk.length;
-              onBytes(done);
-            }
-          }, label: 'chunk $i');
-        } finally {
-          await raf.close();
-        }
-        if (fileOf(i).lengthSync() < expected(i)) {
-          throw StateError('Chunk $i ended early.');
+        final p = pending.isNotEmpty ? pending.removeFirst() : steal();
+        if (p != null) {
+          await fetchPiece(p);
+        } else if (active.isEmpty) {
+          return;
+        } else {
+          await Future<void>.delayed(const Duration(seconds: 1));
         }
       }
     }
 
     try {
       await Future.wait(
-        List.generate(
-          connections.clamp(1, pending.isEmpty ? 1 : pending.length),
-          (_) => worker(),
-        ),
+        List.generate(connections < 1 ? 1 : connections, (_) => worker()),
         eagerError: true,
       );
     } catch (_) {
       if (!local.isCancelled) local.cancel('sibling failed');
       rethrow;
     }
+    _checkStopped(token);
 
+    pieces.sort((a, b) => a.start.compareTo(b.start));
     final sink = File(partPath).openWrite();
     try {
-      for (var i = 0; i < count; i++) {
-        await sink.addStream(fileOf(i).openRead());
+      for (final p in pieces) {
+        await sink.addStream(p.file.openRead(0, p.end - p.start + 1));
       }
     } finally {
       await sink.close();
@@ -1471,4 +1732,16 @@ class YtDlpProgress {
     };
     return (v * mult).round();
   }
+}
+
+class _Piece {
+  _Piece(this.file, this.start, this.end, this.written);
+
+  final File file;
+  final int start;
+  int end; // inclusive; lowered when another connection takes the tail
+  int written;
+
+  int get remaining => end - start - written + 1;
+  bool get complete => remaining <= 0;
 }

@@ -14,6 +14,7 @@ import '../../video_player/controllers/video_playback_controller.dart';
 import '../../../extractors/direct_file_extractor.dart';
 import '../../../services/floating_button_service.dart';
 import '../../../services/permission_service.dart';
+import '../../../services/settings_service.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../youtube/controllers/youtube_controller.dart';
 import '../home_tabs.dart';
@@ -217,6 +218,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
   /// 1DM/Snaptube-style: offer to download a link the user just copied.
   Future<void> checkClipboard() async {
+    if (!SettingsService.to.clipboardLinks.value) return;
     // A share/bubble intent may arrive right after resume; let it win.
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (DateTime.now().difference(_lastIntentAt) < const Duration(seconds: 2)) {

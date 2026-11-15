@@ -18,6 +18,9 @@ class SettingsService extends GetxService {
   /// Video player: shrink into picture-in-picture when pressing Home.
   final videoAutoPip = true.obs;
 
+  final captureMedia = true.obs;
+  final clipboardLinks = true.obs;
+
   /// Parallel connections per file (1DM-style segmented download).
   final connectionsPerDownload = AppConstants.defaultConnectionsPerDownload.obs;
 
@@ -31,7 +34,19 @@ class SettingsService extends GetxService {
         AppConstants.defaultConnectionsPerDownload;
     videoBackgroundPlay.value = _storage.read<bool>(AppConstants.kVideoBackgroundPlay) ?? false;
     videoAutoPip.value = _storage.read<bool>(AppConstants.kVideoAutoPip) ?? true;
+    captureMedia.value = _storage.read<bool>(AppConstants.kCaptureMedia) ?? true;
+    clipboardLinks.value = _storage.read<bool>(AppConstants.kClipboardLinks) ?? true;
     return this;
+  }
+
+  void setCaptureMedia(bool v) {
+    captureMedia.value = v;
+    _storage.write(AppConstants.kCaptureMedia, v);
+  }
+
+  void setClipboardLinks(bool v) {
+    clipboardLinks.value = v;
+    _storage.write(AppConstants.kClipboardLinks, v);
   }
 
   void setVideoBackgroundPlay(bool v) {

@@ -36,7 +36,13 @@ class DirectFileExtractor extends MediaExtractor {
 
   /// Asks before downloading (also used for the browser's download events,
   /// which come with a server-suggested name and size).
-  static Future<void> confirmAndDownload(String url, {String? fileName, int size = 0}) async {
+  static Future<void> confirmAndDownload(
+    String url, {
+    String? fileName,
+    int size = 0,
+    String? pageUrl,
+    Map<String, String> headers = const {},
+  }) async {
     final uri = Uri.parse(url);
     final name = (fileName?.trim().isNotEmpty ?? false)
         ? fileName!.trim()
@@ -53,7 +59,13 @@ class DirectFileExtractor extends MediaExtractor {
       ],
     );
     if (ok != true) return;
-    await DownloadService.to.enqueueDirect(url: url, fileName: name, size: size);
+    await DownloadService.to.enqueueDirect(
+      url: url,
+      fileName: name,
+      size: size,
+      pageUrl: pageUrl,
+      headers: headers,
+    );
     showSnack('Download started', name, duration: const Duration(seconds: 2));
   }
 }
