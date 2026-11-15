@@ -7,6 +7,7 @@ import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
 import '../../../core/values/app_constants.dart';
 import '../../../services/audio_player_service.dart';
+import '../../../services/update_service.dart';
 import '../../../widgets/app_group.dart';
 import '../../../widgets/app_header.dart';
 import '../../../widgets/gradient_hero_card.dart';
@@ -242,6 +243,14 @@ class SettingsView extends GetView<SettingsController> {
                         tint: ColorConstants.tileShare,
                         label: 'Share Toomu',
                         onTap: controller.shareApp,
+                      ),
+                      if (Platform.isAndroid)
+                      AppRow(
+                        icon: Icons.system_update_rounded,
+                        tint: ColorConstants.tileDownloads,
+                        label: UpdateService.to.checking.value ? 'Checking…' : 'Check for updates',
+                        value: UpdateService.currentTag.isEmpty ? 'Dev build' : UpdateService.currentTag,
+                        onTap: UpdateService.to.checkNow,
                       ),
                       AppRow(
                         icon: Icons.info_rounded,

@@ -10,6 +10,7 @@ import 'remote_config_service.dart';
 import 'settings_service.dart';
 import 'storage_service.dart';
 import 'stream_proxy.dart';
+import 'update_service.dart';
 import 'video_session_service.dart';
 import 'youtube_account_service.dart';
 import 'ytdlp_service.dart';
@@ -33,5 +34,6 @@ abstract class AppServices {
     await Get.putAsync(() => DownloadService().init(), permanent: true);
     Get.put(FloatingButtonService().init(), permanent: true);
     Get.put(VideoSessionService().init(), permanent: true);
+    Get.put(UpdateService().init(), permanent: true);
   }
 }
