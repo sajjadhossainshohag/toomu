@@ -165,6 +165,19 @@ class MainActivity : AudioServiceActivity() {
             }
         }
 
+        MethodChannel(messenger, "toomu/update").setMethodCallHandler { call, result ->
+            val path = call.argument<String>("path")
+            if (call.method != "install" || path == null) return@setMethodCallHandler result.notImplemented()
+            io.execute {
+                try {
+                    UpdateReceiver.install(applicationContext, path)
+                    main.post { result.success(null) }
+                } catch (e: Exception) {
+                    main.post { result.error("UPDATE", e.toString(), null) }
+                }
+            }
+        }
+
         // Download progress notification (+ keeps downloads alive in background).
         MethodChannel(messenger, "toomu/download_notify").also { ch ->
             DownloadProgressService.listener = { action -> ch.invokeMethod("action", action) }

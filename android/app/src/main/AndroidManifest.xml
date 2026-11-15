@@ -100,6 +100,9 @@
         <receiver
             android:name=".DownloadActionReceiver"
             android:exported="false"/>
+        <receiver
+            android:name=".UpdateReceiver"
+            android:exported="false"/>
 
         <!-- Video background play (media notification) + its buttons and the
              picture-in-picture window's buttons. -->

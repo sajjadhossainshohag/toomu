@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/utils/app_release.dart';
@@ -21,6 +21,7 @@ class UpdateService extends GetxService {
   static UpdateService get to => Get.find();
 
   static const currentTag = String.fromEnvironment('TOOMU_TAG');
+  static const _channel = MethodChannel('toomu/update');
 
   final checking = false.obs;
   final progress = RxnDouble();
@@ -101,11 +102,11 @@ class UpdateService extends GetxService {
         },
       );
       if (Get.isDialogOpen ?? false) Get.back();
-      final result = await OpenFilex.open(path, type: 'application/vnd.android.package-archive');
-      if (result.type != ResultType.done) showSnack("Couldn't open the installer", result.message);
+      showSnack('Installing update', 'Toomu closes when it is done. Open it again to use the new version.');
+      await _channel.invokeMethod<void>('install', {'path': path});
     } catch (e) {
       if (Get.isDialogOpen ?? false) Get.back();
-      showSnack("Couldn't download the update", ErrorText.of(e));
+      showSnack("Couldn't update Toomu", ErrorText.of(e));
     } finally {
       progress.value = null;
     }
