@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../core/values/app_constants.dart';
 import '../../services/storage_service.dart';
 import '../models/download_task.dart';
@@ -10,10 +12,16 @@ class DownloadRepository {
 
   List<DownloadTask> load() {
     final raw = _storage.read<List>(AppConstants.kDownloadTasks) ?? const [];
-    return raw
-        .whereType<Map>()
-        .map((e) => DownloadTask.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
+    final tasks = <DownloadTask>[];
+    for (final e in raw.whereType<Map>()) {
+      // One unreadable entry must not cost the user the whole list.
+      try {
+        tasks.add(DownloadTask.fromJson(Map<String, dynamic>.from(e)));
+      } catch (err) {
+        debugPrint('[Downloads] skipped a saved task: $err');
+      }
+    }
+    return tasks;
   }
 
   Future<void> save(Iterable<DownloadTask> tasks) => _storage.write(

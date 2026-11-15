@@ -225,6 +225,21 @@ class YtDlpService extends GetxService {
     return fresh();
   }
 
+  Future<YtInfo> pageInfo(String url, List<String> extraArgs) async {
+    final r = await runUrl(
+      'page-${DateTime.now().microsecondsSinceEpoch}',
+      ['--dump-single-json', '--skip-download', ...extraArgs],
+      url,
+    );
+    if (!r.ok) throw YtDlpException(r.err);
+    var json = jsonDecode(r.out) as Map<String, dynamic>;
+    final entries = json['entries'];
+    if (entries is List && entries.isNotEmpty && entries.first is Map) {
+      json = Map<String, dynamic>.from(entries.first as Map);
+    }
+    return YtInfo.fromJson(json);
+  }
+
   /// One run for [url] (any site yt-dlp supports; no YouTube client
   /// fallback).
   Future<YtDlpResult> runUrl(

@@ -18,8 +18,58 @@ iOS job on `v*` tags or by hand).
   fetched with the existing piece downloader, joined by `toomu/media_merge`
   (AVFoundation passthrough). H.264 up to 1080p; audio as M4A only.
 - Music/Videos tabs list Toomu's own `Audio`/`Video` folders.
+- Browser HLS/DASH downloads without yt-dlp or FFmpeg; see "Stream
+  downloads on iOS" below. **Not yet verified on an iPhone.**
 - Not done: TikTok downloads, Share Extension (step 6), background
   transfers (step 7), media controls for video, Route B.
+
+### Stream downloads on iOS
+
+Pipeline (`StreamDownloader`):
+
+1. **Plan** (`StreamPlanner`): HLS master → quality ≤ the chosen height
+   (AAC audio groups preferred) and its `EXT-X-MEDIA` audio rendition;
+   media playlists with `EXT-X-MAP`, `EXT-X-BYTERANGE`, AES-128 keys/IVs
+   (IV from the media sequence when absent). DASH: `$Number$`, `$Time$`,
+   `SegmentTimeline` (incl. `r="-1"`), `SegmentList`, `SegmentBase`/bare
+   `BaseURL` (whole file), `BaseURL` inheritance, every `Period`. Pieces
+   are grouped into **runs**, split at `EXT-X-DISCONTINUITY`, at a new
+   init section and per DASH period.
+2. **Fetch**: pieces in parallel, resumable per piece; single-file DASH
+   uses the ranged multi-connection downloader. AES-128 is decrypted with
+   CommonCrypto (`toomu/media_merge` `decrypt`).
+3. **Mux** (`lib/app/core/media/`, pure Dart, nothing is decoded):
+   readers for fMP4/CMAF and regular MP4 (sample tables), MPEG-TS
+   (H.264 + AAC; PES packets that split pictures or AAC frames are
+   reassembled) and packed AAC (ID3 timestamps). The writer puts all tracks
+   on one clock, joins runs with continuous timestamps, keeps each run's
+   codec configuration as its own sample entry (and in-band for H.264/HEVC)
+   and writes one fragmented MP4. Any codec carried in MP4 passes through:
+   H.264, HEVC, VP9, AV1, AAC, AC-3/E-AC-3, Opus.
+4. **Finish** (`finish`): if AVFoundation can play every track, it rewrites
+   the file as a regular MP4 (passthrough export); otherwise the fragmented
+   MP4 is kept (a valid MP4 that Toomu's mpv player plays).
+
+Refused with a clear message: live streams, DRM (SAMPLE-AES, FairPlay,
+`ContentProtection`), WebM-only DASH, HEVC or non-AAC audio inside MPEG-TS.
+
+Verification so far (desktop, Dart pipeline + FFmpeg decoding the output):
+13 generated streams (TS, fMP4 + rendition, AES-128, TS and fMP4
+discontinuities with a resolution change, packed AAC, `$Number$`,
+`$Time$`/timeline, segment list, VP9+Opus and AV1 in MP4, two periods,
+audio-only) and 8 public streams (Apple fMP4/TS, Mux, JW Player AES,
+Akamai, DASH-IF multi-period and SegmentBase, Shaka) decode with no
+errors, with exact frame counts and matching audio/video lengths.
+AVFoundation (`finish`, decoding) and the native calls have **not** run
+yet. Check them on a device from a Mac:
+
+```
+flutter test integration_test/stream_pipeline_test.dart -d <iphone-id>
+```
+
+It downloads the public streams above, then `probe` decodes every video
+frame and audio sample with `AVAssetReader`. Don't call a format supported
+on iPhone until it passes there.
 
 ## 1. Distribution comes first
 

@@ -71,6 +71,22 @@ class SettingsView extends GetView<SettingsController> {
                         value: '${controller.settings.maxConcurrentDownloads.value}',
                         onTap: controller.pickConcurrent,
                       ),
+                      AppRow(
+                        icon: Icons.travel_explore_rounded,
+                        tint: ColorConstants.tileVideo,
+                        label: 'Detect media in browser',
+                        toggled: controller.settings.captureMedia.value,
+                        onTap: () => controller.settings
+                            .setCaptureMedia(!controller.settings.captureMedia.value),
+                      ),
+                      AppRow(
+                        icon: Icons.content_paste_search_rounded,
+                        tint: ColorConstants.tileShare,
+                        label: 'Detect copied links',
+                        toggled: controller.settings.clipboardLinks.value,
+                        onTap: () => controller.settings
+                            .setClipboardLinks(!controller.settings.clipboardLinks.value),
+                      ),
                       if (Platform.isAndroid) ...[
                       AppRow(
                         icon: Icons.call_split_rounded,

@@ -7,8 +7,9 @@ enum DownloadKind { video, audio, file }
 /// Where the bytes come from.
 /// * youtube: downloaded by yt-dlp using [DownloadTask.ytdlpFormat].
 /// * direct: a plain URL (browser downloads, direct file links).
-/// youtube / tiktok: downloaded by yt-dlp; direct: a plain file link.
-enum DownloadSource { youtube, direct, tiktok }
+/// * tiktok / stream: yt-dlp on [DownloadTask.url] (a TikTok page, an
+///   HLS/DASH manifest, or any page yt-dlp supports).
+enum DownloadSource { youtube, direct, tiktok, stream }
 
 /// What a running task is doing right now (not persisted).
 /// [lookingUp]: yt-dlp is reading the video's details from YouTube;
@@ -43,6 +44,8 @@ class DownloadTask {
     this.audioTag,
     this.qualityLabel = '',
     this.convert,
+    this.pageUrl,
+    this.headers = const {},
     int totalBytes = 0,
     int receivedBytes = 0,
     DownloadStatus status = DownloadStatus.queued,
@@ -57,7 +60,12 @@ class DownloadTask {
   final String videoId;
 
   /// Direct downloads: the file URL.
-  final String? url;
+  String? url;
+  final String? pageUrl;
+
+  // User-Agent and Referer only: cookies are read fresh from the WebView at
+  // each start, so a renewed Cloudflare pass is used and none are stored.
+  Map<String, String> headers;
   final String title;
   final String author;
   final String thumbnailUrl;
@@ -151,6 +159,8 @@ class DownloadTask {
     'streamTag': streamTag,
     'audioTag': audioTag,
     'convert': convert,
+    'pageUrl': pageUrl,
+    'headers': headers,
     'kind': kind.name,
     'extension': extension,
     'qualityLabel': qualityLabel,
@@ -176,6 +186,10 @@ class DownloadTask {
     streamTag: json['streamTag'] as int? ?? 0,
     audioTag: json['audioTag'] as int?,
     convert: json['convert'] as String?,
+    pageUrl: json['pageUrl'] as String?,
+    headers: ((json['headers'] as Map?) ?? const {}).map(
+      (k, v) => MapEntry('$k', '$v'),
+    ),
     kind: DownloadKind.values.asNameMap()[json['kind']] ?? DownloadKind.file,
     extension: json['extension'] as String,
     qualityLabel: json['qualityLabel'] as String? ?? '',
@@ -183,7 +197,9 @@ class DownloadTask {
     createdAt: DateTime.parse(json['createdAt'] as String),
     totalBytes: json['totalBytes'] as int? ?? 0,
     receivedBytes: json['receivedBytes'] as int? ?? 0,
-    status: DownloadStatus.values.byName(json['status'] as String),
+    status:
+        DownloadStatus.values.asNameMap()[json['status']] ??
+        DownloadStatus.paused,
     error: json['error'] as String?,
   );
 }

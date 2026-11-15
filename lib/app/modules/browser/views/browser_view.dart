@@ -54,16 +54,24 @@ class BrowserView extends GetView<BrowserController> {
                     ),
                   );
                 }),
+                if (controller.refreshFor != null) _RefreshBanner(title: controller.refreshFor!.title),
                 Expanded(
-                  child: InAppWebView(
-                    initialUrlRequest: URLRequest(url: WebUri(controller.initialUrl)),
-                    initialSettings: controller.settings,
-                    onWebViewCreated: controller.onCreated,
-                    onUpdateVisitedHistory: (_, url, _) => controller.onHistoryChanged(url),
-                    onTitleChanged: (_, t) => controller.onTitle(t),
-                    onProgressChanged: (_, p) => controller.onProgress(p),
-                    shouldOverrideUrlLoading: (_, action) async => controller.onNavigate(action),
-                    onDownloadStartRequest: (_, request) => controller.onDownloadStart(request),
+                  child: Obx(
+                    () => InAppWebView(
+                      key: ValueKey(controller.webKey.value),
+                      initialUrlRequest: URLRequest(url: WebUri(controller.restoreUrl)),
+                      initialSettings: controller.settings,
+                      initialUserScripts: controller.userScripts,
+                      onWebViewCreated: controller.onCreated,
+                      onLoadStart: (_, url) => controller.onLoadStart(url),
+                      onUpdateVisitedHistory: (_, url, _) => controller.onHistoryChanged(url),
+                      onTitleChanged: (_, t) => controller.onTitle(t),
+                      onProgressChanged: (_, p) => controller.onProgress(p),
+                      shouldOverrideUrlLoading: (_, action) async => controller.onNavigate(action),
+                      onDownloadStartRequest: (_, request) => controller.onDownloadStart(request),
+                      onRenderProcessGone: (_, _) => controller.onRendererGone(),
+                      onWebContentProcessDidTerminate: (_) => controller.onIosProcessGone(),
+                    ),
                   ),
                 ),
               ],
@@ -71,16 +79,22 @@ class BrowserView extends GetView<BrowserController> {
           ),
           floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
           floatingActionButton: Obx(() {
-            final e = controller.extractor.value;
+            final label = controller.fabLabel;
+            final hidden = label == null;
+            final icon = controller.extractor.value != null
+                ? Icons.download_rounded
+                : controller.capture.items.isNotEmpty
+                ? Icons.video_library_rounded
+                : Icons.travel_explore_rounded;
             return AnimatedSlide(
               duration: const Duration(milliseconds: 260),
               curve: Curves.easeOutCubic,
-              offset: e == null ? const Offset(0, 2) : Offset.zero,
+              offset: hidden ? const Offset(0, 2) : Offset.zero,
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 200),
-                opacity: e == null ? 0 : 1,
+                opacity: hidden ? 0 : 1,
                 child: IgnorePointer(
-                  ignoring: e == null,
+                  ignoring: hidden,
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12 * scale),
@@ -93,11 +107,11 @@ class BrowserView extends GetView<BrowserController> {
                       ],
                     ),
                     child: GradientPill(
-                      label: 'Download',
-                      icon: Icons.download_rounded,
+                      label: label ?? 'Download',
+                      icon: icon,
                       compact: true,
                       height: 50,
-                      onTap: controller.download,
+                      onTap: controller.onFab,
                     ),
                   ),
                 ),
@@ -105,6 +119,29 @@ class BrowserView extends GetView<BrowserController> {
             );
           }),
         ),
+      ),
+    );
+  }
+}
+
+class _RefreshBanner extends StatelessWidget {
+  const _RefreshBanner({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final double scale = context.scale;
+    final Color ink = ColorConstants.textOn(context.isDark);
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 10 * scale),
+      color: BrandColors.of(context).primary.withValues(alpha: 0.12),
+      child: Text(
+        'Play the video to refresh the link of "$title".',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 13 * scale, fontWeight: FontWeight.w500, color: ink),
       ),
     );
   }

@@ -37,6 +37,8 @@ class DownloadsController extends GetxController {
   void pauseAll() => _service.pauseAll();
   void resumeAll() => _service.resumeAll();
 
+  void refreshLink(DownloadTask t) => Get.toNamed(Routes.browser, arguments: t);
+
   void toggle(DownloadTask t) {
     switch (t.status.value) {
       case DownloadStatus.running:
