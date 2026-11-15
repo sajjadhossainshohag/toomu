@@ -2,8 +2,7 @@
 #  - Android APKs: every push to main or by hand (arm64 only, for speed);
 #    every v* tag (arm64 + armv7). Analyze + Dart and Kotlin tests run
 #    alongside the build (job "check"); a failure stops the release.
-#  - iOS (unsigned .ipa): every push to main, every v* tag, or by hand
-#    (the repository is public, so macOS minutes are free).
+#  - iOS: turned off (see the commented-out ios job).
 #  - Every successful build of main publishes a GitHub Release under a new
 #    tag (vYYYY.MM.DD-HHMM, Bangladesh time) with the APK; a pushed v* tag
 #    publishes one under that tag with all files.
@@ -134,41 +133,45 @@ jobs:
           path: dist/*
           retention-days: 14
 
-  ios:
-    runs-on: macos-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - run: flutter pub get
-
-      # Unsigned: install with your own Apple signing (e.g. AltStore /
-      # Sideloadly) — App Store distribution needs certificates + profiles.
-      - name: Build iOS (no code signing)
-        run: |
-          flutter build ios --release --no-codesign \
-            --obfuscate --split-debug-info=build/symbols-ios \
-            --dart-define=TOOMU_BUILD="ci ${GITHUB_SHA::7} ios"
-          mkdir -p dist/Payload
-          cp -R build/ios/iphoneos/Runner.app dist/Payload/
-          (cd dist && zip -qr toomu-unsigned.ipa Payload && rm -rf Payload)
-          ls -lh dist
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: toomu-ios
-          path: dist/*
-          retention-days: 14
+  # iOS: off. The .ipa is unsigned and iPhones only install signed apps
+  # (AltStore / Sideloadly can sign it with a free Apple ID; installing it
+  # straight needs the Apple Developer Program and signing here). To turn it
+  # back on, uncomment this job and add ios to the release job's needs.
+# ios:
+#   runs-on: macos-latest
+#   timeout-minutes: 60
+#   steps:
+#     - uses: actions/checkout@v4
+#
+#     - uses: subosito/flutter-action@v2
+#       with:
+#         flutter-version: ${{ env.FLUTTER_VERSION }}
+#         channel: stable
+#         cache: true
+#
+#     - run: flutter pub get
+#
+#     # Unsigned: install with your own Apple signing (e.g. AltStore /
+#     # Sideloadly) — App Store distribution needs certificates + profiles.
+#     - name: Build iOS (no code signing)
+#       run: |
+#         flutter build ios --release --no-codesign \
+#           --obfuscate --split-debug-info=build/symbols-ios \
+#           --dart-define=TOOMU_BUILD="ci ${GITHUB_SHA::7} ios"
+#         mkdir -p dist/Payload
+#         cp -R build/ios/iphoneos/Runner.app dist/Payload/
+#         (cd dist && zip -qr toomu-unsigned.ipa Payload && rm -rf Payload)
+#         ls -lh dist
+#
+#     - uses: actions/upload-artifact@v4
+#       with:
+#         name: toomu-ios
+#         path: dist/*
+#         retention-days: 14
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
-    needs: [check, android, ios]
+    needs: [check, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
