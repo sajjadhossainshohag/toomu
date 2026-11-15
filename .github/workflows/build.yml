@@ -88,6 +88,11 @@ jobs:
 
       - run: flutter pub get
 
+      # Kotlin unit tests (android/app/src/test), e.g. the yt-dlp file repair.
+      - name: Android unit tests
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest
+
       # The app compares this with GitHub's latest release to offer updates.
       - name: Release tag
         id: tag

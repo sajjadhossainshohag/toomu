@@ -25,6 +25,7 @@ import java.util.concurrent.Executors
  *  - init()                       -> yt-dlp version
  *  - update(channel)              -> "DONE" | "ALREADY_UP_TO_DATE"
  *  - version()                    -> yt-dlp version
+ *  - needsUpdate()                -> true if running the bundled yt-dlp
  *  - run(id, args: List<String>)  -> {exitCode, out, err}; progress lines are
  *                                    streamed on "toomu/ytdlp/progress" as {id, line}
  *  - cancel(id)                   -> Boolean
@@ -44,6 +45,9 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
             when (call.method) {
                 "init" -> async(result) { ensureInit(); currentVersion() }
                 "version" -> async(result) { ensureInit(); currentVersion() }
+                // No release tag recorded: the bundled yt-dlp (first launch,
+                // or restored after a cut-short update), likely months old.
+                "needsUpdate" -> async(result) { ensureInit(); prefs.getString("tag", null) == null }
                 "update" -> async(result) {
                     ensureInit()
                     update(call.argument<String>("channel") == "nightly")
@@ -79,6 +83,11 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
     @Synchronized
     private fun ensureInit() {
         if (initialized) return
+        repairBinary()
+        val packages = UnpackedPackages(File(File(context.noBackupFilesDir, YoutubeDL.baseName), "packages"))
+        val removed = packages.repair()
+        if (removed.isNotEmpty()) Log.w("YtDlpBridge", "unpacking again (files were cut short): $removed")
+        val before = packages.snapshot()
         // First launch unpacks Python/FFmpeg (a few seconds); later launches are instant.
         YoutubeDL.init(context)
         FFmpeg.init(context)
@@ -87,7 +96,18 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
         } catch (_: Exception) {
             // Optional: downloads fall back to yt-dlp's own downloader.
         }
+        // The library doesn't flush what it unzips; a restart right after
+        // would cut those files short again.
+        if (packages.snapshot() != before) flushToDisk()
         initialized = true
+    }
+
+    private fun flushToDisk() {
+        try {
+            Runtime.getRuntime().exec(arrayOf("sync")).waitFor()
+        } catch (e: Exception) {
+            Log.w("YtDlpBridge", "sync failed", e)
+        }
     }
 
     /**
@@ -217,18 +237,19 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
             if (conn.responseCode != 200) throw IOException("Download failed: HTTP ${conn.responseCode}")
             conn.inputStream.use { input -> tmp.outputStream().use { input.copyTo(it) } }
             conn.disconnect()
-            if (tmp.length() < 1_000_000) throw IOException("Downloaded file too small (${tmp.length()} bytes)")
+            if (!YtDlpBinaryFiles.isWhole(tmp)) throw IOException("Downloaded file too small (${tmp.length()} bytes)")
 
-            val dir = binaryDir().apply { mkdirs() }
-            val target = File(dir, YoutubeDL.ytdlpBin)
-            val backup = File(dir, "yt-dlp.bak")
-            if (target.exists()) target.copyTo(backup, overwrite = true)
-            tmp.copyTo(target, overwrite = true)
+            binaryDir().mkdirs()
+            val files = files()
+            val target = files.binary
+            val backup = files.backup
+            if (target.exists()) files.durableCopy(target, backup)
+            files.durableCopy(tmp, target)
 
             // Verify the new binary actually runs; otherwise roll back.
             val version = runVersion()
             if (version == null) {
-                if (backup.exists()) backup.copyTo(target, overwrite = true)
+                if (backup.exists()) files.durableCopy(backup, target)
                 throw IOException("New yt-dlp $tag did not start; kept the previous version")
             }
             backup.delete()
@@ -238,6 +259,15 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
             tmp.delete()
         }
     }
+
+    /** See [YtDlpBinaryFiles.repair]. */
+    private fun repairBinary() {
+        if (!files().repair()) return
+        Log.w("YtDlpBridge", "yt-dlp was cut short (interrupted update); restored")
+        prefs.edit().remove("tag").remove("version").apply()
+    }
+
+    private fun files() = YtDlpBinaryFiles(binaryDir(), YoutubeDL.ytdlpBin)
 
     private fun binaryDir() = File(File(context.noBackupFilesDir, YoutubeDL.baseName), YoutubeDL.ytdlpDirName)
 

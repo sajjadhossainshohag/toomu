@@ -70,6 +70,10 @@ abstract class YtDlpBridge {
 
   static Future<String?> version() => _methods.invokeMethod<String>('version');
 
+  /// True while the bundled yt-dlp runs (no update has succeeded yet: first
+  /// launch, or restored after an interrupted update).
+  static Future<bool> needsUpdate() async => await _methods.invokeMethod<bool>('needsUpdate') ?? false;
+
   /// Downloads the latest yt-dlp release from GitHub ("stable"/"nightly").
   static Future<String?> update(String channel) =>
       _methods.invokeMethod<String>('update', {'channel': channel});

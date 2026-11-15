@@ -142,4 +142,6 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:$youtubedlAndroid")
     // Multi-connection downloader for faster YouTube downloads (+~7 MB/ABI).
     implementation("io.github.junkfood02.youtubedl-android:aria2c:$youtubedlAndroid")
+
+    testImplementation("junit:junit:4.13.2")
 }

@@ -85,13 +85,22 @@ class YtDlpService extends GetxService {
   /// things often; yt-dlp usually ships a fix within days, and this brings
   /// it in without an app update.
   Future<void> _autoUpdate() async {
-    final last = _storage.read<int>(AppConstants.kYtdlpUpdatedAt) ?? 0;
-    final due =
-        DateTime.now().millisecondsSinceEpoch - last >
-        _updateEvery.inMilliseconds;
+    final bundled = await YtDlpBridge.needsUpdate().catchError((_) => false);
+    final due = updateDue(
+      lastCheck: DateTime.fromMillisecondsSinceEpoch(_storage.read<int>(AppConstants.kYtdlpUpdatedAt) ?? 0),
+      now: DateTime.now(),
+      bundled: bundled,
+    );
     if (due) await update();
     _updateInFlight = null;
   }
+
+  /// A check is due once a day, and at once while the bundled yt-dlp runs:
+  /// it can be months old (YouTube's newer clients unknown, every link
+  /// 403), e.g. after a cut-short update was rolled back to it.
+  @visibleForTesting
+  static bool updateDue({required DateTime lastCheck, required DateTime now, required bool bundled}) =>
+      bundled || now.difference(lastCheck) > _updateEvery;
 
   /// Returns a short status for the UI. Callers must not run while a
   /// download is active (Settings checks that).
@@ -310,12 +319,20 @@ class YtDlpService extends GetxService {
     if (!r.ok) throw YtDlpException(r.err);
     final out = r.out;
     // Several MB of JSON for long videos: decoded off the UI thread.
-    final info = YtInfo.fromJson(await Isolate.run(() => jsonDecode(out) as Map<String, dynamic>));
+    final info = YtInfo.fromJson(await decodeInfoJson(out));
     debugPrint('[yt-dlp] info in ${sw.elapsedMilliseconds} ms');
     _infoCache[url] = (at: DateTime.now(), info: info, json: r.out);
     if (_infoCache.length > 50) _infoCache.remove(_infoCache.keys.first);
     return info;
   }
+
+  /// [json] decoded on another isolate. Static on purpose: a closure made
+  /// inside an instance method captures `this` (with its pending Futures),
+  /// which can't be sent to an isolate, so every lookup failed with
+  /// "object is unsendable".
+  @visibleForTesting
+  static Future<Map<String, dynamic>> decodeInfoJson(String json) =>
+      Isolate.run(() => jsonDecode(json) as Map<String, dynamic>);
 
   /// A lookup is only good if it has separate video streams (what HD
   /// downloads are made of). A client that only gets the old combined

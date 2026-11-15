@@ -40,4 +40,36 @@ void main() {
     // The bot check still is.
     expect(YtDlpService.isRetryable("ERROR: Sign in to confirm you're not a bot"), isTrue);
   });
+
+  group('regressions from the 2025.11.12 rollback', () {
+    test('lookup JSON is decoded on another isolate', () async {
+      // Was a closure inside an instance method: it captured the service
+      // (pending Futures) and every lookup failed with "object is unsendable".
+      final json = jsonEncode({'id': 'x', 'formats': [{'format_id': '140'}]});
+      final decoded = await YtDlpService.decodeInfoJson(json);
+      expect(decoded['id'], 'x');
+      expect((decoded['formats'] as List).single, {'format_id': '140'});
+    });
+
+    final now = DateTime(2026, 11, 15, 21, 48);
+
+    test('the bundled yt-dlp is updated at once, even right after a check', () {
+      // It is months old ("Skipping unsupported client visionos", every link 403).
+      expect(
+        YtDlpService.updateDue(lastCheck: now.subtract(const Duration(minutes: 10)), now: now, bundled: true),
+        isTrue,
+      );
+    });
+
+    test('an updated yt-dlp is checked once a day', () {
+      expect(
+        YtDlpService.updateDue(lastCheck: now.subtract(const Duration(hours: 2)), now: now, bundled: false),
+        isFalse,
+      );
+      expect(
+        YtDlpService.updateDue(lastCheck: now.subtract(const Duration(hours: 25)), now: now, bundled: false),
+        isTrue,
+      );
+    });
+  });
 }
