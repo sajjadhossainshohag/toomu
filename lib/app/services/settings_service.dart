@@ -22,6 +22,12 @@ class SettingsService extends GetxService {
   final clipboardLinks = true.obs;
   final blockRedirects = true.obs;
 
+  /// Browser: block ads (ad hosts' requests, common ad boxes hidden).
+  final blockAds = true.obs;
+
+  /// Sites ("example.com") the user allowed ads on (a site that breaks).
+  final adsAllowedSites = <String>{}.obs;
+
   /// Parallel connections per file (1DM-style segmented download).
   final connectionsPerDownload = AppConstants.defaultConnectionsPerDownload.obs;
 
@@ -38,12 +44,26 @@ class SettingsService extends GetxService {
     captureMedia.value = _storage.read<bool>(AppConstants.kCaptureMedia) ?? true;
     clipboardLinks.value = _storage.read<bool>(AppConstants.kClipboardLinks) ?? true;
     blockRedirects.value = _storage.read<bool>(AppConstants.kBlockRedirects) ?? true;
+    blockAds.value = _storage.read<bool>(AppConstants.kBlockAds) ?? true;
+    adsAllowedSites.assignAll(
+      (_storage.read<List<dynamic>>(AppConstants.kAdsAllowedSites) ?? const []).whereType<String>(),
+    );
     return this;
   }
 
   void setBlockRedirects(bool v) {
     blockRedirects.value = v;
     _storage.write(AppConstants.kBlockRedirects, v);
+  }
+
+  void setBlockAds(bool v) {
+    blockAds.value = v;
+    _storage.write(AppConstants.kBlockAds, v);
+  }
+
+  void setAdsAllowed(String site, bool allowed) {
+    allowed ? adsAllowedSites.add(site) : adsAllowedSites.remove(site);
+    _storage.write(AppConstants.kAdsAllowedSites, adsAllowedSites.toList());
   }
 
   void setCaptureMedia(bool v) {

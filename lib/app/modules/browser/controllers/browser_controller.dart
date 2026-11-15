@@ -24,6 +24,7 @@ import '../../../services/ytdlp_service.dart';
 import '../../../widgets/app_snackbar.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
+import '../ad_blocker.dart';
 import '../media_capture.dart';
 import '../media_sniffer.dart';
 import '../redirect_guard.dart';
@@ -51,6 +52,11 @@ class BrowserController extends GetxController {
   final capture = MediaCapture();
   final guard = RedirectGuard();
   final bool _blockRedirects = SettingsService.to.blockRedirects.value;
+  final bool blockAds = SettingsService.to.blockAds.value;
+  late final adBlocker = AdBlocker(allowedSites: () => SettingsService.to.adsAllowedSites);
+
+  /// Ad requests stopped on the current page.
+  final adsBlocked = 0.obs;
   String? _allowNext;
   String _lastBlocked = '';
   DateTime _lastBlockedAt = DateTime(0);
@@ -67,7 +73,7 @@ class BrowserController extends GetxController {
   InAppWebViewController? web;
   AppLifecycleListener? _lifecycle;
 
-  final settings = InAppWebViewSettings(
+  late final settings = InAppWebViewSettings(
     javaScriptEnabled: true,
     useOnDownloadStart: true, // 1DM-style: catch file downloads
     useOnRenderProcessGone: true,
@@ -77,9 +83,13 @@ class BrowserController extends GetxController {
     useShouldOverrideUrlLoading: true,
     // Popups then open in this tab, where onNavigate can block them.
     supportMultipleWindows: false,
+    // Ad blocking asks about every request (Android only; iPhone gets the
+    // ad-hiding style alone).
+    useShouldInterceptRequest: blockAds && Platform.isAndroid,
   );
 
-  final userScripts = UnmodifiableListView<UserScript>([
+  late final userScripts = UnmodifiableListView<UserScript>([
+    if (blockAds) _adHidingScript(),
     if (SettingsService.to.captureMedia.value)
       UserScript(
         source: mediaSnifferJs,
@@ -102,7 +112,9 @@ class BrowserController extends GetxController {
     address.text = initialUrl;
     capture.onFound = _maybeRefresh;
     _detect(initialUrl);
-    if (_blockRedirects) unawaited(Blocklist.load());
+    if (_blockRedirects || blockAds) unawaited(Blocklist.load());
+    // EasyList: the hiding stylesheet follows once it's read.
+    if (blockAds) unawaited(AdFilters.load().then((_) => _refreshAdScript(reload: false)));
     if (Platform.isAndroid) {
       _lifecycle = AppLifecycleListener(
         onHide: () => unawaited(_run(false)),
@@ -122,6 +134,16 @@ class BrowserController extends GetxController {
 
   void onCreated(InAppWebViewController c) {
     web = c;
+    if (blockAds) {
+      c.addJavaScriptHandler(
+        handlerName: 'toomuCss',
+        callback: (List<dynamic> args) {
+          final frame = args.isEmpty ? url.value : '${args.first}';
+          final h = adBlocker.hidingFor(frame, pageUrl: url.value);
+          return {'generic': h.generic, 'css': h.css};
+        },
+      );
+    }
     c.addJavaScriptHandler(
       handlerName: 'toomuMedia',
       callback: (List<dynamic> args) {
@@ -140,6 +162,7 @@ class BrowserController extends GetxController {
   }
 
   void onLoadStart(WebUri? u) {
+    adsBlocked.value = 0;
     capture.reset();
     pageResult.value = null;
     searchError.value = null;
@@ -166,6 +189,80 @@ class BrowserController extends GetxController {
   }
 
   void onIosProcessGone() => web?.reload();
+
+  // ---------------------------------------------------------------- ad blocking
+
+  static final _nothing = WebResourceResponse(
+    contentType: 'text/plain',
+    data: Uint8List(0),
+    statusCode: 204,
+    reasonPhrase: 'No Content',
+    headers: const {'Access-Control-Allow-Origin': '*'},
+  );
+
+  /// A request from the page (images, scripts, frames…): ad hosts get an
+  /// empty answer. The page's own navigation is never stopped here.
+  Future<WebResourceResponse?> onRequest(WebResourceRequest request) async {
+    if (request.isForMainFrame ?? false) return null;
+    final type = AdBlocker.typeOf(request.url, request.headers);
+    if (!adBlocker.blocks(request.url, pageUrl: url.value, type: type)) return null;
+    adsBlocked.value++;
+    return _nothing;
+  }
+
+  UserScript _adHidingScript() => UserScript(
+        groupName: 'toomuAds',
+        source: adHidingJs(
+          SettingsService.to.adsAllowedSites.toSet(),
+          genericCss: AdFilters.engine?.genericCss ?? '',
+        ),
+        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+        // EasyList's general stylesheet is ~0.5 MB: once per page, not per
+        // frame (ad frames' own requests are blocked anyway).
+        forMainFrameOnly: true,
+      );
+
+  /// The site of the open page ("example.com").
+  String get site => AdBlocker.siteOf(url.value);
+
+  bool get adsAllowedHere => adBlocker.allowedOn(url.value);
+
+  /// Shield button: ads on / off for this site, then reload to apply.
+  Future<void> showAdMenu() async {
+    final here = site;
+    if (here.isEmpty) return;
+    final allow = await showOptionSheet<bool>(
+      title: here,
+      selected: adsAllowedHere,
+      options: [
+        SheetOption(
+          value: false,
+          label: 'Block ads on this site',
+          subtitle: adsBlocked.value > 0 ? '${adsBlocked.value} blocked on this page' : null,
+          icon: Icons.shield_rounded,
+        ),
+        const SheetOption(
+          value: true,
+          label: 'Allow ads on this site',
+          subtitle: 'If the site doesn\'t work with ads blocked',
+          icon: Icons.shield_outlined,
+        ),
+      ],
+    );
+    if (allow == null || allow == adsAllowedHere) return;
+    SettingsService.to.setAdsAllowed(here, allow);
+    await _refreshAdScript(reload: true);
+  }
+
+  /// New ad-hiding script (allowed sites or EasyList changed); applies from
+  /// the next page load, or now with [reload].
+  Future<void> _refreshAdScript({required bool reload}) async {
+    final c = web;
+    if (c == null || isClosed) return;
+    await c.removeUserScriptsByGroupName(groupName: 'toomuAds');
+    await c.addUserScript(userScript: _adHidingScript());
+    if (reload) await c.reload();
+  }
 
   void onTitle(String? t) => title.value = t ?? '';
 

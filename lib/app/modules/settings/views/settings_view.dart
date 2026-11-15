@@ -89,6 +89,14 @@ class SettingsView extends GetView<SettingsController> {
                             .setBlockRedirects(!controller.settings.blockRedirects.value),
                       ),
                       AppRow(
+                        icon: Icons.shield_rounded,
+                        tint: ColorConstants.tileVideo,
+                        label: 'Block ads in browser',
+                        toggled: controller.settings.blockAds.value,
+                        onTap: () => controller.settings
+                            .setBlockAds(!controller.settings.blockAds.value),
+                      ),
+                      AppRow(
                         icon: Icons.content_paste_search_rounded,
                         tint: ColorConstants.tileShare,
                         label: 'Detect copied links',

@@ -79,18 +79,8 @@ class Blocklist {
 
   static Future<void> _load() async {
     try {
-      final file = File('${(await getApplicationSupportDirectory()).path}/blocklist.txt');
-      final fresh = file.existsSync() &&
-          DateTime.now().difference(file.lastModifiedSync()) < const Duration(days: 7);
-      if (!fresh) {
-        try {
-          await Dio().download(url, '${file.path}.part');
-          await File('${file.path}.part').rename(file.path);
-        } catch (e) {
-          debugPrint('[Blocklist] update failed: $e');
-        }
-      }
-      if (!file.existsSync()) return;
+      final file = await cachedList(url, 'blocklist.txt');
+      if (file == null) return;
       final path = file.path;
       _hosts = await Isolate.run(() => parse(File(path).readAsStringSync()));
       debugPrint('[Blocklist] ${_hosts.length} hosts');
@@ -121,4 +111,21 @@ class Blocklist {
 
   @visibleForTesting
   static set hosts(Set<String> value) => _hosts = value;
+}
+
+/// [url] saved as [name] in the app's support folder, downloaded again once
+/// it's a week old (the old copy is kept if that fails). Null if there's no
+/// copy at all.
+Future<File?> cachedList(String url, String name, {Duration maxAge = const Duration(days: 7)}) async {
+  final file = File('${(await getApplicationSupportDirectory()).path}/$name');
+  final fresh = file.existsSync() && DateTime.now().difference(file.lastModifiedSync()) < maxAge;
+  if (!fresh) {
+    try {
+      await Dio().download(url, '${file.path}.part');
+      await File('${file.path}.part').rename(file.path);
+    } catch (e) {
+      debugPrint('[Filters] $name update failed: $e');
+    }
+  }
+  return file.existsSync() ? file : null;
 }

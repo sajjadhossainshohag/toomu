@@ -17,6 +17,8 @@ abstract class AppConstants {
 
   static const githubRepo = 'sajjadhossainshohag/toomu';
 
+  /// Ad filters (Adblock Plus syntax), the main list AdBlock uses.
+  static const easylistUrl = 'https://easylist.to/easylist/easylist.txt';
   static const blocklistUrl = 'https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling/hosts';
 
   // Storage keys
@@ -36,6 +38,8 @@ abstract class AppConstants {
   static const kCaptureMedia = 'browser_capture_media';
   static const kClipboardLinks = 'clipboard_links';
   static const kBlockRedirects = 'browser_block_redirects';
+  static const kBlockAds = 'browser_block_ads';
+  static const kAdsAllowedSites = 'browser_ads_allowed_sites';
   static const kUpdateCheckedAt = 'update_checked_at';
   static const kBubbleNowPlayingAsked = 'floating_button_now_playing_asked';
   static const kYtdlpUpdatedAt = 'ytdlp_updated_at';

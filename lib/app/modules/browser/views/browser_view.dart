@@ -8,6 +8,7 @@ import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
 import '../../../widgets/gradient_pill.dart';
 import '../../../widgets/round_icon_button.dart';
+import '../../../services/settings_service.dart';
 import '../controllers/browser_controller.dart';
 import 'downloads_sheet.dart';
 
@@ -70,6 +71,7 @@ class BrowserView extends GetView<BrowserController> {
                       onProgressChanged: (_, p) => controller.onProgress(p),
                       shouldOverrideUrlLoading: (_, action) async => controller.onNavigate(action),
                       onDownloadStartRequest: (_, request) => controller.onDownloadStart(request),
+                      shouldInterceptRequest: controller.blockAds ? (_, request) => controller.onRequest(request) : null,
                       onRenderProcessGone: (_, _) => controller.onRendererGone(),
                       onWebContentProcessDidTerminate: (_) => controller.onIosProcessGone(),
                     ),
@@ -212,6 +214,7 @@ class _TopBar extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (controller.blockAds) _AdShield(controller: controller, ink: ink, scale: scale),
                 ],
               ),
             ),
@@ -230,5 +233,51 @@ class _TopBar extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// In the address bar: ads blocked on this page; tap to allow ads on the site.
+class _AdShield extends StatelessWidget {
+  const _AdShield({required this.controller, required this.ink, required this.scale});
+
+  final BrowserController controller;
+  final Color ink;
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final blocked = controller.adsBlocked.value;
+      controller.url.value; // rebuild when the site changes
+      SettingsService.to.adsAllowedSites.length;
+      final allowed = controller.adsAllowedHere;
+      return Tooltip(
+        message: allowed ? 'Ads allowed on this site' : 'Ads blocked',
+        child: InkWell(
+          onTap: controller.showAdMenu,
+          borderRadius: BorderRadius.circular(8 * scale),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6 * scale, vertical: 6 * scale),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(
+                  allowed ? Icons.shield_outlined : Icons.shield_rounded,
+                  size: 16 * scale,
+                  color: allowed ? ink.withValues(alpha: 0.4) : BrandColors.of(context).primary,
+                ),
+                if (!allowed && blocked > 0) ...[
+                  SizedBox(width: 3 * scale),
+                  Text(
+                    blocked > 99 ? '99+' : '$blocked',
+                    style: TextStyle(fontSize: 11.5 * scale, fontWeight: FontWeight.w700, color: ink.withValues(alpha: 0.7)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    });
   }
 }
