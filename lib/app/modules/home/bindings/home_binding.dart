@@ -10,11 +10,15 @@ import '../controllers/home_controller.dart';
 class HomeBinding extends Bindings {
   @override
   void dependencies() {
-    Get.lazyPut<HomeController>(HomeController.new);
-    Get.lazyPut<YoutubeController>(YoutubeController.new);
-    Get.lazyPut<DownloadsController>(DownloadsController.new);
-    Get.lazyPut<MusicController>(MusicController.new);
-    Get.lazyPut<VideosController>(VideosController.new);
-    Get.lazyPut<SettingsController>(SettingsController.new);
+    // fenix: the tabs' controllers can be made again after GetX deletes
+    // them. A pushed page that first used one (the browser's downloads
+    // button) owned it, and closing that page deleted it for good: the
+    // next Get.find threw and the browser's top bar turned into a grey box.
+    Get.lazyPut<HomeController>(HomeController.new, fenix: true);
+    Get.lazyPut<YoutubeController>(YoutubeController.new, fenix: true);
+    Get.lazyPut<DownloadsController>(DownloadsController.new, fenix: true);
+    Get.lazyPut<MusicController>(MusicController.new, fenix: true);
+    Get.lazyPut<VideosController>(VideosController.new, fenix: true);
+    Get.lazyPut<SettingsController>(SettingsController.new, fenix: true);
   }
 }

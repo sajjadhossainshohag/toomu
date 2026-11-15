@@ -5,6 +5,6 @@ import '../controllers/downloads_controller.dart';
 class DownloadsBinding extends Bindings {
   @override
   void dependencies() {
-    Get.lazyPut<DownloadsController>(DownloadsController.new);
+    Get.lazyPut<DownloadsController>(DownloadsController.new, fenix: true);
   }
 }
