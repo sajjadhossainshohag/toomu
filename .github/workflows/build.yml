@@ -1,6 +1,7 @@
 # Builds Toomu automatically.
 #  - Android APKs: every push to main or by hand (arm64 only, for speed);
-#    every v* tag (arm64 + armv7). Analyze + tests run alongside the build.
+#    every v* tag (arm64 + armv7). Analyze + Dart and Kotlin tests run
+#    alongside the build (job "check"); a failure stops the release.
 #  - iOS (unsigned .ipa): every push to main, every v* tag, or by hand
 #    (the repository is public, so macOS minutes are free).
 #  - Every successful build of main publishes a GitHub Release under a new
@@ -33,6 +34,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # For the Kotlin unit tests.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -42,6 +50,14 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-pub
       - run: flutter test --no-pub
+
+      # Kotlin unit tests (android/app/src/test), e.g. the yt-dlp file repair.
+      # android/gradlew isn't in git: --config-only has Flutter write it
+      # (and Gradle's settings) without building anything.
+      - name: Android unit tests
+        run: |
+          flutter build apk --config-only
+          cd android && ./gradlew :app:testDebugUnitTest
 
   android:
     runs-on: ubuntu-latest
@@ -111,12 +127,6 @@ jobs:
           fi
           (cd build && zip -qr ../dist/debug-symbols-android.zip symbols)
           ls -lh dist
-
-      # Kotlin unit tests (android/app/src/test), e.g. the yt-dlp file repair.
-      # After the build: android/gradlew isn't in git, Flutter writes it.
-      - name: Android unit tests
-        working-directory: android
-        run: ./gradlew :app:testDebugUnitTest
 
       - uses: actions/upload-artifact@v4
         with:
