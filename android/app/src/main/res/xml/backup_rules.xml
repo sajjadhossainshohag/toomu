@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sign-in cookies stay on this phone (Android 6-11 backups). -->
+<full-backup-content>
+    <exclude domain="file" path="youtube_account.txt"/>
+    <exclude domain="file" path="tiktok_cookies.txt"/>
+</full-backup-content>

@@ -78,7 +78,7 @@ class StreamProxy extends GetxService {
   final Map<String, _File> _files = {};
 
   /// yt-dlp's (full) links per video, for files registered after they came.
-  final Map<String, YtInfo> _full = {};
+  final Map<String, ({YtInfo info, DateTime at})> _full = {};
   final Map<String, Future<void>> _lookups = {};
 
   /// The first piece is small so the player starts quickly; later pieces
@@ -143,13 +143,16 @@ class StreamProxy extends GetxService {
       key,
       () => _File(url: url, headers: headers, length: length, itag: itag, mime: q['mime'], videoId: videoId, partial: partial),
     );
-    if (file.partial && !partial) file.upgrade(url, headers);
+    // A newer link replaces the stored one (links expire after hours, or
+    // when the phone's IP changes), but a fresh full link is kept over a
+    // fast link that only serves the first minute.
+    if (file.url != url && (!partial || file.partial || file.stale)) file.relink(url, headers, partial: partial);
     file.lastUsed = DateTime.now();
     if (file.partial && videoId != null) {
       final full = _full[videoId];
       // Look the video up right away: yt-dlp's links should be ready by
       // the time the free minute runs out.
-      full != null ? _offer(file, full) : _lookUp(videoId);
+      full != null && !_isStale(full.at) ? _offer(file, full.info) : _lookUp(videoId);
     }
     _prune();
     return 'http://127.0.0.1:${server.port}/yt/$key';
@@ -195,7 +198,7 @@ class StreamProxy extends GetxService {
   /// yt-dlp's links for [videoId]: files playing from fast links carry on
   /// with these (already-identical files only).
   void offerFullLinks(String videoId, YtInfo info) {
-    _full[videoId] = info;
+    _full[videoId] = (info: info, at: DateTime.now());
     if (_full.length > 20) _full.remove(_full.keys.first);
     for (final f in _files.values) {
       if (f.videoId == videoId && f.partial) _offer(f, info);
@@ -434,6 +437,8 @@ class StreamProxy extends GetxService {
   }
 }
 
+bool _isStale(DateTime linkedAt) => DateTime.now().difference(linkedAt) > const Duration(hours: 1);
+
 /// One YouTube media file the players can ask the proxy for.
 class _File {
   _File({
@@ -458,10 +463,22 @@ class _File {
   DateTime lastUsed = DateTime.now();
   Completer<void>? _waiting;
 
+  DateTime linkedAt = DateTime.now();
+  bool get stale => _isStale(linkedAt);
+
+  void relink(String newUrl, Map<String, String> newHeaders, {required bool partial}) {
+    if (!partial) return upgrade(newUrl, newHeaders);
+    url = newUrl;
+    headers = newHeaders;
+    this.partial = true;
+    linkedAt = DateTime.now();
+  }
+
   void upgrade(String fullUrl, Map<String, String> fullHeaders) {
     url = fullUrl;
     headers = fullHeaders;
     partial = false;
+    linkedAt = DateTime.now();
     _waiting?.complete();
     _waiting = null;
   }

@@ -31,8 +31,14 @@ import java.util.concurrent.Executors
 // alive for background playback via just_audio_background / audio_service.
 class MainActivity : AudioServiceActivity() {
 
-    private val io = Executors.newFixedThreadPool(3)
-    private var ytDlp: YtDlpBridge? = null
+    // audio_service keeps the Flutter engine (and queued downloads) running
+    // after the activity is destroyed, so these live as long as the process.
+    companion object {
+        private val io = Executors.newFixedThreadPool(3)
+        private var ytDlp: YtDlpBridge? = null
+        private var ytDlpEngine: FlutterEngine? = null
+    }
+
     private val main = Handler(Looper.getMainLooper())
 
     private var intents: MethodChannel? = null
@@ -139,7 +145,11 @@ class MainActivity : AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
-        ytDlp = YtDlpBridge(applicationContext, messenger)
+        if (ytDlpEngine !== flutterEngine) {
+            ytDlp?.dispose()
+            ytDlp = YtDlpBridge(applicationContext, messenger)
+            ytDlpEngine = flutterEngine
+        }
 
         // Links shared to Toomu ("Download with Toomu") and bubble taps.
         pendingIntent = payloadOf(intent)
@@ -193,7 +203,11 @@ class MainActivity : AudioServiceActivity() {
                     "stop" -> {
                         DownloadProgressService.snapshot = null
                         DownloadProgressService.clearCards(this)
-                        stopService(Intent(this, DownloadProgressService::class.java))
+                        // A service that hasn't reached startForeground yet must not be
+                        // stopped (Android crashes the app); it stops itself instead.
+                        if (DownloadProgressService.running) {
+                            stopService(Intent(this, DownloadProgressService::class.java))
+                        }
                         result.success(null)
                     }
                     "finished" -> {
@@ -604,10 +618,7 @@ class MainActivity : AudioServiceActivity() {
 
     override fun onDestroy() {
         VideoMediaBridge.listener = null
-        DownloadProgressService.listener = null
         stopService(Intent(this, VideoBackgroundService::class.java))
-        io.shutdown()
-        ytDlp?.dispose()
         super.onDestroy()
     }
 }

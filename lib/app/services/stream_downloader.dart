@@ -188,6 +188,9 @@ class StreamDownloader {
                 headers: {...headersFor(p.url), if (p.range != null) 'Range': p.range!},
               ),
             );
+            if (p.range != null && response.statusCode != 206) {
+              throw StateError("The server didn't send the requested part (HTTP ${response.statusCode}).");
+            }
             await for (final chunk in response.data!.stream) {
               sink.add(chunk);
               got += chunk.length;
@@ -202,7 +205,13 @@ class StreamDownloader {
         });
         final keyUrl = p.keyUrl;
         if (keyUrl != null) {
-          final key = await (keys[keyUrl] ??= _bytes(keyUrl, headersFor(keyUrl), local));
+          final Uint8List key;
+          try {
+            key = await (keys[keyUrl] ??= _key(keyUrl, headersFor(keyUrl), local));
+          } catch (_) {
+            keys.remove(keyUrl); // the next piece asks again
+            rethrow;
+          }
           await native.invokeMethod<void>('decrypt', {'path': temp.path, 'key': key, 'iv': p.iv});
         }
         await temp.rename(file.path);
@@ -231,7 +240,13 @@ class StreamDownloader {
     return out;
   }
 
-  Future<void> _retry(Future<void> Function() attempt) async {
+  Future<Uint8List> _key(String url, Map<String, String> headers, CancelToken token) async {
+    final key = await _retry(() => _bytes(url, headers, token));
+    if (key.length != 16) throw StateError('The stream key is not a 16-byte AES-128 key.');
+    return key;
+  }
+
+  Future<T> _retry<T>(Future<T> Function() attempt) async {
     for (var tries = 0; ; tries++) {
       try {
         return await attempt();

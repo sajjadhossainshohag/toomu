@@ -301,6 +301,10 @@ class DownloadProgressService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, n)
             }
+            if (snapshot == null) {
+                stopSelf() // the downloads ended before the service started
+                return START_NOT_STICKY
+            }
             running = true
             render(this)
         } catch (e: Exception) {

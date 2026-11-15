@@ -86,6 +86,7 @@ class AudioPlayerService extends GetxService {
       player.speedStream.listen((v) => speed.value = v),
       player.pitchStream.listen((v) => pitch.value = v),
       player.currentIndexStream.listen(_onIndexChanged),
+      player.positionDiscontinuityStream.listen(_onDiscontinuity),
     ]);
 
     if (Platform.isAndroid) await _restoreEqualizer();
@@ -350,12 +351,15 @@ class AudioPlayerService extends GetxService {
   void _onIndexChanged(int? i) {
     final previous = currentIndex.value;
     currentIndex.value = i;
-    if (previous != null && i != previous) {
-      clearAbRepeat();
-      if (sleepMode.value == SleepMode.endOfTrack) {
-        player.pause();
-        cancelSleepTimer();
-      }
+    if (previous != null && i != previous) clearAbRepeat();
+  }
+
+  // Only a track that played to its end counts (also when repeat-one starts
+  // it again); Next, reordering or removing songs change the index too.
+  void _onDiscontinuity(PositionDiscontinuity d) {
+    if (d.reason == PositionDiscontinuityReason.autoAdvance && sleepMode.value == SleepMode.endOfTrack) {
+      player.pause();
+      cancelSleepTimer();
     }
   }
 
