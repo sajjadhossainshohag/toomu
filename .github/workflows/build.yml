@@ -3,7 +3,9 @@
 #    every v* tag (arm64 + armv7). Analyze + tests run alongside the build.
 #  - iOS (unsigned .ipa): v* tags or by hand only — macOS minutes count 10×
 #    on private repositories.
-#  - A v* tag (e.g. v1.2.0) also publishes a GitHub Release with the files.
+#  - Every successful build of main publishes a GitHub Release under a new
+#    tag (vYYYY.MM.DD-HHMM, Bangladesh time) with the APK; a pushed v* tag
+#    publishes one under that tag with all files.
 #
 # Release signing (optional, recommended — phones only update an app signed
 # with the same key), repository Secrets:
@@ -142,7 +144,11 @@ jobs:
           retention-days: 14
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # ios is skipped on main, and a skipped need would skip this job.
+    if: >-
+      always() && needs.check.result == 'success' && needs.android.result == 'success' &&
+      contains(fromJSON('["success", "skipped"]'), needs.ios.result) &&
+      (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
     needs: [check, android, ios]
     runs-on: ubuntu-latest
     permissions:
@@ -156,9 +162,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist/* \
-            --repo "${GITHUB_REPOSITORY}" --title "Toomu ${GITHUB_REF_NAME}" \
-            --notes "Built by CI from ${GITHUB_SHA::7}.
-          - toomu-arm64-v8a.apk — most phones · toomu-armeabi-v7a.apk — older 32-bit phones
-          - toomu-unsigned.ipa — iOS, unsigned (YouTube downloads up to 1080p; no TikTok downloads, bubble or PiP)
-          - debug-symbols-*.zip — to read crash stack traces"
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="v$(TZ=Asia/Dhaka date '+%Y.%m.%d-%H%M')"
+          fi
+          notes="Built by CI from ${GITHUB_SHA::7}."
+          [ -f dist/toomu-arm64-v8a.apk ] && notes+=$'\n- toomu-arm64-v8a.apk — most phones'
+          [ -f dist/toomu-armeabi-v7a.apk ] && notes+=$'\n- toomu-armeabi-v7a.apk — older 32-bit phones'
+          [ -f dist/toomu-unsigned.ipa ] && notes+=$'\n- toomu-unsigned.ipa — iOS, unsigned (YouTube downloads up to 1080p; no TikTok downloads, bubble or PiP)'
+          notes+=$'\n- debug-symbols-*.zip — to read crash stack traces'
+          # A tag created with the workflow's token doesn't start another run.
+          gh release create "$tag" dist/* --target "${GITHUB_SHA}" \
+            --repo "${GITHUB_REPOSITORY}" --title "Toomu $tag" --notes "$notes"
