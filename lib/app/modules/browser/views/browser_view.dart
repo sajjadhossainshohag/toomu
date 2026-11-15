@@ -10,6 +10,7 @@ import '../../../widgets/gradient_pill.dart';
 import '../../../widgets/round_icon_button.dart';
 import '../../../services/settings_service.dart';
 import '../controllers/browser_controller.dart';
+import '../media_button.dart';
 import 'downloads_sheet.dart';
 
 class BrowserView extends GetView<BrowserController> {
@@ -66,6 +67,7 @@ class BrowserView extends GetView<BrowserController> {
                       initialUserScripts: controller.userScripts,
                       onWebViewCreated: controller.onCreated,
                       onLoadStart: (_, url) => controller.onLoadStart(url),
+                      onScrollChanged: (_, _, y) => controller.onScroll(y),
                       onUpdateVisitedHistory: (_, url, _) => controller.onHistoryChanged(url),
                       onTitleChanged: (_, t) => controller.onTitle(t),
                       onProgressChanged: (_, p) => controller.onProgress(p),
@@ -80,47 +82,8 @@ class BrowserView extends GetView<BrowserController> {
               ],
             ),
           ),
-          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-          floatingActionButton: Obx(() {
-            final label = controller.fabLabel;
-            final hidden = label == null;
-            final icon = controller.extractor.value != null
-                ? Icons.download_rounded
-                : controller.capture.items.isNotEmpty
-                ? Icons.video_library_rounded
-                : Icons.travel_explore_rounded;
-            return AnimatedSlide(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              offset: hidden ? const Offset(0, 2) : Offset.zero,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: hidden ? 0 : 1,
-                child: IgnorePointer(
-                  ignoring: hidden,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12 * scale),
-                      boxShadow: <BoxShadow>[
-                        BoxShadow(
-                          color: BrandColors.of(context).primary.withValues(alpha: 0.4),
-                          blurRadius: 20 * scale,
-                          offset: Offset(0, 8 * scale),
-                        ),
-                      ],
-                    ),
-                    child: GradientPill(
-                      label: label ?? 'Download',
-                      icon: icon,
-                      compact: true,
-                      height: 50,
-                      onTap: controller.onFab,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButton: _MediaButton(controller: controller),
         ),
       ),
     );
@@ -276,6 +239,111 @@ class _AdShield extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      );
+    });
+  }
+}
+
+/// Bottom-right media button: grey "find videos" until something is found,
+/// then coloured with a count, or "Download" on supported pages. Slides
+/// away while the page scrolls down.
+class _MediaButton extends StatelessWidget {
+  const _MediaButton({required this.controller});
+
+  final BrowserController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final double scale = context.scale;
+    final bool dark = context.isDark;
+    final BrandColors brand = BrandColors.of(context);
+    return Obx(() {
+      final mode = controller.mediaButton;
+      final count = controller.capture.items.length;
+      final shown = mode != MediaButtonMode.hidden && controller.mediaButtonShown.value;
+
+      final Widget button = switch (mode) {
+        MediaButtonMode.download => DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12 * scale),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: brand.primary.withValues(alpha: 0.35),
+                  blurRadius: 16 * scale,
+                  offset: Offset(0, 6 * scale),
+                ),
+              ],
+            ),
+            child: GradientPill(
+              label: 'Download',
+              icon: Icons.download_rounded,
+              compact: true,
+              height: 46,
+              onTap: controller.onFab,
+            ),
+          ),
+        MediaButtonMode.found => Stack(
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              RoundIconButton(
+                icon: Icons.video_library_rounded,
+                size: 54,
+                filled: true,
+                onTap: controller.onFab,
+                tooltip: '$count found on this page',
+              ),
+              Positioned(
+                right: -2 * scale,
+                top: -2 * scale,
+                child: IgnorePointer(
+                  child: Container(
+                    constraints: BoxConstraints(minWidth: 20 * scale),
+                    padding: EdgeInsets.symmetric(horizontal: 5 * scale, vertical: 2 * scale),
+                    decoration: BoxDecoration(
+                      color: ColorConstants.white,
+                      borderRadius: BorderRadius.circular(10 * scale),
+                      border: Border.all(color: brand.primary, width: 1.5 * scale),
+                    ),
+                    child: Text(
+                      count > 99 ? '99+' : '$count',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 11 * scale, fontWeight: FontWeight.w800, color: brand.primary),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        _ => DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: ColorConstants.surfaceOn(dark),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: ColorConstants.black.withValues(alpha: dark ? 0.4 : 0.14),
+                  blurRadius: 12 * scale,
+                  offset: Offset(0, 4 * scale),
+                ),
+              ],
+            ),
+            child: RoundIconButton(
+              icon: Icons.travel_explore_rounded,
+              size: 46,
+              onTap: controller.onFab,
+              tooltip: 'Find videos on this page',
+            ),
+          ),
+      };
+
+      return AnimatedSlide(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        offset: shown ? Offset.zero : const Offset(0, 2),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 180),
+          opacity: shown ? 1 : 0,
+          child: IgnorePointer(ignoring: !shown, child: button),
         ),
       );
     });

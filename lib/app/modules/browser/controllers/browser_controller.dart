@@ -25,6 +25,7 @@ import '../../../widgets/app_snackbar.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
 import '../ad_blocker.dart';
+import '../media_button.dart';
 import '../media_capture.dart';
 import '../media_sniffer.dart';
 import '../redirect_guard.dart';
@@ -111,6 +112,10 @@ class BrowserController extends GetxController {
     restoreUrl = initialUrl;
     address.text = initialUrl;
     capture.onFound = _maybeRefresh;
+    // Something new found: show the button even mid-scroll.
+    ever(capture.items, (_) {
+      if (capture.items.isNotEmpty) mediaButtonShown.value = true;
+    });
     _detect(initialUrl);
     if (_blockRedirects || blockAds) unawaited(Blocklist.load());
     // EasyList: the hiding stylesheet follows once it's read.
@@ -163,6 +168,8 @@ class BrowserController extends GetxController {
 
   void onLoadStart(WebUri? u) {
     adsBlocked.value = 0;
+    _scroll.reset();
+    mediaButtonShown.value = true;
     capture.reset();
     pageResult.value = null;
     searchError.value = null;
@@ -350,12 +357,17 @@ class BrowserController extends GetxController {
     _open(target);
   }
 
-  String? get fabLabel {
-    if (extractor.value != null) return 'Download';
-    final n = capture.items.length;
-    if (n > 0) return '$n found';
-    return Platform.isAndroid ? 'Find videos' : null;
-  }
+  MediaButtonMode get mediaButton => mediaButtonMode(
+        supportedPage: extractor.value != null,
+        found: capture.items.length,
+        canScan: Platform.isAndroid,
+      );
+
+  /// The media button slides away while reading (scrolling down).
+  final mediaButtonShown = true.obs;
+  final _scroll = ScrollHider();
+
+  void onScroll(int y) => mediaButtonShown.value = _scroll.update(y);
 
   Future<void> onFab() async {
     if (extractor.value != null) return download();
