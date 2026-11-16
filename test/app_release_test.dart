@@ -29,4 +29,10 @@ void main() {
     expect(AppRelease.fromGitHub(json, ['armeabi-v7a', 'armeabi']).apkUrl, 'https://x/v7.apk');
     expect(AppRelease.fromGitHub(json, ['x86_64']).apkUrl, isNull);
   });
+
+  test('reads the latest tag from the releases page redirect when the API is rate limited', () {
+    expect(AppRelease.tagFromLocation('https://github.com/a/b/releases/tag/v2026.11.16-0910'), 'v2026.11.16-0910');
+    expect(AppRelease.tagFromLocation('https://github.com/a/b/releases'), isNull);
+    expect(AppRelease.tagFromLocation(null), isNull);
+  });
 }

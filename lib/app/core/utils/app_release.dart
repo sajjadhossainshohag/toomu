@@ -16,6 +16,8 @@ class AppRelease {
     return latest != current;
   }
 
+  static String? tagFromLocation(String? location) => null;
+
   static AppRelease fromGitHub(Map<String, dynamic> json, List<String> abis) {
     final assets = (json['assets'] as List? ?? const []).whereType<Map>().toList();
     Map? apk;
