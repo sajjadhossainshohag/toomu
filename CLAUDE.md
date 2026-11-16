@@ -24,7 +24,7 @@ flutter test integration_test/stream_pipeline_test.dart -d <iphone-id>   # iOS s
 
 ## Bug fixes
 
-Every fix ships with a regression test so the issue can't come back: write the test first, run it and see it fail for the reported reason, then fix and see it pass. Name the test after the symptom (e.g. `'grey top bar does not return after reopening'`) and keep it in `test/` (Kotlin: `android/app/src/test/`). If a bug truly can't be reproduced in a test (device-only, CI config), say so in the commit message.
+Every fix ships with a regression test so the issue can't come back: write the test first, run it and see it fail for the reported reason, then fix and see it pass. Name the test after the symptom (e.g. `'grey top bar does not return after reopening'`) and keep it in `test/` (Kotlin: `android/app/src/test/`). If a bug truly can't be reproduced in a test (device-only, CI config), say so in the commit message. Changes that only remove something (a feature, a notification) need no test.
 
 ## Architecture
 
