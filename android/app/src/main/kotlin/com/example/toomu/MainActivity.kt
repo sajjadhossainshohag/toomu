@@ -293,7 +293,7 @@ class MainActivity : AudioServiceActivity() {
                 "status" -> result.success(mapOf(
                     "overlay" to BubbleService.canDrawOverlays(this),
                     "usage" to BubbleService.hasUsageAccess(this),
-                    "running" to BubbleService.running,
+                    "running" to BubbleHost.showing,
                     "notifications" to MediaNotificationListener.hasAccess(this),
                 ))
                 "openNotificationSettings" -> {
@@ -321,12 +321,11 @@ class MainActivity : AudioServiceActivity() {
                     result.success(null)
                 }
                 "start" -> {
-                    val i = Intent(this, BubbleService::class.java)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i) else startService(i)
+                    BubbleHost.setWanted(this, true)
                     result.success(null)
                 }
                 "stop" -> {
-                    startService(Intent(this, BubbleService::class.java).setAction(BubbleService.ACTION_STOP))
+                    BubbleHost.setWanted(this, false)
                     result.success(null)
                 }
                 else -> result.notImplemented()

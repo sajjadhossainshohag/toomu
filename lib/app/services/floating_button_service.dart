@@ -137,8 +137,9 @@ class FloatingButtonService extends GetxService with WidgetsBindingObserver {
         title: 'One-tap download (recommended)',
         message:
             'Allow "Notification access" so tapping the bubble knows which video YouTube is '
-            'playing and opens its download options right away, and the bubble shows only on '
-            'YouTube\'s video page. Toomu only asks YouTube what is '
+            'playing and opens its download options right away, the bubble shows only on '
+            'YouTube\'s video page, and no "Download button is on" notification stays in your '
+            'notification bar. Toomu only asks YouTube what is '
             'playing; it never reads your notifications.\n\n'
             'If the switch is greyed out: open App info for Toomu → ⋮ → "Allow restricted settings", '
             'then try again.',

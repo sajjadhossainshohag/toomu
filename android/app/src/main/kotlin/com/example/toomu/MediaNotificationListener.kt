@@ -14,10 +14,24 @@ import android.service.notification.NotificationListenerService
  * requires before an app may read other apps' media sessions. Toomu never
  * reads notification contents; it only asks the media session what video
  * YouTube is playing (title, channel, duration) when the bubble is tapped.
+ * While connected it also hosts the bubble, so no foreground notification is needed.
  */
 class MediaNotificationListener : NotificationListenerService() {
 
+    override fun onListenerConnected() {
+        connected = true
+        BubbleHost.sync(this)
+    }
+
+    override fun onListenerDisconnected() {
+        connected = false
+        BubbleHost.sync(this)
+    }
+
     companion object {
+        @Volatile var connected = false
+            private set
+
         fun hasAccess(context: Context): Boolean {
             val enabled = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
             return enabled?.contains(context.packageName) == true
