@@ -22,6 +22,10 @@ flutter test integration_test/stream_pipeline_test.dart -d <iphone-id>   # iOS s
 - The Gradle `merge*NativeLibs` tasks run `tool/trim_ytdlp_bundles.py` (needs `python3`; skipped with a warning if missing) to strip unused files from yt-dlp's bundled Python/FFmpeg archives.
 - Debug builds package only `arm64-v8a` (add `x86_64` in `android/app/build.gradle.kts` for Intel emulators).
 
+## Bug fixes
+
+Every fix ships with a regression test so the issue can't come back: write the test first, run it and see it fail for the reported reason, then fix and see it pass. Name the test after the symptom (e.g. `'grey top bar does not return after reopening'`) and keep it in `test/` (Kotlin: `android/app/src/test/`). If a bug truly can't be reproduced in a test (device-only, CI config), say so in the commit message.
+
 ## Architecture
 
 **GetX everywhere.** App-lifetime services are registered in `lib/app/services/app_services.dart` in dependency order (some in parallel; anything used by another service's `init` must come first). Feature modules live in `lib/app/modules/<feature>/{bindings,controllers,views}`; routes in `lib/app/routes/app_pages.dart`, main tabs in `modules/home/home_tabs.dart`. Persistence is GetStorage via `StorageService`; settings in `SettingsService` with keys in `core/values/app_constants.dart`.
