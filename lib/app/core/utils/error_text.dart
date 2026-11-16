@@ -52,7 +52,15 @@ abstract class ErrorText {
     }
     if (e is DioException) {
       final code = e.response?.statusCode;
-      if (code == 403) return 'YouTube refused the download (403). Tap retry.';
+      final host = e.requestOptions.uri.host;
+      if (host == 'api.github.com' && (code == 403 || code == 429)) {
+        return 'GitHub is limiting update checks on this network. Try again in an hour.';
+      }
+      if (code == 403) {
+        return host.endsWith('googlevideo.com') || host.contains('youtube')
+            ? 'YouTube refused the download (403). Tap retry.'
+            : 'The server refused the download (403). Tap retry.';
+      }
       if (code != null) return 'Server error ($code).';
       if (e.error is SocketException) return 'No internet connection.';
       return 'Network error. Check your connection.';

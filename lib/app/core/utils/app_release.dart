@@ -16,7 +16,12 @@ class AppRelease {
     return latest != current;
   }
 
-  static String? tagFromLocation(String? location) => null;
+  static final _tagPath = RegExp(r'/releases/tag/([^/?#]+)');
+
+  static String? tagFromLocation(String? location) {
+    final tag = location == null ? null : _tagPath.firstMatch(location)?.group(1);
+    return tag == null ? null : Uri.decodeComponent(tag);
+  }
 
   static AppRelease fromGitHub(Map<String, dynamic> json, List<String> abis) {
     final assets = (json['assets'] as List? ?? const []).whereType<Map>().toList();

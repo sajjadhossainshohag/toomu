@@ -67,12 +67,38 @@ class UpdateService extends GetxService {
   }
 
   Future<AppRelease> _latest() async {
-    final r = await _dio.get<Map<String, dynamic>>(
-      'https://api.github.com/repos/${AppConstants.githubRepo}/releases/latest',
-      options: Options(headers: {'Accept': 'application/vnd.github+json'}),
-    );
     final abis = (await DeviceInfoPlugin().androidInfo).supportedAbis;
-    return AppRelease.fromGitHub(r.data ?? const {}, abis);
+    try {
+      final r = await _dio.get<Map<String, dynamic>>(
+        'https://api.github.com/repos/${AppConstants.githubRepo}/releases/latest',
+        options: Options(headers: {'Accept': 'application/vnd.github+json'}),
+      );
+      return AppRelease.fromGitHub(r.data ?? const {}, abis);
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code != 403 && code != 429) rethrow;
+      // The API allows 60 requests an hour per IP (shared on mobile networks); the web pages aren't limited.
+      return _latestFromWebPage(abis);
+    }
+  }
+
+  Future<AppRelease> _latestFromWebPage(List<String> abis) async {
+    const repo = 'https://github.com/${AppConstants.githubRepo}';
+    final page = await _dio.get<void>(
+      '$repo/releases/latest',
+      options: Options(followRedirects: false, validateStatus: (s) => s != null && s < 400),
+    );
+    final tag = AppRelease.tagFromLocation(page.headers.value('location'));
+    if (tag == null) throw StateError("Couldn't find the latest Toomu release.");
+    for (final abi in abis) {
+      final url = '$repo/releases/download/$tag/toomu-$abi.apk';
+      final head = await _dio.head<void>(url, options: Options(validateStatus: (s) => s != null && s < 500));
+      if (head.statusCode == 200) {
+        final size = int.tryParse(head.headers.value(Headers.contentLengthHeader) ?? '') ?? 0;
+        return AppRelease(tag: tag, notes: '', apkUrl: url, apkSize: size);
+      }
+    }
+    return AppRelease(tag: tag, notes: '', apkUrl: null, apkSize: 0);
   }
 
   Future<void> _offer(AppRelease release) async {
