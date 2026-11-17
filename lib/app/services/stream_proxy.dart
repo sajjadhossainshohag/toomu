@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../data/models/yt_info.dart';
+import '../data/providers/youtube_provider.dart';
 import 'ytdlp_service.dart';
 
 /// A small HTTP server on 127.0.0.1 between the players (mpv for videos,
@@ -88,6 +89,7 @@ class StreamProxy extends GetxService {
 
   /// A piece that sends nothing for this long is asked for again.
   static const _stallLimit = Duration(seconds: 12);
+  static const _flushEvery = 256 << 10;
   static const _maxFailures = 6;
 
   /// How long a request at the end of a fast link's free minute waits for
@@ -96,6 +98,7 @@ class StreamProxy extends GetxService {
 
   Future<StreamProxy> init() async {
     await _bind();
+    YoutubeProvider.pooledClient = _clientFor;
     return this;
   }
 
@@ -374,20 +377,22 @@ class StreamProxy extends GetxService {
   Future<_Piece> _pipe(HttpClientResponse from, HttpResponse to, {required int limit}) {
     final done = Completer<_Piece>();
     var got = 0;
-    Timer? stall;
+    var unflushed = 0;
+    var flushing = false;
+    final idle = Stopwatch()..start();
     late final StreamSubscription<List<int>> sub;
+    late final Timer stall;
     void finish({Object? error, bool clientGone = false}) {
-      stall?.cancel();
+      stall.cancel();
       if (!done.isCompleted) done.complete(_Piece(got, error: error, clientGone: clientGone));
     }
 
-    void watch() {
-      stall?.cancel();
-      stall = Timer(_stallLimit, () {
-        sub.cancel();
-        finish(error: 'no data for ${_stallLimit.inSeconds} s');
-      });
-    }
+    // While a flush waits, the player's buffer is full: that is not a stall.
+    stall = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (flushing || idle.elapsed < _stallLimit) return;
+      sub.cancel();
+      finish(error: 'no data for ${_stallLimit.inSeconds} s');
+    });
 
     sub = from.listen(
       (data) {
@@ -398,6 +403,7 @@ class StreamProxy extends GetxService {
           return;
         }
         got += data.length;
+        idle.reset();
         try {
           to.add(data);
         } catch (_) {
@@ -405,11 +411,16 @@ class StreamProxy extends GetxService {
           finish(clientGone: true);
           return;
         }
-        stall?.cancel();
+        // Waiting for the player after every network packet halved throughput (measured).
+        unflushed += data.length;
+        if (unflushed < _flushEvery) return;
+        unflushed = 0;
+        flushing = true;
         sub.pause();
         to.flush().then((_) {
           if (done.isCompleted) return;
-          watch();
+          flushing = false;
+          idle.reset();
           sub.resume();
         }, onError: (Object _) {
           sub.cancel();
@@ -423,12 +434,12 @@ class StreamProxy extends GetxService {
       onDone: finish,
       cancelOnError: true,
     );
-    watch();
     return done.future;
   }
 
   @override
   void onClose() {
+    if (YoutubeProvider.pooledClient == _clientFor) YoutubeProvider.pooledClient = null;
     _server?.close(force: true);
     for (final c in _clients.values) {
       c.close(force: true);

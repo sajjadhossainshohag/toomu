@@ -5,6 +5,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../../../../core/theme/color_constants.dart';
 import '../../../../core/theme/design_metrics.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../widgets/press_start.dart';
 import '../../../../widgets/round_icon_button.dart';
 import '../../../../widgets/track_artwork.dart';
 
@@ -13,6 +14,7 @@ class VideoCard extends StatelessWidget {
     required this.video,
     required this.onTap,
     this.onWatch,
+    this.onPressStart,
     this.watchLoading = false,
     super.key,
   });
@@ -24,6 +26,7 @@ class VideoCard extends StatelessWidget {
 
   /// ▶ button: watch in the app's player (no ads).
   final VoidCallback? onWatch;
+  final VoidCallback? onPressStart;
   final bool watchLoading;
 
   @override
@@ -32,7 +35,7 @@ class VideoCard extends StatelessWidget {
     final bool dark = context.isDark;
     final Color ink = ColorConstants.textOn(dark);
 
-    return GestureDetector(
+    final card = GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
@@ -152,5 +155,6 @@ class VideoCard extends StatelessWidget {
         ),
       ),
     );
+    return onPressStart == null ? card : PressStart(onStart: onPressStart!, child: card);
   }
 }

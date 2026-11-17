@@ -48,7 +48,7 @@ class _RangeIgnored implements Exception {
   String toString() => "The server didn't send the requested part (HTTP $status). The link may have expired.";
 }
 
-typedef _RangeRequest =
+typedef RangeRequest =
     ({Uri url, Map<String, String> headers}) Function(int from, int to);
 
 /// 1DM/Snaptube-style download engine.
@@ -97,6 +97,7 @@ class DownloadService extends GetxService {
   late Directory _videoDir;
   late Directory _audioDir;
   late Directory _filesDir;
+  String _workRoot = '';
 
   /// Progress notification (native DownloadProgressService).
   static const _notify = MethodChannel('toomu/download_notify');
@@ -108,6 +109,16 @@ class DownloadService extends GetxService {
     _videoDir = await Directory('${root.path}/Video').create(recursive: true);
     _audioDir = await Directory('${root.path}/Audio').create(recursive: true);
     _filesDir = await Directory('${root.path}/Files').create(recursive: true);
+    if (Platform.isAndroid) {
+      // Same storage as the finished files: yt-dlp's last step is then a rename, not a full copy.
+      try {
+        final work = await Directory('${root.path}/.work').create(recursive: true);
+        await File('${work.path}/.nomedia').create();
+        _workRoot = work.path;
+      } catch (e) {
+        debugPrint('[Download] work folder stays in the app cache: $e');
+      }
+    }
 
     final saved = _repo.load();
     tasks.assignAll(saved);
@@ -443,7 +454,7 @@ class DownloadService extends GetxService {
   Future<int> cleanTemporaryFiles() {
     final owned = <String>{for (final t in tasks) ..._tempPathsOf(t)};
     final dirs = [_videoDir, _audioDir, _filesDir, _videoDir.parent].map((d) => d.path).toList();
-    final work = YtDlpService.to.workRoot;
+    final works = [_workRoot, YtDlpService.to.workRoot].where((w) => w.isNotEmpty).toList();
     return Isolate.run(() {
       bool isTemp(String name) =>
           name.endsWith('.part') ||
@@ -458,7 +469,9 @@ class DownloadService extends GetxService {
           for (final e in list(dir))
             if (isTemp(e.uri.pathSegments.where((s) => s.isNotEmpty).last)) e.path,
         // yt-dlp work folders of tasks that no longer exist.
-        if (work.isNotEmpty) ...list(work).map((e) => e.path),
+        for (final work in works)
+          for (final e in list(work))
+            if (!e.path.endsWith('/.nomedia')) e.path,
       ].where((p) => !owned.contains(p));
       return stale.fold<int>(0, (freed, p) => freed + _deleteSync(p));
     });
@@ -1261,9 +1274,15 @@ class DownloadService extends GetxService {
     return ['--merge-output-format', t.extension];
   }
 
-  String _workDirOf(DownloadTask t) {
-    final root = YtDlpService.to.workRoot;
-    return root.isEmpty ? '' : '$root/${t.id}';
+  String _workDirOf(DownloadTask t) => workDirFor(t.id, root: _workRoot, legacyRoot: YtDlpService.to.workRoot);
+
+  @visibleForTesting
+  static String workDirFor(String id, {required String root, required String legacyRoot}) {
+    final old = legacyRoot.isEmpty ? '' : '$legacyRoot/$id';
+    if (root.isEmpty) return old;
+    final dir = '$root/$id';
+    // Paused downloads from before the move resume where their data is.
+    return old.isNotEmpty && !Directory(dir).existsSync() && Directory(old).existsSync() ? old : dir;
   }
 
   List<String> _tempPathsOf(DownloadTask t) => [
@@ -1356,16 +1375,16 @@ class DownloadService extends GetxService {
     required String partPath,
     required CancelToken token,
     required void Function(int) onBytes,
-    required _RangeRequest request,
+    required RangeRequest request,
     bool rangeSupported = true,
   }) async {
     final part = File(partPath);
-    if (total > 0 && part.existsSync() && part.lengthSync() == total) {
+    final chunksDir = Directory(DownloadTask.chunksDirOf(partPath));
+    if (partComplete(partPath, total)) {
       onBytes(total);
       return;
     }
     final connections = SettingsService.to.connectionsPerDownload.value;
-    final chunksDir = Directory(DownloadTask.chunksDirOf(partPath));
     final startedSequential =
         part.existsSync() && part.lengthSync() > 0 && !chunksDir.existsSync();
 
@@ -1375,7 +1394,7 @@ class DownloadService extends GetxService {
     if (connections <= 1 || total <= _chunk || startedSequential) {
       return _fetchSequential(total, partPath, request, token, onBytes);
     }
-    return _fetchParallel(
+    return fetchParallel(
       total,
       partPath,
       chunksDir,
@@ -1389,7 +1408,7 @@ class DownloadService extends GetxService {
   /// Server without range support: one plain GET, restarting from zero.
   Future<void> _fetchWhole(
     String partPath,
-    _RangeRequest request,
+    RangeRequest request,
     CancelToken token,
     void Function(int) onBytes,
     int total,
@@ -1422,7 +1441,7 @@ class DownloadService extends GetxService {
   Future<void> _fetchSequential(
     int total,
     String partPath,
-    _RangeRequest request,
+    RangeRequest request,
     CancelToken token,
     void Function(int) onBytes,
   ) async {
@@ -1466,47 +1485,122 @@ class DownloadService extends GetxService {
     }
   }
 
-  Future<void> _fetchParallel(
+  static const _journalName = 'written.json';
+
+  @visibleForTesting
+  static bool partComplete(String partPath, int total) {
+    final part = File(partPath);
+    // A part file with a journal has its full length as soon as the last piece lands, holes and all.
+    return total > 0 &&
+        part.existsSync() &&
+        part.lengthSync() == total &&
+        !Directory(DownloadTask.chunksDirOf(partPath)).existsSync();
+  }
+
+  static List<int>? _readJournal(File journal, int total, int count) {
+    try {
+      final j = jsonDecode(journal.readAsStringSync()) as Map<String, dynamic>;
+      final written = (j['written'] as List).cast<int>();
+      if (j['total'] != total || j['chunk'] != _chunk || written.length != count) return null;
+      return written;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @visibleForTesting
+  static int partBytesOnDisk(String partPath) {
+    final chunks = DownloadTask.chunksDirOf(partPath);
+    try {
+      final j = jsonDecode(File('$chunks/$_journalName').readAsStringSync()) as Map<String, dynamic>;
+      return (j['written'] as List).cast<int>().fold(0, (s, n) => s + n);
+    } catch (_) {
+      return _sizeOf(partPath) + _sizeOf(chunks);
+    }
+  }
+
+  @visibleForTesting
+  Future<void> fetchParallel(
     int total,
     String partPath,
     Directory chunksDir,
     int connections,
-    _RangeRequest request,
+    RangeRequest request,
     CancelToken token,
     void Function(int) onBytes,
   ) async {
     await chunksDir.create(recursive: true);
     const size = _chunk;
     final count = (total + size - 1) ~/ size;
-    // Tails split off in an interrupted run; the chunk they came from
-    // fetches those bytes again.
-    for (final f in chunksDir.listSync().whereType<File>()) {
-      if (f.uri.pathSegments.last.contains('.')) await f.delete();
-    }
+    final part = File(partPath);
+    final journal = File('${chunksDir.path}/$_journalName');
+    final written = _readJournal(journal, total, count) ?? List.filled(count, 0);
 
     final pieces = <_Piece>[];
-    var done = 0;
     for (var i = 0; i < count; i++) {
       final start = i * size;
       final end = start + size > total ? total - 1 : start + size - 1;
-      final f = File('${chunksDir.path}/$i');
-      var have = f.existsSync() ? f.lengthSync() : 0;
-      if (have > end - start + 1) {
-        await f.delete();
-        have = 0;
-      }
-      pieces.add(_Piece(f, start, end, have));
-      done += have;
+      pieces.add(_Piece(start, end, written[i].clamp(0, end - start + 1), index: i));
     }
+
+    Future<void> saveJournal() async {
+      final tmp = File('${journal.path}.tmp');
+      await tmp.writeAsString(jsonEncode({
+        'total': total,
+        'chunk': size,
+        'written': [for (final p in pieces.where((p) => p.index != null)) p.saved],
+      }));
+      await tmp.rename(journal.path);
+    }
+
+    // Pieces saved by an older version, one file each: moved into the part file once.
+    final legacy = chunksDir.listSync().whereType<File>().where((f) {
+      final name = f.uri.pathSegments.last;
+      return name != _journalName && !name.endsWith('.tmp');
+    }).toList();
+    if (legacy.isNotEmpty) {
+      final raf = await part.open(mode: FileMode.append);
+      try {
+        for (final f in legacy) {
+          final i = int.tryParse(f.uri.pathSegments.last);
+          if (i == null || i >= count) continue;
+          final p = pieces[i];
+          final have = f.lengthSync().clamp(0, p.end - p.start + 1);
+          if (have <= p.saved) continue;
+          await raf.setPosition(p.start);
+          await for (final data in f.openRead(0, have)) {
+            await raf.writeFrom(data);
+          }
+          p.written = p.saved = have;
+        }
+      } finally {
+        await raf.close();
+      }
+      await saveJournal();
+      for (final f in legacy) {
+        await f.delete();
+      }
+    } else if (!journal.existsSync()) {
+      await saveJournal();
+    }
+
+    var done = pieces.fold(0, (s, p) => s + p.saved);
     onBytes(done);
 
     final pending = Queue<_Piece>.of(pieces.where((p) => !p.complete));
     final active = <_Piece>{};
-    var splits = 0;
+    // Idle connections wake when a piece ends instead of polling: the file is ready right after the last byte.
+    var pieceEnded = Completer<void>();
 
     // Lets a failing worker stop its siblings without looking like a pause.
     final local = CancelToken();
     unawaited(token.whenCancel.then((e) => local.cancel(e.error)));
+
+    var saving = Future<void>.value();
+    void save() => saving = saving.then((_) => saveJournal()).catchError((Object e) {
+          debugPrint('[Download] progress not saved: $e');
+        });
+    final saver = Timer.periodic(const Duration(seconds: 2), (_) => save());
 
     _Piece? steal() {
       // End game: an idle connection takes the second half of the piece with
@@ -1517,7 +1611,7 @@ class DownloadService extends GetxService {
       }
       if (most == null || most.remaining < _minSteal) return null;
       final mid = most.start + most.written + most.remaining ~/ 2;
-      final tail = _Piece(File('${most.file.path}.${++splits}'), mid, most.end, 0);
+      final tail = _Piece(mid, most.end, 0);
       most.end = mid - 1;
       pieces.add(tail);
       return tail;
@@ -1525,7 +1619,7 @@ class DownloadService extends GetxService {
 
     Future<void> fetchPiece(_Piece p) async {
       active.add(p);
-      final raf = await p.file.open(mode: FileMode.append);
+      final raf = await part.open(mode: FileMode.append);
       try {
         await _withRetries(() async {
           if (p.complete) return;
@@ -1539,6 +1633,7 @@ class DownloadService extends GetxService {
             ),
           );
           if (response.statusCode != 206 && p.start + p.written > 0) throw _RangeIgnored(response.statusCode);
+          await raf.setPosition(p.start + p.written);
           await for (final chunk in response.data!.stream) {
             final room = p.remaining; // shrinks when a steal takes the tail
             if (room <= 0) break;
@@ -1547,6 +1642,8 @@ class DownloadService extends GetxService {
             p.written += bytes.length;
             done += bytes.length;
             await raf.writeFrom(bytes);
+            // Only bytes already written go into the journal: a kill then never skips missing ones.
+            p.saved = p.written;
             onBytes(done);
             if (p.complete) break;
           }
@@ -1554,6 +1651,9 @@ class DownloadService extends GetxService {
       } finally {
         active.remove(p);
         await raf.close();
+        final ended = pieceEnded;
+        pieceEnded = Completer<void>();
+        ended.complete();
       }
       if (!p.complete) throw StateError('Piece at ${p.start} ended early.');
     }
@@ -1567,7 +1667,7 @@ class DownloadService extends GetxService {
         } else if (active.isEmpty) {
           return;
         } else {
-          await Future<void>.delayed(const Duration(seconds: 1));
+          await Future.any([pieceEnded.future, Future<void>.delayed(const Duration(seconds: 1))]);
         }
       }
     }
@@ -1580,17 +1680,19 @@ class DownloadService extends GetxService {
     } catch (_) {
       if (!local.isCancelled) local.cancel('sibling failed');
       rethrow;
+    } finally {
+      saver.cancel();
+      save();
+      await saving;
     }
     _checkStopped(token);
 
-    pieces.sort((a, b) => a.start.compareTo(b.start));
-    final sink = File(partPath).openWrite();
-    try {
-      for (final p in pieces) {
-        await sink.addStream(p.file.openRead(0, p.end - p.start + 1));
-      }
-    } finally {
-      await sink.close();
+    final length = part.lengthSync();
+    if (length < total) throw StateError('Download ended early ($length of $total bytes).');
+    if (length > total) {
+      final raf = await part.open(mode: FileMode.append);
+      await raf.truncate(total);
+      await raf.close();
     }
     await chunksDir.delete(recursive: true);
     onBytes(total);
@@ -1636,7 +1738,11 @@ class DownloadService extends GetxService {
     final work = _workDirOf(t);
     final paths = t.source != DownloadSource.direct
         ? [if (work.isNotEmpty) work]
-        : [t.partPath, DownloadTask.chunksDirOf(t.partPath)];
+        : const <String>[];
+    if (t.source == DownloadSource.direct) {
+      final part = t.partPath;
+      return Isolate.run(() => partBytesOnDisk(part));
+    }
     return Isolate.run(() => paths.fold<int>(0, (s, p) => s + _sizeOf(p)));
   }
 
@@ -1834,12 +1940,14 @@ class YtDlpProgress {
 }
 
 class _Piece {
-  _Piece(this.file, this.start, this.end, this.written);
+  _Piece(this.start, this.end, this.written, {this.index}) : saved = written;
 
-  final File file;
   final int start;
   int end; // inclusive; lowered when another connection takes the tail
+
+  final int? index;
   int written;
+  int saved;
 
   int get remaining => end - start - written + 1;
   bool get complete => remaining <= 0;

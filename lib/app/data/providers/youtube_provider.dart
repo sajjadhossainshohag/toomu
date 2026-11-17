@@ -253,8 +253,8 @@ class YoutubeProvider {
         if (test == null) continue;
         // A link that serves the end of its file is a whole-file link
         // (Grayjay's check); one that only serves the start is not.
-        final full = await _serves(test, headers, tail: true);
-        if (!full && !await _serves(test, headers)) {
+        final full = await serves(test, headers, tail: true);
+        if (!full && !await serves(test, headers)) {
           debugPrint('[YouTube] fast links from $name refused');
           continue;
         }
@@ -274,11 +274,16 @@ class YoutubeProvider {
 
   /// Whether YouTube serves [url]'s first byte — or with [tail], its last
   /// bytes — asked for the way the stream proxy asks (`range=` parameter).
-  static Future<bool> _serves(String url, Map<String, String> headers, {bool tail = false}) async {
+  static HttpClient Function(Uri url)? pooledClient;
+
+  @visibleForTesting
+  static Future<bool> serves(String url, Map<String, String> headers, {bool tail = false}) async {
     final length = int.tryParse(Uri.parse(url).queryParameters['clen'] ?? '');
     if (tail && (length == null || length < 1024)) return false;
     final range = tail ? '${length! - 512}-${length - 1}' : '0-0';
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+    // The stream proxy's pool: playback reuses this connection, and it has the link's IP version.
+    final pooled = pooledClient?.call(Uri.parse(url));
+    final client = pooled ?? (HttpClient()..connectionTimeout = const Duration(seconds: 3));
     try {
       final req = await client.getUrl(Uri.parse('$url&range=$range')).timeout(const Duration(seconds: 3));
       headers.forEach(req.headers.set);
@@ -288,7 +293,7 @@ class YoutubeProvider {
     } catch (_) {
       return false;
     } finally {
-      client.close(force: true);
+      if (pooled == null) client.close(force: true);
     }
   }
 

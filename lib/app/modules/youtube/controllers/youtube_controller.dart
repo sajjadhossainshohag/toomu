@@ -684,6 +684,8 @@ class YoutubeController extends GetxController {
   /// a spinner while the streams are looked up.
   final watchingId = RxnString();
 
+  void prefetch(Video video) => _yt.fastLinks(video.id.value, duration: video.duration).ignore();
+
   Future<void> watchFromCard(Video video) async {
     if (watchingId.value != null) return; // one at a time
     watchingId.value = video.id.value;

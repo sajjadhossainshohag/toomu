@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:toomu/app/data/models/yt_info.dart';
+import 'package:toomu/app/data/providers/youtube_provider.dart';
 import 'package:toomu/app/services/stream_proxy.dart';
 
 /// A stand-in for YouTube's media servers with their measured rules: only
@@ -17,6 +19,8 @@ class FakeYoutube {
   late HttpServer server;
   int requests = 0;
   bool dropped = false;
+  Socket? held;
+  final connections = <int>{};
 
   static int byteAt(int i) => (i * 31 + 7) & 0xff;
 
@@ -24,6 +28,7 @@ class FakeYoutube {
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((req) async {
       requests++;
+      connections.add(req.connectionInfo!.remotePort);
       final q = req.uri.queryParameters;
       final res = req.response;
       final m = RegExp(r'^(\d+)-(\d+)$').firstMatch(q['range'] ?? '');
@@ -49,6 +54,13 @@ class FakeYoutube {
       }
       res.contentLength = to - from + 1;
       final bytes = [for (var i = from; i <= to; i++) byteAt(i)];
+      if (held == null && q['kind'] == 'hang' && bytes.length > 4096) {
+        // Half the piece, then the connection stays open with nothing more.
+        final socket = held = await res.detachSocket();
+        socket.add(bytes.sublist(0, bytes.length ~/ 2));
+        await socket.flush();
+        return;
+      }
       if (!dropped && q['kind'] == 'full' && bytes.length > 4096) {
         // Half the piece, then the connection breaks.
         dropped = true;
@@ -115,6 +127,7 @@ void main() {
 
   tearDown(() async {
     proxy.onClose();
+    yt.held?.destroy();
     await yt.server.close(force: true);
   });
 
@@ -136,6 +149,54 @@ void main() {
     expect(body.length, length);
     expect(matches(body, 0), isTrue);
     expect(yt.dropped, isTrue, reason: 'the dropped piece was asked for again');
+  });
+
+  test('a connection that goes silent mid-piece is asked again and the bytes stay exact', () async {
+    lookupDone.complete();
+    final local = proxy.wrap(yt.url('hang'), videoId: 'abc');
+    final (status, body, _) = await fetch(local, range: 'bytes=0-');
+    expect(status, 206);
+    expect(body.length, length);
+    expect(matches(body, 0), isTrue);
+    expect(yt.held, isNotNull, reason: 'the silent connection happened');
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  test('a player that stops reading for longer than the stall limit is not a stall', () async {
+    final big = FakeYoutube(40 << 20, freeBytes: 0);
+    await big.start();
+    addTearDown(() => big.server.close(force: true));
+    final local = proxy.wrap(big.url('ok'), videoId: 'big');
+    final client = HttpClient();
+    addTearDown(() => client.close(force: true));
+    final res = await (await client.getUrl(Uri.parse(local))).close();
+    final body = BytesBuilder(copy: false);
+    late StreamSubscription<List<int>> sub;
+    final done = Completer<void>();
+    var paused = false;
+    sub = res.listen((d) {
+      body.add(d);
+      if (!paused && body.length > 1 << 20) {
+        paused = true;
+        sub.pause();
+        Timer(const Duration(seconds: 15), sub.resume);
+      }
+    }, onDone: done.complete, onError: done.completeError);
+    await done.future;
+    final bytes = body.takeBytes();
+    expect(bytes.length, 40 << 20);
+    expect(matches(bytes, 0), isTrue);
+    // 1 + 2 + 4 + 8 + 8 + 8 + 8 + 1 MB: a stall would have asked again.
+    expect(big.requests, 8);
+  }, timeout: const Timeout(Duration(seconds: 90)));
+
+  test('playback reuses the connection of the link check before it', () async {
+    lookupDone.complete();
+    final link = yt.url('ok');
+    expect(await YoutubeProvider.serves(link, const {}), isTrue);
+    final (status, body, _) = await fetch(proxy.wrap(link, videoId: 'abc'), range: 'bytes=0-99');
+    expect(status, 206);
+    expect(matches(body, 0), isTrue);
+    expect(yt.connections, hasLength(1));
   });
 
   test('serves exact ranges, suffix ranges and refuses ranges past the end', () async {
