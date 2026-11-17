@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,6 +22,7 @@ import '../../../services/tiktok_service.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../../services/youtube_account_service.dart';
 import '../../../data/providers/youtube/account_feed.dart';
+import '../../../data/providers/youtube/feed_mix.dart';
 import '../../settings/views/youtube_sign_in_page.dart';
 import '../../../data/models/youtube_stream.dart';
 import '../../../routes/app_pages.dart';
@@ -40,15 +42,17 @@ import '../../../widgets/app_dialog.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/app_snackbar.dart';
 
-/// A home-feed category: a search query (signed out — YouTube has no
-/// public "trending" API), or one of the signed-in account's own feeds.
+/// A home-feed category: searches (signed out — YouTube has no public
+/// "trending" API), or one of the signed-in account's own feeds.
 class FeedCategory {
-  const FeedCategory(this.label, this.query, this.icon, {this.load});
+  const FeedCategory(this.label, this.queries, this.icon, {this.load});
 
   final String label;
 
-  /// null = personalised ("For you"): built from search history.
-  final String? query;
+  /// Searches this tab mixes, a few picked at random per load. Empty =
+  /// "For you": a random mix of every tab's searches, more topics and
+  /// the user's recent searches (see [FeedMix]).
+  final List<String> queries;
   final IconData icon;
 
   /// Signed in: loads the account's feed instead of searching.
@@ -56,7 +60,24 @@ class FeedCategory {
 }
 
 class YoutubeController extends GetxController {
+  /// [random], [search] and [account] are for tests (deterministic picks,
+  /// no network).
+  YoutubeController({
+    Random? random,
+    Future<FeedPage> Function(String query)? search,
+    AccountFeed? account,
+  }) : _random = random ?? Random(),
+       _searchOverride = search,
+       _accountOverride = account;
+
+  final Random _random;
+  final Future<FeedPage> Function(String query)? _searchOverride;
+  final AccountFeed? _accountOverride;
+
   final YoutubeProvider _yt = YoutubeProvider();
+
+  Future<FeedPage> _search(String query) =>
+      _searchOverride?.call(query) ?? _yt.search(query);
   final _storage = StorageService.to;
 
   final searchText = TextEditingController();
@@ -73,22 +94,50 @@ class YoutubeController extends GetxController {
 
   // ---- Home feed ---------------------------------------------------------
   static const _builtInCategories = <FeedCategory>[
-    FeedCategory('For you', null, Icons.auto_awesome_rounded),
-    FeedCategory('Music', 'new music video 2026', Icons.music_note_rounded),
-    FeedCategory(
-      'Trending',
+    FeedCategory('For you', [], Icons.auto_awesome_rounded),
+    FeedCategory('Music', [
+      'new music video',
+      'official music video',
+      'live music performance',
+      'acoustic cover songs',
+      'music video premiere this week',
+    ], Icons.music_note_rounded),
+    FeedCategory('Trending', [
       'trending videos today',
-      Icons.local_fire_department_rounded,
-    ),
-    FeedCategory('Gaming', 'gaming highlights', Icons.sports_esports_rounded),
-    FeedCategory('News', 'news today', Icons.newspaper_rounded),
-    FeedCategory('Sports', 'sports highlights', Icons.sports_soccer_rounded),
-    FeedCategory('Podcasts', 'podcast full episode', Icons.podcasts_rounded),
-    FeedCategory(
-      'Comedy',
+      'viral videos this week',
+      'most viewed videos this week',
+      'new videos today',
+    ], Icons.local_fire_department_rounded),
+    FeedCategory('Gaming', [
+      'gaming highlights',
+      'new game trailers',
+      'gameplay walkthrough',
+      'funny gaming moments',
+    ], Icons.sports_esports_rounded),
+    FeedCategory('News', [
+      'news today',
+      'world news this week',
+      'tech news',
+      'business news today',
+    ], Icons.newspaper_rounded),
+    FeedCategory('Sports', [
+      'sports highlights',
+      'football highlights',
+      'cricket highlights',
+      'basketball highlights',
+    ], Icons.sports_soccer_rounded),
+    FeedCategory('Podcasts', [
+      'podcast full episode',
+      'interview podcast',
+      'comedy podcast',
+      'science podcast',
+    ], Icons.podcasts_rounded),
+    FeedCategory('Comedy', [
       'funny videos',
-      Icons.sentiment_very_satisfied_rounded,
-    ),
+      'stand up comedy',
+      'comedy sketches',
+      'try not to laugh',
+    ], Icons.sentiment_very_satisfied_rounded),
   ];
 
   /// Signed out: "For you" first; the rest from remote config when
@@ -99,46 +148,81 @@ class YoutubeController extends GetxController {
     return [
       _builtInCategories.first,
       for (final c in remote)
-        FeedCategory(c.label, c.query, Icons.label_rounded),
+        FeedCategory(c.label, c.queries, Icons.label_rounded),
     ];
+  }
+
+  /// How many of a tab's searches one load mixes.
+  static const _queriesPerCategory = 2;
+
+  /// The searches of one feed load: a few of the tab's own, or for
+  /// "For you" a fresh random mix (not the one shown last time).
+  List<String> _feedQueries(FeedCategory? category) {
+    final own = category?.queries ?? const <String>[];
+    if (own.isNotEmpty) {
+      return ([...own]..shuffle(_random)).take(_queriesPerCategory).toList();
+    }
+    final topics = FeedMix.pickTopics(
+      pool: {
+        for (final c in _searchCategories) ...c.queries,
+        for (final c in _builtInCategories) ...c.queries,
+        ...FeedMix.extraTopics,
+      },
+      history: history,
+      avoid: (_storage.read<List>(AppConstants.kFeedTopics) ?? const [])
+          .whereType<String>(),
+      random: _random,
+    );
+    unawaited(_storage.write(AppConstants.kFeedTopics, topics));
+    return topics;
   }
 
   /// The feed's categories: the search-based ones, or — signed in to
   /// YouTube — Home, Subscriptions and the account's own categories.
   final categories = <FeedCategory>[].obs;
 
-  late final AccountFeed _account = AccountFeed(
-    YoutubeAccountService.to.cookies,
-  );
+  late final AccountFeed _account =
+      _accountOverride ?? AccountFeed(YoutubeAccountService.to.cookies);
 
   List<FeedCategory> get _accountCategories => [
-    FeedCategory('Home', null, Icons.home_rounded, load: _accountHome),
+    FeedCategory('Home', const [], Icons.home_rounded, load: _accountHome),
     FeedCategory(
       'Subscriptions',
-      null,
+      const [],
       Icons.subscriptions_rounded,
       load: _account.subscriptions,
     ),
   ];
 
   /// The account's Home; its first answer also brings the account's
-  /// categories. No recommendations (watch history off) → back to the
-  /// search-based feed.
+  /// categories. No recommendations (watch history off) or failing
+  /// (offline, expired sign-in, YouTube changed its page) → the varied
+  /// search-based feed instead; pull to refresh tries the account again.
   Future<FeedPage?> _accountHome() async {
-    final home = await _account.home();
+    AccountFeedPage? home;
+    Object? failure;
+    try {
+      home = await _account.home();
+      if (home == null) {
+        debugPrint('[YouTube] account home is empty (watch history off?); using the regular feed');
+      }
+    } catch (e) {
+      failure = e;
+      debugPrint('[YouTube] account home failed ($e); using the regular feed');
+    }
     if (home == null) {
-      debugPrint(
-        '[YouTube] account home is empty (watch history off?); using the regular feed',
-      );
-      _useSearchFeed();
+      // Say why their own feed isn't there, and what helps.
+      feedNotice.value = accountHomeNotice(failure);
+      await _useSearchFeed();
       return null;
     }
+    feedNotice.value = null;
     if (home.chips.isNotEmpty && categories.length <= 2) {
       categories.addAll([
         for (final c in home.chips)
           FeedCategory(
             c.label,
-            null,
+            const [],
             Icons.label_rounded,
             load: () => _account.chip(c),
           ),
@@ -149,20 +233,35 @@ class YoutubeController extends GetxController {
 
   bool _searchFallback = false;
 
-  void _useSearchFeed() {
+  /// Signed in but shown the general feed: why, and what to do.
+  final feedNotice = Rxn<HomeFeedNotice>();
+
+  /// The notice's button: try the account's home again, or sign in again
+  /// (the saved session expired; sign-in stays "on", so nothing else
+  /// would start the feed over).
+  Future<void> onFeedNotice() async {
+    final notice = feedNotice.value;
+    if (notice == null) return;
+    if (notice.action == HomeFeedAction.signIn && !await YoutubeSignInPage.open()) return;
+    feedNotice.value = null;
+    _searchFallback = false;
+    await _resetFeed();
+  }
+
+  Future<void> _useSearchFeed() {
     _searchFallback = true;
-    _resetFeed();
+    return _resetFeed();
   }
 
   /// Signed in/out: start the feed over with the matching categories.
-  void _resetFeed() {
+  Future<void> _resetFeed() {
     _feedCache.clear();
     _feedPage = null;
     feed.clear();
     feedIndex.value = 0;
     final account = YoutubeAccountService.to.signedIn.value && !_searchFallback;
     categories.assignAll(account ? _accountCategories : _searchCategories);
-    loadFeed();
+    return loadFeed();
   }
 
   final feedIndex = 0.obs;
@@ -176,7 +275,7 @@ class YoutubeController extends GetxController {
 
   String get _feedStoreKey {
     final first = categories.isEmpty ? null : categories.first;
-    return first?.load != null ? 'account:${first!.label}' : 'search:${_feedQuery(0)}';
+    return first?.load != null ? 'account:${first!.label}' : 'search:${first?.label}';
   }
 
   Worker? _signInWatch;
@@ -201,7 +300,8 @@ class YoutubeController extends GetxController {
     );
     _signInWatch = ever(account.signedIn, (_) {
       _searchFallback = false;
-      _resetFeed();
+      feedNotice.value = null;
+      unawaited(_resetFeed());
     });
     history.assignAll(
       (_storage.read<List>(AppConstants.kSearchHistory) ?? const [])
@@ -214,7 +314,9 @@ class YoutubeController extends GetxController {
     super.onReady();
     final saved = _feedStore.load(_feedStoreKey);
     if (saved != null && feed.isEmpty) feed.assignAll(saved);
-    loadFeed(refresh: saved != null);
+    // The saved feed stays where it is (the user may already be reading or
+    // tapping it); the fresh mix goes below it.
+    loadFeed(refresh: saved != null, keepShown: saved != null);
   }
 
   @override
@@ -226,13 +328,6 @@ class YoutubeController extends GetxController {
   }
 
   // ------------------------------------------------------------------- feed
-
-  String _feedQuery(int index) {
-    final q = index < categories.length ? categories[index].query : null;
-    if (q != null) return q;
-    // "For you": lean on what the user searched recently.
-    return history.isNotEmpty ? history.first : 'popular music videos';
-  }
 
   void selectCategory(int index) {
     if (index == feedIndex.value && feed.isNotEmpty) return;
@@ -247,8 +342,18 @@ class YoutubeController extends GetxController {
     }
   }
 
-  Future<void> loadFeed({bool refresh = false}) async {
+  /// [keepShown]: add the new videos after the ones on screen instead of
+  /// replacing them (the launch, over the saved feed).
+  Future<void> loadFeed({bool refresh = false, bool keepShown = false}) async {
     final index = feedIndex.value;
+    // Signed in but showing the fallback: refreshing tries the account again.
+    if (refresh &&
+        index == 0 &&
+        _searchFallback &&
+        YoutubeAccountService.to.signedIn.value) {
+      _searchFallback = false;
+      return _resetFeed();
+    }
     if (refresh) _feedCache.remove(index);
     feedLoading.value = !refresh || feed.isEmpty;
     feedError.value = null;
@@ -257,16 +362,22 @@ class YoutubeController extends GetxController {
       final load = category?.load;
       final FeedPage? page = load != null
           ? await load()
-          : await _yt.search(_feedQuery(index));
+          : await MixedFeedPage.load(_feedQueries(category), _search);
       if (page == null ||
           index != feedIndex.value ||
           !identical(category, categories.elementAtOrNull(index))) {
         return; // fell back, or the user switched meanwhile
       }
       _feedPage = page;
-      feed.assignAll(_downloadable(page.videos));
+      final fresh = _downloadable(page.videos).toList();
+      if (keepShown && feed.isNotEmpty) {
+        feed.addAll(_notShown(fresh));
+      } else {
+        feed.assignAll(fresh);
+      }
       _feedCache[index] = (items: feed.toList(), page: page);
-      if (index == 0) unawaited(_feedStore.save(_feedStoreKey, feed));
+      // Next launch opens on this mix, not the one before.
+      if (index == 0) unawaited(_feedStore.save(_feedStoreKey, fresh));
     } catch (e) {
       debugPrint('[YouTube] feed failed: $e');
       if (index == feedIndex.value) feedError.value = ErrorText.of(e);
@@ -288,7 +399,7 @@ class YoutubeController extends GetxController {
       final next = await page.nextPage();
       if (next != null && index == feedIndex.value) {
         _feedPage = next;
-        feed.addAll(_downloadable(next.videos));
+        feed.addAll(_notShown(_downloadable(next.videos)));
         _feedCache[index] = (items: feed.toList(), page: next);
       }
     } catch (_) {
@@ -296,6 +407,13 @@ class YoutubeController extends GetxController {
     } finally {
       feedLoadingMore.value = false;
     }
+  }
+
+  /// [videos] not already in the feed (a page after the saved one at launch
+  /// can bring the same videos again).
+  Iterable<Video> _notShown(Iterable<Video> videos) {
+    final shown = {for (final v in feed) v.id.value};
+    return videos.where((v) => shown.add(v.id.value));
   }
 
   void trimFeedCache() => _feedCache.removeWhere((i, _) => i != feedIndex.value);
@@ -408,7 +526,7 @@ class YoutubeController extends GetxController {
       ..insert(0, q);
     if (history.length > 12) history.removeRange(12, history.length);
     _storage.write(AppConstants.kSearchHistory, history.toList());
-    _feedCache.remove(0); // "For you" follows history
+    _feedCache.remove(0); // "For you" mixes in the history
   }
 
   // ---------------------------------------------------------------- formats

@@ -23,7 +23,10 @@ import 'storage_service.dart';
 ///   "connectionsPerDownload": 4,
 ///   "blocklistUrl": "https://example.com/hosts",
 ///   "sites": [{"name": "YouTube", "url": "https://m.youtube.com/", "icon": "video", "color": "#FF0033"}],
-///   "feedCategories": [{"label": "Music", "query": "new music video"}]
+///   "feedCategories": [
+///     {"label": "Music", "queries": ["new music video", "live performance"]},
+///     {"label": "Gaming", "query": "gaming highlights"}
+///   ]
 /// }
 /// ```
 class RemoteConfigService extends GetxService {
@@ -33,8 +36,9 @@ class RemoteConfigService extends GetxService {
 
   final sites = <SiteShortcut>[...Extractors.defaultSites].obs;
 
-  /// (label, query) pairs; empty = built-in categories.
-  final feedCategories = <({String label, String query})>[].obs;
+  /// Feed tabs and the searches each mixes at random ("queries", or one
+  /// "query"); empty = built-in categories. All of them also feed "For you".
+  final feedCategories = <({String label, List<String> queries})>[].obs;
 
   RemoteConfigService init() {
     final cached = _storage.read<String>(AppConstants.kRemoteConfig);
@@ -90,8 +94,19 @@ class RemoteConfigService extends GetxService {
 
     final cats = json['feedCategories'] as List?;
     if (cats != null) {
-      feedCategories.assignAll(cats.whereType<Map>().map((m) =>
-          (label: '${m['label']}', query: '${m['query']}')));
+      feedCategories.assignAll([
+        for (final m in cats.whereType<Map>())
+          if (_queries(m) case final queries when queries.isNotEmpty)
+            (label: '${m['label']}', queries: queries),
+      ]);
     }
   }
+
+  static List<String> _queries(Map<dynamic, dynamic> category) => [
+        for (final q in [
+          ...(category['queries'] as List? ?? const []),
+          category['query'],
+        ])
+          if (q is String && q.trim().isNotEmpty) q.trim(),
+      ];
 }

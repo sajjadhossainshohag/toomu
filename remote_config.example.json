@@ -9,7 +9,7 @@
     { "name": "Google", "url": "https://www.google.com/", "icon": "search", "color": "#3D63DD" }
   ],
   "feedCategories": [
-    { "label": "Music", "query": "new music video" },
+    { "label": "Music", "queries": ["new music video", "live music performance", "acoustic cover"] },
     { "label": "Trending", "query": "trending videos today" },
     { "label": "Gaming", "query": "gaming highlights" }
   ]

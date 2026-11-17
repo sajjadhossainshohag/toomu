@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 import '../core/theme/color_constants.dart';
 import 'direct_file_extractor.dart';
@@ -26,19 +26,19 @@ abstract class Extractors {
     SiteShortcut(
       name: 'YouTube',
       url: 'https://m.youtube.com/',
-      icon: Icons.smart_display_rounded,
+      icon: Iconsax.video_play_copy,
       color: ColorConstants.siteYoutube,
     ),
     SiteShortcut(
       name: 'YT Music',
       url: 'https://music.youtube.com/',
-      icon: Icons.library_music_rounded,
+      icon: Iconsax.music_copy,
       color: ColorConstants.siteYoutubeMusic,
     ),
     SiteShortcut(
       name: 'Google',
       url: 'https://www.google.com/',
-      icon: Icons.travel_explore_rounded,
+      icon: Iconsax.global_search_copy,
       color: ColorConstants.siteGoogle,
     ),
   ];

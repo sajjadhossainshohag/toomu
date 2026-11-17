@@ -97,14 +97,6 @@ class ColorConstants {
     colors: <Color>[gradientEnd, gradientStart],
   );
 
-  /// Hero / promo cards.
-  static const LinearGradient heroGradient = LinearGradient(
-    begin: Alignment(0.1996, -1.8874),
-    end: Alignment(-0.1996, 1.8874),
-    stops: _sweepStops,
-    colors: <Color>[gradientEnd, gradientStart],
-  );
-
   /// Small square/circle badges and artwork placeholders.
   static const LinearGradient badgeGradient = LinearGradient(
     begin: Alignment(1.04874, -0.94596),

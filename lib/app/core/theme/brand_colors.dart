@@ -32,7 +32,6 @@ class BrandColors extends ThemeExtension<BrandColors> {
       Theme.of(context).extension<BrandColors>() ?? ocean;
 
   LinearGradient get headerGradient => _recolor(ColorConstants.headerGradient);
-  LinearGradient get heroGradient => _recolor(ColorConstants.heroGradient);
   LinearGradient get badgeGradient => _recolor(ColorConstants.badgeGradient);
   LinearGradient get switchGradient => ColorConstants.switchGradient;
   LinearGradient get progressGradient => ColorConstants.progressGradient;

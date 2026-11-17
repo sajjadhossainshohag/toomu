@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// One supported site (Snaptube-style plug-in). The browser asks every
 /// extractor whether it can handle the current page; the first match gets
@@ -36,15 +37,15 @@ class SiteShortcut {
   factory SiteShortcut.fromJson(Map<String, dynamic> json) => SiteShortcut(
         name: json['name'] as String,
         url: json['url'] as String,
-        icon: _icons[json['icon']] ?? Icons.public_rounded,
+        icon: _icons[json['icon']] ?? Iconsax.global_copy,
         color: Color(int.tryParse('${json['color'] ?? ''}'.replaceFirst('#', 'FF'), radix: 16) ??
             0xFF3D63DD),
       );
 
   static const _icons = <String, IconData>{
-    'video': Icons.smart_display_rounded,
-    'music': Icons.library_music_rounded,
-    'search': Icons.travel_explore_rounded,
-    'globe': Icons.public_rounded,
+    'video': Iconsax.video_play_copy,
+    'music': Iconsax.music_copy,
+    'search': Iconsax.global_search_copy,
+    'globe': Iconsax.global_copy,
   };
 }

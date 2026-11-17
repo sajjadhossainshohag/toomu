@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:get/get.dart';
 
 import '../../../../core/theme/brand_colors.dart';
@@ -37,7 +38,7 @@ class QuickAccessRow extends StatelessWidget {
           children: <Widget>[
             Expanded(
               child: _QuickTile(
-                icon: Icons.download_rounded,
+                icon: Iconsax.document_download_copy,
                 tint: ColorConstants.tileDownloads,
                 label: 'Downloads',
                 subtitle: active > 0 ? '$active in progress' : '$saved saved',
@@ -48,7 +49,7 @@ class QuickAccessRow extends StatelessWidget {
             SizedBox(width: 10 * scale),
             Expanded(
               child: _QuickTile(
-                icon: Icons.library_music_rounded,
+                icon: Iconsax.music_copy,
                 tint: ColorConstants.tileAudio,
                 label: 'Music',
                 subtitle: 'Play offline',
@@ -58,7 +59,7 @@ class QuickAccessRow extends StatelessWidget {
             SizedBox(width: 10 * scale),
             Expanded(
               child: _QuickTile(
-                icon: Icons.content_paste_go_rounded,
+                icon: Iconsax.clipboard_import_copy,
                 tint: ColorConstants.tileShare,
                 label: 'Paste link',
                 subtitle: 'From clipboard',
@@ -224,10 +225,11 @@ class SitesRow extends StatelessWidget {
                       onTap: () => Get.toNamed(Routes.browser, arguments: s.url),
                     ),
                   tile(
-                    icon: Icons.public_rounded,
+                    icon: Iconsax.global_copy,
                     color: ColorConstants.tileFolder,
                     label: 'Browser',
-                    onTap: () => Get.toNamed(Routes.browser, arguments: 'https://www.google.com/'),
+                    // Your tabs from last time, or a new-tab page (Chrome).
+                    onTap: () => Get.toNamed(Routes.browser),
                   ),
                 ],
               ),
@@ -288,7 +290,7 @@ class _RecentCard extends StatelessWidget {
     final double scale = context.scale;
     final Color ink = ColorConstants.textOn(context.isDark);
     final bool audio = task.kind == DownloadKind.audio;
-    final IconData icon = audio ? Icons.music_note_rounded : Icons.play_arrow_rounded;
+    final IconData icon = audio ? Iconsax.music : Iconsax.play;
 
     return GestureDetector(
       onTap: () => Get.find<DownloadsController>().open(task),
@@ -407,7 +409,7 @@ class RecentSearchesRow extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Icon(Icons.history_rounded, size: 15 * scale, color: ink.withValues(alpha: 0.5)),
+                        Icon(Iconsax.clock_copy, size: 15 * scale, color: ink.withValues(alpha: 0.5)),
                         SizedBox(width: 6 * scale),
                         Text(
                           q,

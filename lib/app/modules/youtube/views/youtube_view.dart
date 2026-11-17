@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
+
+import '../../../data/providers/youtube/feed_mix.dart';
 
 import '../../../core/theme/brand_colors.dart';
 import '../../../core/theme/color_constants.dart';
@@ -27,16 +30,7 @@ class YoutubeView extends GetView<YoutubeController> {
         AppHeader(
           title: 'Toomu',
           actions: <Widget>[
-            HeaderAction(
-              icon: Icons.public_rounded,
-              tooltip: 'Browse YouTube',
-              onTap: () => Get.toNamed(Routes.browser),
-            ),
-            HeaderAction(
-              icon: Icons.content_paste_rounded,
-              tooltip: 'Paste link',
-              onTap: controller.pasteFromClipboard,
-            ),
+            HeaderAction(icon: Iconsax.global_copy, tooltip: 'Browser', onTap: () => Get.toNamed(Routes.browser)),
           ],
           bottom: AppSearchField(
             hint: 'Search or paste a YouTube link',
@@ -48,13 +42,7 @@ class YoutubeView extends GetView<YoutubeController> {
           ),
         ),
         Expanded(
-          child: TopFade(
-            child: Obx(
-              () => controller.searching.value
-                  ? const _SearchResults()
-                  : const _HomeFeed(),
-            ),
-          ),
+          child: TopFade(child: Obx(() => controller.searching.value ? const _SearchResults() : const _HomeFeed())),
         ),
       ],
     );
@@ -73,12 +61,8 @@ class _HomeFeed extends GetView<YoutubeController> {
     int last() => controller.categories.length - 1;
     // Swipe left/right on the feed to move between categories.
     return SwipeToSwitch(
-      onNext: () => controller.selectCategory(
-        (controller.feedIndex.value + 1).clamp(0, last()),
-      ),
-      onPrevious: () => controller.selectCategory(
-        (controller.feedIndex.value - 1).clamp(0, last()),
-      ),
+      onNext: () => controller.selectCategory((controller.feedIndex.value + 1).clamp(0, last())),
+      onPrevious: () => controller.selectCategory((controller.feedIndex.value - 1).clamp(0, last())),
       child: RefreshIndicator(
         color: BrandColors.of(context).primary,
         onRefresh: () => controller.loadFeed(refresh: true),
@@ -97,19 +81,21 @@ class _HomeFeed extends GetView<YoutubeController> {
               const SliverToBoxAdapter(child: RecentDownloadsStrip()),
               const SliverToBoxAdapter(child: RecentSearchesRow()),
               SliverToBoxAdapter(child: SizedBox(height: 8 * scale)),
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: FeedChipsHeader(scale: scale),
-              ),
+              SliverPersistentHeader(pinned: true, delegate: FeedChipsHeader(scale: scale)),
+              // Signed in but shown the general feed: why, and a way back.
+              Obx(() {
+                final notice = controller.feedNotice.value;
+                if (notice == null || controller.feedIndex.value != 0) {
+                  return const SliverToBoxAdapter(child: SizedBox.shrink());
+                }
+                return SliverToBoxAdapter(
+                  child: FeedNoticeCard(notice: notice, onAction: controller.onFeedNotice),
+                );
+              }),
               Obx(() {
                 if (controller.feedLoading.value) {
                   return SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      16 * scale,
-                      4 * scale,
-                      16 * scale,
-                      24 * scale,
-                    ),
+                    padding: EdgeInsets.fromLTRB(16 * scale, 4 * scale, 16 * scale, 24 * scale),
                     sliver: SliverList.separated(
                       itemCount: 3,
                       separatorBuilder: (_, _) => SizedBox(height: 16 * scale),
@@ -117,13 +103,12 @@ class _HomeFeed extends GetView<YoutubeController> {
                     ),
                   );
                 }
-                if (controller.feedError.value != null &&
-                    controller.feed.isEmpty) {
+                if (controller.feedError.value != null && controller.feed.isEmpty) {
                   return SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.only(top: 24 * scale),
                       child: EmptyState(
-                        icon: Icons.wifi_off_rounded,
+                        icon: Iconsax.cloud_cross_copy,
                         title: "Couldn't load videos",
                         message: controller.feedError.value!,
                         actionLabel: 'Try again',
@@ -134,32 +119,22 @@ class _HomeFeed extends GetView<YoutubeController> {
                 }
                 final items = controller.feed;
                 return SliverPadding(
-                  padding: EdgeInsets.fromLTRB(
-                    16 * scale,
-                    4 * scale,
-                    16 * scale,
-                    24 * scale,
-                  ),
+                  padding: EdgeInsets.fromLTRB(16 * scale, 4 * scale, 16 * scale, 24 * scale),
                   sliver: SliverList.separated(
-                    itemCount:
-                        items.length +
-                        (controller.feedLoadingMore.value ? 1 : 0),
+                    itemCount: items.length + (controller.feedLoadingMore.value ? 1 : 0),
                     separatorBuilder: (_, _) => SizedBox(height: 16 * scale),
                     itemBuilder: (_, i) {
                       if (i >= items.length) {
                         return Padding(
                           padding: EdgeInsets.all(12 * scale),
-                          child: const Center(
-                            child: CircularProgressIndicator(),
-                          ),
+                          child: const Center(child: CircularProgressIndicator()),
                         );
                       }
                       final video = items[i];
                       return Obx(
                         () => VideoCard(
                           video: video,
-                          onTap: () =>
-                              controller.openVideo(video.id.value, known: video),
+                          onTap: () => controller.openVideo(video.id.value, known: video),
                           onWatch: () => controller.watchFromCard(video),
                           onPressStart: () => controller.prefetch(video),
                           watchLoading: controller.watchingId.value == video.id.value,
@@ -202,19 +177,13 @@ class _SearchResults extends GetView<YoutubeController> {
                       children: <InlineSpan>[
                         TextSpan(
                           text: '"${controller.searchQuery.value}"',
-                          style: TextStyle(
-                            color: ink,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: TextStyle(color: ink, fontWeight: FontWeight.w700),
                         ),
                       ],
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14 * scale,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: TextStyle(fontSize: 14 * scale, fontWeight: FontWeight.w500),
                   ),
                 ),
               ),
@@ -231,12 +200,7 @@ class _SearchResults extends GetView<YoutubeController> {
           child: Obx(() {
             if (controller.loading.value) {
               return ListView.separated(
-                padding: EdgeInsets.fromLTRB(
-                  16 * scale,
-                  12 * scale,
-                  16 * scale,
-                  24 * scale,
-                ),
+                padding: EdgeInsets.fromLTRB(16 * scale, 12 * scale, 16 * scale, 24 * scale),
                 itemCount: 3,
                 separatorBuilder: (_, _) => SizedBox(height: 16 * scale),
                 itemBuilder: (_, _) => const VideoSkeleton(),
@@ -244,7 +208,7 @@ class _SearchResults extends GetView<YoutubeController> {
             }
             if (controller.error.value != null) {
               return EmptyState(
-                icon: Icons.wifi_off_rounded,
+                icon: Iconsax.cloud_cross_copy,
                 title: 'Something went wrong',
                 message: controller.error.value!,
                 actionLabel: 'Try again',
@@ -253,7 +217,7 @@ class _SearchResults extends GetView<YoutubeController> {
             }
             if (controller.results.isEmpty) {
               return const EmptyState(
-                icon: Icons.search_off_rounded,
+                icon: Iconsax.search_zoom_out_copy,
                 title: 'No results',
                 message: 'Try a different search or paste a link.',
               );
@@ -266,15 +230,8 @@ class _SearchResults extends GetView<YoutubeController> {
                 return false;
               },
               child: ListView.separated(
-                padding: EdgeInsets.fromLTRB(
-                  16 * scale,
-                  12 * scale,
-                  16 * scale,
-                  24 * scale,
-                ),
-                itemCount:
-                    controller.results.length +
-                    (controller.loadingMore.value ? 1 : 0),
+                padding: EdgeInsets.fromLTRB(16 * scale, 12 * scale, 16 * scale, 24 * scale),
+                itemCount: controller.results.length + (controller.loadingMore.value ? 1 : 0),
                 separatorBuilder: (_, _) => SizedBox(height: 16 * scale),
                 itemBuilder: (_, i) {
                   if (i >= controller.results.length) {
@@ -284,8 +241,7 @@ class _SearchResults extends GetView<YoutubeController> {
                   return Obx(
                     () => VideoCard(
                       video: video,
-                      onTap: () =>
-                          controller.openVideo(video.id.value, known: video),
+                      onTap: () => controller.openVideo(video.id.value, known: video),
                       onWatch: () => controller.watchFromCard(video),
                       onPressStart: () => controller.prefetch(video),
                       watchLoading: controller.watchingId.value == video.id.value,
@@ -297,6 +253,52 @@ class _SearchResults extends GetView<YoutubeController> {
           }),
         ),
       ],
+    );
+  }
+}
+
+/// "Your YouTube sign-in expired. Showing popular videos.  [Sign in]"
+class FeedNoticeCard extends StatelessWidget {
+  const FeedNoticeCard({required this.notice, required this.onAction, super.key});
+
+  final HomeFeedNotice notice;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final double scale = context.scale;
+    final bool dark = context.isDark;
+    final Color ink = ColorConstants.textOn(dark);
+    final Color primary = BrandColors.of(context).primary;
+    final signIn = notice.action == HomeFeedAction.signIn;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16 * scale, 4 * scale, 16 * scale, 8 * scale),
+      child: Container(
+        padding: EdgeInsets.fromLTRB(14 * scale, 10 * scale, 6 * scale, 10 * scale),
+        decoration: BoxDecoration(
+          color: primary.withValues(alpha: dark ? 0.16 : 0.08),
+          borderRadius: BorderRadius.circular(14 * scale),
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(signIn ? Iconsax.lock_copy : Iconsax.info_circle_copy, size: 20 * scale, color: primary),
+            SizedBox(width: 10 * scale),
+            Expanded(
+              child: Text(
+                notice.message,
+                style: TextStyle(fontSize: 13 * scale, height: 1.3, fontWeight: FontWeight.w500, color: ink),
+              ),
+            ),
+            TextButton(
+              onPressed: onAction,
+              child: Text(
+                signIn ? 'Sign in' : 'Retry',
+                style: TextStyle(fontSize: 13.5 * scale, fontWeight: FontWeight.w700, color: primary),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

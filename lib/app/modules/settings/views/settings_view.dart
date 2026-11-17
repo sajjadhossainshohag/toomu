@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:get/get.dart';
 
 import '../../../core/utils/host_os.dart';
@@ -11,7 +12,6 @@ import '../../../services/audio_player_service.dart';
 import '../../../services/update_service.dart';
 import '../../../widgets/app_group.dart';
 import '../../../widgets/app_header.dart';
-import '../../../widgets/gradient_hero_card.dart';
 import '../../../widgets/outline_pill.dart';
 import '../../../widgets/top_fade.dart';
 import '../../player/views/widgets/sleep_timer_sheet.dart';
@@ -33,14 +33,14 @@ class SettingsView extends GetView<SettingsController> {
             actions: <Widget>[
               if (controller.account.signedIn.value && !controller.account.expired.value)
                 HeaderAction(
-                  icon: Icons.account_circle_rounded,
+                  icon: Iconsax.profile_circle_copy,
                   tooltip: 'Google account',
                   onTap: controller.youtubeAccount,
                 )
               else
                 OutlinePill(
                   label: controller.account.expired.value ? 'Sign in again' : 'Sign in',
-                  icon: Icons.login_rounded,
+                  icon: Iconsax.login_copy,
                   compact: true,
                   height: 36,
                   onTap: controller.youtubeAccount,
@@ -54,16 +54,6 @@ class SettingsView extends GetView<SettingsController> {
               () => ListView(
                 padding: EdgeInsets.only(top: 8 * scale, bottom: 24 * scale),
                 children: <Widget>[
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16 * scale),
-                    child: const GradientHeroCard(
-                      icon: Icons.download_for_offline_rounded,
-                      title: 'Download once, play anywhere',
-                      message:
-                          'Your videos and music are saved to your device so they play offline.',
-                    ),
-                  ),
-                  SizedBox(height: 16 * scale),
                   AppGroup(
                     title: 'Appearance',
                     rows: <Widget>[
@@ -178,7 +168,7 @@ class SettingsView extends GetView<SettingsController> {
                       ),
                       ],
                       AppRow(
-                        icon: Icons.account_circle_rounded,
+                        icon: Iconsax.profile_circle_copy,
                         tint: ColorConstants.siteYoutube,
                         label: 'YouTube account',
                         value: controller.account.signedIn.value

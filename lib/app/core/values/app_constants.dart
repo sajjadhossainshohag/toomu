@@ -33,6 +33,9 @@ abstract class AppConstants {
   static const kSearchHistory = 'yt_search_history';
   static const kRemoteConfig = 'remote_config_cache';
   static const kFeedCache = 'home_feed_cache';
+
+  /// Searches the last "For you" feed mixed; the next one picks others.
+  static const kFeedTopics = 'home_feed_topics';
   static const kYtdlpChannel = 'ytdlp_channel';
   static const kBubbleEnabled = 'floating_button_enabled';
   static const kVideoBackgroundPlay = 'video_background_play';

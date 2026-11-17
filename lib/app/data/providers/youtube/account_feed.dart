@@ -87,7 +87,7 @@ class AccountFeed {
       rethrow;
     }
     if (res.statusCode == 401 || res.statusCode == 403) {
-      throw StateError('Your YouTube sign-in has expired. Sign in again in Settings → YouTube account.');
+      throw SignInExpired();
     }
     if (res.statusCode != 200) throw HttpException('YouTube answered ${res.statusCode}');
     // A page is up to ~1 MB of JSON: decoding it here would stall scrolling.
@@ -328,4 +328,10 @@ class AccountFeed {
     final scale = switch (m[2]?.toUpperCase()) { 'K' => 1e3, 'M' => 1e6, 'B' => 1e9, _ => 1.0 };
     return (number * scale).round();
   }
+}
+
+/// YouTube refused the saved sign-in (401/403): it expired or was signed
+/// out elsewhere.
+class SignInExpired extends StateError {
+  SignInExpired() : super('Your YouTube sign-in has expired. Sign in again in Settings → YouTube account.');
 }

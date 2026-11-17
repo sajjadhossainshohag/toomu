@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:toomu/app/data/models/download_task.dart';
 import 'package:toomu/app/data/models/media_format.dart';
 import 'package:toomu/app/data/models/yt_info.dart';
@@ -83,7 +84,7 @@ void main() {
 
   test('SiteShortcut parses remote config entries', () {
     final s = SiteShortcut.fromJson({'name': 'YouTube', 'url': 'https://m.youtube.com/', 'icon': 'video', 'color': '#FF0033'});
-    expect(s.icon, Icons.smart_display_rounded);
+    expect(s.icon, Iconsax.video_play_copy, reason: 'same outline icons as the bottom nav');
     expect(s.color, const Color(0xFFFF0033));
   });
 
