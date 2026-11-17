@@ -31,6 +31,38 @@ abstract class LinkParser {
 
   static bool isYoutubeLink(String text) => youtubeVideoId(text) != null;
 
+  static final _listId = RegExp(r'^[A-Za-z0-9_-]{2,}$');
+  static const _channelPaths = <String>{'channel', 'user', 'c'};
+
+  static String? youtubeCollection(String text) {
+    for (final match in _urlRegex.allMatches(text.trim())) {
+      final link = _collectionFromUrl(match.group(0)!);
+      if (link != null) return link;
+    }
+    return null;
+  }
+
+  static String? _collectionFromUrl(String raw) {
+    var link = raw.replaceFirst(RegExp(r'[)\].,!?]+$'), '');
+    if (!link.toLowerCase().startsWith('http')) link = 'https://$link';
+    final uri = Uri.tryParse(link);
+    if (uri == null || !_ytHosts.contains(uri.host.toLowerCase())) return null;
+    final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (segments.isEmpty) return null;
+    final first = segments.first;
+    final list = uri.queryParameters['list'];
+    if (first == 'playlist' && list != null && _listId.hasMatch(list)) {
+      // Mixes (RD…) never end; Watch later, Liked and Liked music need the user's account.
+      if (list.startsWith('RD') || const {'WL', 'LL', 'LM'}.contains(list)) return null;
+      return 'https://www.youtube.com/playlist?list=$list';
+    }
+    if (first.startsWith('@') && first.length > 1) return 'https://www.youtube.com/$first/videos';
+    if (_channelPaths.contains(first) && segments.length >= 2) {
+      return 'https://www.youtube.com/$first/${segments[1]}/videos';
+    }
+    return null;
+  }
+
   static String? _fromUrl(String raw) {
     // Strip trailing punctuation that often sticks to shared links.
     var link = raw.replaceFirst(RegExp(r'[)\].,!?]+$'), '');

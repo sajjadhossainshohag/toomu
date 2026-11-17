@@ -81,7 +81,7 @@ class DownloadService extends GetxService {
   final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 20),
-      receiveTimeout: const Duration(seconds: 30),
+      receiveTimeout: stallLimit,
       headers: const {
         'user-agent':
             'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36',
@@ -101,6 +101,12 @@ class DownloadService extends GetxService {
   static const linkExpiredText =
       'The link expired. Open the menu and tap "Refresh link".';
   static const _maxNetworkRetries = 20;
+
+  @visibleForTesting
+  static Duration stallLimit = const Duration(seconds: 30);
+
+  @visibleForTesting
+  static int retriesAfterLoss({required int previous, required bool progressed}) => progressed ? 1 : previous + 1;
   final Map<String, int> _networkRetries = {};
   Timer? _networkTimer;
   bool _checkingNetwork = false;
@@ -187,16 +193,40 @@ class DownloadService extends GetxService {
     required MediaFormat format,
   }) async {
     await _storageReady();
+    return _add(_youtubeTask(video, format, DateTime.now().microsecondsSinceEpoch.toString()));
+  }
+
+  static List<VideoMeta> notYetQueued(List<VideoMeta> videos, Iterable<DownloadTask> existing, DownloadKind kind) {
+    final have = {
+      for (final t in existing)
+        if (t.kind == kind && t.status.value != DownloadStatus.canceled) t.videoId,
+    };
+    return [for (final v in videos) if (have.add(v.id)) v];
+  }
+
+  Future<int> enqueueAll(List<VideoMeta> videos, MediaFormat format) async {
+    await _storageReady();
+    final fresh = notYetQueued(videos, tasks, format.kind);
+    final start = DateTime.now().microsecondsSinceEpoch;
+    for (var i = 0; i < fresh.length; i++) {
+      // One at a time: each file name is checked against the ones queued before it.
+      tasks.insert(0, _youtubeTask(fresh[i], format, '${start + i}'));
+    }
+    if (fresh.isEmpty) return 0;
+    await _persist();
+    _pump();
+    return fresh.length;
+  }
+
+  DownloadTask _youtubeTask(VideoMeta video, MediaFormat format, String id) {
     final dir = format.kind == DownloadKind.audio ? _audioDir : _videoDir;
     final base = Formatters.fileName(video.title);
     final suffix = format.kind == DownloadKind.video
         ? ' (${format.label})'
         : '';
     final path = _uniquePath(dir.path, '$base$suffix', format.extension);
-
-    return _add(
-      DownloadTask(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
+    return DownloadTask(
+        id: id,
         videoId: video.id,
         title: video.title,
         author: video.author,
@@ -209,7 +239,6 @@ class DownloadService extends GetxService {
         filePath: path,
         createdAt: DateTime.now(),
         totalBytes: format.sizeBytes,
-      ),
     );
   }
 
@@ -252,6 +281,7 @@ class DownloadService extends GetxService {
     Map<String, String> headers = const {},
     String thumbnailUrl = '',
     Map<String, String> subtitles = const {},
+    String? mimeType,
   }) async {
     await _storageReady();
     final uri = Uri.parse(url);
@@ -261,12 +291,7 @@ class DownloadService extends GetxService {
           uri.pathSegments.where((s) => s.isNotEmpty).lastOrNull ?? 'download';
       name = Uri.decodeComponent(name);
     }
-    final dot = name.lastIndexOf('.');
-    final ext = dot > 0 && dot < name.length - 1
-        ? name.substring(dot + 1).toLowerCase()
-        : 'bin';
-    final base = Formatters.fileName(dot > 0 ? name.substring(0, dot) : name);
-    final kind = _kindOf(ext);
+    final (:base, :ext, :kind) = directName(name, mimeType: mimeType);
     final dir = switch (kind) {
       DownloadKind.video => _videoDir,
       DownloadKind.audio => _audioDir,
@@ -381,6 +406,42 @@ class DownloadService extends GetxService {
     'opus',
     'wma',
   };
+
+  static const _extOfMime = {
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'video/x-matroska': 'mkv',
+    'video/quicktime': 'mov',
+    'video/3gpp': '3gp',
+    'video/x-msvideo': 'avi',
+    'video/mp2t': 'ts',
+    'audio/mpeg': 'mp3',
+    'audio/mp4': 'm4a',
+    'audio/aac': 'aac',
+    'audio/ogg': 'ogg',
+    'audio/opus': 'opus',
+    'audio/flac': 'flac',
+    'audio/wav': 'wav',
+    'application/pdf': 'pdf',
+    'application/zip': 'zip',
+    'application/vnd.android.package-archive': 'apk',
+  };
+  static final _extLike = RegExp(r'^(?=.*[a-z])[a-z0-9]{1,8}$');
+
+  @visibleForTesting
+  static ({String base, String ext, DownloadKind kind}) directName(String name, {String? mimeType}) {
+    final dot = name.lastIndexOf('.');
+    final tail = dot > 0 && dot < name.length - 1 ? name.substring(dot + 1).toLowerCase() : '';
+    final fromType = _extOfMime[(mimeType ?? '').split(';').first.trim().toLowerCase()];
+    final known = _videoExt.contains(tail) || _audioExt.contains(tail) || _extOfMime.containsValue(tail);
+    // After the last dot of a title or a server code there is often no extension
+    // ("Ep. 3 The return", "KSUx.cVrp…"): then the server's type decides.
+    if (known || (fromType == null && _extLike.hasMatch(tail))) {
+      return (base: Formatters.fileName(name.substring(0, dot)), ext: tail, kind: _kindOf(tail));
+    }
+    final ext = fromType ?? 'bin';
+    return (base: Formatters.fileName(name), ext: ext, kind: _kindOf(ext));
+  }
 
   static DownloadKind _kindOf(String ext) => _videoExt.contains(ext)
       ? DownloadKind.video
@@ -540,6 +601,7 @@ class DownloadService extends GetxService {
     _updateNotification();
 
     var current = task.receivedBytes.value;
+    final startBytes = current;
     var lastTick = current;
     _speedTicks[task.id] = () {
       task.speed.value = (current - lastTick).clamp(0, 1 << 40);
@@ -579,8 +641,12 @@ class DownloadService extends GetxService {
         task.status.value = _stopReasons[task.id] == 'cancel'
             ? DownloadStatus.canceled
             : DownloadStatus.paused;
-      } else if (_isNetworkError(e) &&
-          (_networkRetries[task.id] ?? 0) < _maxNetworkRetries) {
+      } else if (isNetworkError(e) &&
+          (_networkRetries[task.id] = retriesAfterLoss(
+                previous: _networkRetries[task.id] ?? 0,
+                progressed: current > startBytes,
+              )) <=
+              _maxNetworkRetries) {
         debugPrint('[Download] ${task.title}: connection lost ($e)');
         task.status.value = DownloadStatus.failed;
         task.error.value = networkWaitText;
@@ -613,10 +679,15 @@ class DownloadService extends GetxService {
   static final _networkMarkers = RegExp(
     'unable to connect|timed out|network is unreachable|name resolution|'
     'name or service not known|failed to resolve|no address associated|'
-    'connection (reset|refused|aborted)|getaddrinfo|remote end closed',
+    'connection (reset|refused|aborted)|getaddrinfo|remote end closed|'
+    // Android when Wi-Fi or mobile data drops (ECONNABORTED, EHOSTUNREACH).
+    'connection abort|no route to host|'
+    'connection broken|incompleteread|eof occurred|eof from the server|'
+    // aria2c: 2 = time out, 6 = network problem, 19 = name resolution failed.
+    'network problem|failed to establish connection|aria2c exited with code (2|6|19)\\b',
   );
 
-  static bool _isNetworkError(Object e) => switch (e) {
+  static bool isNetworkError(Object e) => switch (e) {
     SocketException() || HttpException() || HandshakeException() || TimeoutException() => true,
     DioException(:final type, :final response) =>
       response == null && type != DioExceptionType.cancel && type != DioExceptionType.badCertificate,
@@ -638,7 +709,7 @@ class DownloadService extends GetxService {
       };
 
   void _watchNetwork() {
-    _networkTimer ??= Timer.periodic(const Duration(seconds: 15), (_) => _retryWaiting());
+    _networkTimer ??= Timer.periodic(const Duration(seconds: 5), (_) => _retryWaiting());
   }
 
   Future<void> _retryWaiting() async {
@@ -653,22 +724,24 @@ class DownloadService extends GetxService {
     if (_checkingNetwork) return;
     _checkingNetwork = true;
     try {
-      final host = Uri.tryParse(waiting.first.url ?? '')?.host ?? '';
-      if (!await _online(host.isEmpty ? 'www.youtube.com' : host)) return;
+      final link = Uri.tryParse(waiting.first.url ?? '');
+      if (!await online(link == null || link.host.isEmpty ? Uri.https('www.youtube.com') : link)) return;
     } finally {
       _checkingNetwork = false;
     }
     debugPrint('[Download] back online: resuming ${waiting.length}');
     for (final t in waiting) {
-      _networkRetries[t.id] = (_networkRetries[t.id] ?? 0) + 1;
       _resume(t);
     }
   }
 
-  static Future<bool> _online(String host) async {
+  @visibleForTesting
+  static Future<bool> online(Uri uri) async {
     // A real connection, not a DNS lookup: phones answer those from cache.
+    // On the file's own port: a server without HTTPS never answers on 443.
     try {
-      final socket = await Socket.connect(host, 443, timeout: const Duration(seconds: 5));
+      final port = uri.hasPort ? uri.port : (uri.scheme == 'http' ? 80 : 443);
+      final socket = await Socket.connect(uri.host, port, timeout: const Duration(seconds: 5));
       socket.destroy();
       return true;
     } catch (_) {
@@ -1576,7 +1649,7 @@ class DownloadService extends GetxService {
             received += chunk.length;
             onBytes(received);
           }
-        }, label: 'chunk at $received');
+        }, label: 'chunk at $received', link: request(0, 0).url);
       }
     } finally {
       final unused = opening;
@@ -1782,7 +1855,7 @@ class DownloadService extends GetxService {
             }
             if (opening == null) break;
           }
-        }, label: 'piece at ${p.start}');
+        }, label: 'piece at ${p.start}', link: request(0, 0).url);
       } finally {
         active.remove(p);
         await raf.close();
@@ -1837,6 +1910,7 @@ class DownloadService extends GetxService {
   Future<void> _withRetries(
     Future<void> Function() attempt, {
     required String label,
+    Uri? link,
   }) async {
     var retries = 0;
     while (true) {
@@ -1848,6 +1922,7 @@ class DownloadService extends GetxService {
           '[Download] $label failed: ${e.response?.statusCode ?? e.type}',
         );
         if (retries >= 3) rethrow;
+        if (e.response == null && link != null && !await online(link)) rethrow;
         retries++;
         await Future<void>.delayed(Duration(seconds: 2 * retries));
       }

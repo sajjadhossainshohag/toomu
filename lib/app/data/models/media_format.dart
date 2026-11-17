@@ -75,11 +75,46 @@ class MediaFormat {
             height: q,
             sizeBytes: _videoSize(group) + (audio?.filesize ?? 0),
             detail: 'MP4 • ${_codecOf(group)}',
-            selector: 'bv*[height<=$maxH][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=$maxH]+ba/b[height<=$maxH]/bv*+ba/b',
+            selector: _videoSelector(maxH),
           );
         }(),
     ];
   }
+
+  static String _videoSelector(int maxH) =>
+      'bv*[height<=$maxH][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=$maxH]+ba/b[height<=$maxH]/bv*+ba/b';
+
+  static List<MediaFormat> listOptions() => [
+        for (final h in const [1080, 720, 480, 360])
+          MediaFormat(
+            kind: DownloadKind.video,
+            label: '${h}p',
+            extension: 'mp4',
+            height: h,
+            sizeBytes: 0,
+            detail: 'MP4, or the best below it',
+            selector: _videoSelector(h),
+          ),
+        // iOS has no MP3 encoder.
+        if (!Platform.isIOS)
+          const MediaFormat(
+            kind: DownloadKind.audio,
+            label: 'MP3 192 kbps',
+            extension: 'mp3',
+            sizeBytes: 0,
+            detail: 'MP3 • converted',
+            selector: 'ba/b',
+            convert: 'mp3:192',
+          ),
+        const MediaFormat(
+          kind: DownloadKind.audio,
+          label: 'M4A',
+          extension: 'm4a',
+          sizeBytes: 0,
+          detail: 'M4A • original quality',
+          selector: 'ba[ext=m4a]/ba/b',
+        ),
+      ];
 
   /// MP3 (converted) + original-quality M4A.
   static List<MediaFormat> audioOptions(YtInfo info) {

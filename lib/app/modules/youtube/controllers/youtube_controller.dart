@@ -35,6 +35,10 @@ import '../../../services/storage_service.dart';
 import '../../../data/providers/ytdlp/ytdlp_bridge.dart';
 import '../../../services/ytdlp_service.dart';
 import '../views/widgets/format_sheet.dart';
+import '../../home/home_tabs.dart';
+import '../../../data/models/download_task.dart';
+import '../../../widgets/app_dialog.dart';
+import '../../../widgets/option_sheet.dart';
 import '../../../widgets/app_snackbar.dart';
 
 /// A home-feed category: a search query (signed out — YouTube has no
@@ -309,6 +313,8 @@ class YoutubeController extends GetxController {
     if (text.isEmpty) return;
     final id = LinkParser.youtubeVideoId(text);
     if (id != null) return openVideo(id);
+    final list = LinkParser.youtubeCollection(text);
+    if (list != null) return openCollection(list);
     // A TikTok link: downloaded as is (no watermark).
     if (TiktokService.linkIn(text) != null) {
       await Get.find<HomeController>().openLinkFrom(text);
@@ -317,7 +323,7 @@ class YoutubeController extends GetxController {
     // 1DM-style: any direct file link downloads as-is.
     final uri = Uri.tryParse(text);
     if (uri != null && const DirectFileExtractor().canHandle(uri)) {
-      return DirectFileExtractor.confirmAndDownload(text);
+      return DirectFileExtractor.startDownload(text);
     }
     _remember(text);
     await search(text);
@@ -660,6 +666,65 @@ class YoutubeController extends GetxController {
     formatsLoading.value = false;
     formatsStatus.value = '';
     debugPrint('[YouTube] formats from $from in $ms ms');
+  }
+
+  bool _listLoading = false;
+
+  Future<void> openCollection(String url) async {
+    if (Platform.isIOS) {
+      showSnack('Android only for now', "Downloading a whole playlist or channel needs yt-dlp, which iPhone doesn't have.");
+      return;
+    }
+    if (_listLoading) return;
+    _listLoading = true;
+    showSnack('Getting the list…', 'Long playlists take a few seconds.', duration: const Duration(minutes: 2));
+    try {
+      final list = await YtDlpService.to.collection(url).timeout(const Duration(minutes: 2));
+      Get.closeAllSnackbars();
+      if (list.videos.isEmpty) {
+        showSnack('Nothing to download', 'This list has no videos that can be downloaded.');
+        return;
+      }
+      final count = list.videos.length;
+      final format = await showOptionSheet<MediaFormat>(
+        title: '${list.title} · $count ${count == 1 ? 'video' : 'videos'}',
+        options: [
+          for (final f in MediaFormat.listOptions())
+            SheetOption(
+              value: f,
+              label: f.label,
+              subtitle: f.detail,
+              icon: f.kind == DownloadKind.audio ? Icons.music_note_rounded : Icons.movie_rounded,
+            ),
+        ],
+      );
+      if (format == null) return;
+      final fresh = DownloadService.notYetQueued(list.videos, DownloadService.to.tasks, format.kind);
+      if (fresh.isEmpty) {
+        showSnack('Already in Downloads', 'Every video in this list is already there.');
+        return;
+      }
+      final skipped = count - fresh.length;
+      final ok = await showConfirmDialog(
+        title: 'Download ${fresh.length} ${fresh.length == 1 ? 'video' : 'videos'}?',
+        message: [
+          '${list.title}, ${format.label}.',
+          if (skipped > 0) '$skipped already in Downloads ${skipped == 1 ? 'is' : 'are'} skipped.',
+          if (count >= YtDlpService.maxListVideos) 'Only the first ${YtDlpService.maxListVideos} videos are included.',
+        ].join('\n'),
+        confirmLabel: 'Download',
+      );
+      if (!ok) return;
+      final added = await DownloadService.to.enqueueAll(fresh, format);
+      Get.find<HomeController>().openTab(HomeTabs.downloads);
+      showSnack('Downloads queued', '$added from ${list.title}', duration: const Duration(seconds: 3));
+    } catch (e) {
+      Get.closeAllSnackbars();
+      debugPrint('[YouTube] list $url failed: $e');
+      showSnack("Can't open this list", ErrorText.of(e));
+    } finally {
+      _listLoading = false;
+    }
   }
 
   Future<void> download(MediaFormat format) async {

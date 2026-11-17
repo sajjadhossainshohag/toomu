@@ -106,15 +106,58 @@ void main() {
     test('a real file name is kept', () {
       expect(
         downloadName(suggested: 'Inception.2010.1080p.BluRay.mkv', url: 'https://x/y', pageTitle: pageTitle, pageUrl: page),
-        isNull,
+        'Inception.2010.1080p.BluRay.mkv',
       );
-      expect(downloadName(suggested: 'setup.exe', url: 'https://x/setup.exe', pageTitle: 'Download', pageUrl: page), isNull);
+      expect(downloadName(suggested: 'setup.exe', url: 'https://x/setup.exe', pageTitle: 'Download', pageUrl: page), 'setup.exe');
+    });
+
+    test('a coded file name with a dot in the middle shows the page title, not a random string', () {
+      const film = 'The.Odyssey.2026.1080p.Dual[Hindi-English].AAC.AMZN.HEVC.h265.ESub.mkv';
+      const title = 'MovieLinkBD.com - $film';
+      const code = 'KSUxH_Go3rh9CGC8.cVrpFcHHEofk5a7tfmXdadJKId_nBWtvp4HoZeeQgzub6hJBFItrReBYP692Z2AghyOgVUMyWgt'
+          '-GOU8iuiom02-DxcKO3sRFSpCnnwx58RhUECYXxu86Nwn5jjpNTT1dvEOd';
+      for (final filePage in [
+        'https://jfn5pa.movielinkbd.at/file/BOD4rHF82ExwRonzlohO6jEVOZqrEUYdLJAKVVr-JxDPqjUo9SVvGQuPXQI-NZ-bef5p4TKp5srZPrMyF2HM8qIP29F4zGed604HXYxQKmQ',
+        'https://jfn5pa.movielinkbd.at/file/BDfOz1zjAn9ZgH_DPSTAarz-fTz1jp8_NoN7FDtRFD9GmI94h3VGv1vdef17D6lrqgCnbtL8jFuW-rl65TR2bShO_SxARdq6H-R7hxESe1I',
+      ]) {
+        for (final suggested in [code, '$code.mkv', 'BDfOz1zjAn9ZgH_DPSTAarz-fTz1jp8_NoN7FDtRFD9GmI94h3VGv1vdef17D6lrqgCnbtL8jFuW']) {
+          expect(
+            downloadName(suggested: suggested, url: 'https://cdn.example.net/d/$suggested', pageTitle: title, pageUrl: filePage),
+            film,
+            reason: suggested,
+          );
+        }
+      }
+    });
+
+    test('a page title that already ends in the extension does not get it twice', () {
+      expect(
+        downloadName(
+          suggested: 'a1b2c3d4e5f6a7b8c9d0.mkv',
+          url: 'https://cdn.example.net/a1b2c3d4e5f6a7b8c9d0.mkv',
+          pageTitle: 'MyFiles - Dune.Part.Two.2024.1080p.mkv',
+          pageUrl: 'https://myfiles.example/file/abc',
+        ),
+        'Dune.Part.Two.2024.1080p.mkv',
+      );
+    });
+
+    test('a real release name with dots is still kept', () {
+      expect(
+        downloadName(
+          suggested: 'The.Odyssey.2026.1080p.WEB-DL.H264.mkv',
+          url: 'https://x/y',
+          pageTitle: 'MovieLinkBD.com - Something else',
+          pageUrl: 'https://jfn5pa.movielinkbd.at/file/x',
+        ),
+        'The.Odyssey.2026.1080p.WEB-DL.H264.mkv',
+      );
     });
 
     test('kept as is when the page has no usable title either', () {
       expect(
         downloadName(suggested: '7f3a9c2e1b8d4f60.mp4', url: 'https://x/y', pageTitle: 'Just a moment...', pageUrl: page),
-        isNull,
+        '7f3a9c2e1b8d4f60.mp4',
       );
     });
   });

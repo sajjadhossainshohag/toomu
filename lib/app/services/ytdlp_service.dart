@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/values/app_constants.dart';
+import '../data/models/yt_collection.dart';
 import '../data/models/yt_info.dart';
 import '../core/utils/link_parser.dart';
 import '../data/providers/youtube/po_token_service.dart';
@@ -269,6 +270,18 @@ class YtDlpService extends GetxService {
       _logFailure(Uri.tryParse(url)?.host ?? 'link', r.err);
     }
     return r;
+  }
+
+  static const maxListVideos = 500;
+
+  Future<YtCollection> collection(String url) async {
+    final r = await runUrl(
+      'list-${DateTime.now().microsecondsSinceEpoch}',
+      const ['--flat-playlist', '-J', '--playlist-end', '$maxListVideos'],
+      url,
+    );
+    if (!r.ok) throw YtDlpException(r.err);
+    return YtCollection.fromFlatJson(await decodeInfoJson(r.out));
   }
 
   /// One run with no client fallback and no URL (e.g. `--load-info-json`).

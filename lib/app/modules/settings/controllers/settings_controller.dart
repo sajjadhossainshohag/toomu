@@ -104,7 +104,7 @@ class SettingsController extends GetxController {
 
   /// Settings → YouTube account: sign in, or sign out.
   Future<void> youtubeAccount() async {
-    if (!account.signedIn.value) {
+    if (!account.signedIn.value || account.expired.value) {
       await YoutubeSignInPage.open();
       return;
     }

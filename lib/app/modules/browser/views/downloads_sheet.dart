@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../core/theme/brand_colors.dart';
 import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
+import '../../../widgets/app_snackbar.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/round_icon_button.dart';
 import '../../downloads/controllers/downloads_controller.dart';
@@ -27,7 +28,7 @@ class BrowserDownloadsButton extends StatelessWidget {
             icon: Icons.download_rounded,
             size: 40,
             active: running.isNotEmpty,
-            onTap: () => Get.bottomSheet<void>(const _DownloadsSheet(), isScrollControlled: true),
+            onTap: showDownloadsSheet,
             tooltip: 'Downloads',
           ),
           if (running.isNotEmpty)
@@ -46,6 +47,21 @@ class BrowserDownloadsButton extends StatelessWidget {
     });
   }
 }
+
+void showDownloadsSheet() => Get.bottomSheet<void>(const _DownloadsSheet(), isScrollControlled: true);
+
+void showDownloadStarted(String name) => showSnack(
+      'Download started',
+      name,
+      duration: const Duration(seconds: 4),
+      mainButton: TextButton(
+        onPressed: () {
+          Get.closeCurrentSnackbar();
+          showDownloadsSheet();
+        },
+        child: const Text('View'),
+      ),
+    );
 
 class _DownloadsSheet extends StatelessWidget {
   const _DownloadsSheet();

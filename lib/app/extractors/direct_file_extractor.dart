@@ -1,10 +1,6 @@
-import 'package:flutter/material.dart';
-
-import '../core/utils/formatters.dart';
+import '../modules/browser/views/downloads_sheet.dart';
 import '../services/download_service.dart';
-import '../widgets/option_sheet.dart';
 import 'media_extractor.dart';
-import '../widgets/app_snackbar.dart';
 
 /// Links that point straight at a media/file (…/song.mp3, …/clip.mp4).
 /// 1DM-style: downloads the URL as-is.
@@ -32,40 +28,28 @@ class DirectFileExtractor extends MediaExtractor {
   }
 
   @override
-  Future<void> openDownload(Uri uri) => confirmAndDownload(uri.toString());
+  Future<void> openDownload(Uri uri) => startDownload(uri.toString());
 
-  /// Asks before downloading (also used for the browser's download events,
-  /// which come with a server-suggested name and size).
-  static Future<void> confirmAndDownload(
+  static Future<void> startDownload(
     String url, {
     String? fileName,
     int size = 0,
     String? pageUrl,
     Map<String, String> headers = const {},
+    String? mimeType,
   }) async {
     final uri = Uri.parse(url);
     final name = (fileName?.trim().isNotEmpty ?? false)
         ? fileName!.trim()
         : Uri.decodeComponent(uri.pathSegments.where((s) => s.isNotEmpty).lastOrNull ?? 'file');
-    final ok = await showOptionSheet<bool>(
-      title: 'Download file?',
-      options: <SheetOption<bool>>[
-        SheetOption(
-          value: true,
-          label: name,
-          subtitle: [uri.host, if (size > 0) Formatters.bytes(size)].join(' • '),
-          icon: Icons.download_rounded,
-        ),
-      ],
-    );
-    if (ok != true) return;
     await DownloadService.to.enqueueDirect(
       url: url,
       fileName: name,
       size: size,
       pageUrl: pageUrl,
       headers: headers,
+      mimeType: mimeType,
     );
-    showSnack('Download started', name, duration: const Duration(seconds: 2));
+    showDownloadStarted(name);
   }
 }

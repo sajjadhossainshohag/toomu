@@ -205,6 +205,13 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       unawaited(_downloadTiktok(tiktok));
       return true;
     }
+    final list = LinkParser.youtubeCollection(text);
+    if (list != null) {
+      Get.closeAllSnackbars();
+      openTab(HomeTabs.youtube);
+      unawaited(Get.find<YoutubeController>().openCollection(list));
+      return true;
+    }
     final id = LinkParser.youtubeVideoId(text);
     if (id != null) {
       _lastClipboardLink = id; // don't also offer it via the clipboard snackbar
@@ -217,7 +224,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (url != null) {
       final uri = Uri.tryParse(url);
       if (uri != null && const DirectFileExtractor().canHandle(uri)) {
-        unawaited(DirectFileExtractor.confirmAndDownload(url));
+        unawaited(DirectFileExtractor.startDownload(url));
         return true;
       }
     }

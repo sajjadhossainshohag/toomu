@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -30,6 +31,7 @@ import '../media_capture.dart';
 import '../media_title.dart';
 import '../media_sniffer.dart';
 import '../redirect_guard.dart';
+import '../views/downloads_sheet.dart';
 import '../views/media_sheet.dart';
 
 /// Snaptube-style in-app browser. Sites load in a real WebView (real
@@ -326,23 +328,40 @@ class BrowserController extends GetxController {
   }
 
   /// A link the site serves as a file download.
-  Future<void> onDownloadStart(DownloadStartRequest request) {
+  Future<void> onDownloadStart(DownloadStartRequest request) async {
     final ua = request.userAgent ?? capture.userAgent;
     final link = request.url.toString();
-    return DirectFileExtractor.confirmAndDownload(
+    return DirectFileExtractor.startDownload(
       link,
-      // Servers often name files with a code: the page's title instead.
       fileName: downloadName(
-            suggested: request.suggestedFilename,
-            url: link,
-            pageTitle: title.value,
-            pageUrl: url.value,
-          ) ??
-          request.suggestedFilename,
+        suggested: request.suggestedFilename,
+        url: link,
+        pageTitle: title.value,
+        pageUrl: url.value,
+        contentDisposition: request.contentDisposition,
+        pageHints: await _pageNameHints(),
+      ),
       size: request.contentLength,
       pageUrl: url.value,
       headers: {if (ua.isNotEmpty) 'User-Agent': ua, 'Referer': url.value},
+      mimeType: request.mimeType,
     );
+  }
+
+  // File pages titled "Download" or the site's name still show the file's name in their share title or heading.
+  Future<List<String>> _pageNameHints() async {
+    try {
+      final r = await web
+          ?.evaluateJavascript(
+            source: '(function(){function q(s){var e=document.querySelector(s);'
+                'return e?String(e.content||e.textContent||"").trim().slice(0,300):"";}'
+                'return JSON.stringify([q("meta[property=og\\:title]"),q("h1")]);})()',
+          )
+          .timeout(const Duration(milliseconds: 600));
+      return r is String ? (jsonDecode(r) as List).cast<String>() : const [];
+    } catch (_) {
+      return const [];
+    }
   }
 
   // ------------------------------------------------------------------ actions
@@ -472,7 +491,7 @@ class BrowserController extends GetxController {
         subtitles: m.subtitles,
       );
     }
-    showSnack('Download started', m.title, duration: const Duration(seconds: 2));
+    showDownloadStarted(m.title);
   }
 
   Future<void> preview(CapturedMedia m) async {
@@ -557,7 +576,7 @@ class BrowserController extends GetxController {
       pageUrl: _searchedUrl,
       headers: _pageHeaders(),
     );
-    showSnack('Download started', info.title, duration: const Duration(seconds: 2));
+    showDownloadStarted(info.title);
   }
 
   Map<String, String> _pageHeaders() => {

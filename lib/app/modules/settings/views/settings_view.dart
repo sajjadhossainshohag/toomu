@@ -11,6 +11,7 @@ import '../../../services/update_service.dart';
 import '../../../widgets/app_group.dart';
 import '../../../widgets/app_header.dart';
 import '../../../widgets/gradient_hero_card.dart';
+import '../../../widgets/outline_pill.dart';
 import '../../../widgets/top_fade.dart';
 import '../../player/views/widgets/sleep_timer_sheet.dart';
 import '../controllers/settings_controller.dart';
@@ -25,7 +26,27 @@ class SettingsView extends GetView<SettingsController> {
 
     return Column(
       children: <Widget>[
-        const AppHeader(title: 'Settings'),
+        Obx(
+          () => AppHeader(
+            title: 'Settings',
+            actions: <Widget>[
+              if (controller.account.signedIn.value && !controller.account.expired.value)
+                HeaderAction(
+                  icon: Icons.account_circle_rounded,
+                  tooltip: 'Google account',
+                  onTap: controller.youtubeAccount,
+                )
+              else
+                OutlinePill(
+                  label: controller.account.expired.value ? 'Sign in again' : 'Sign in',
+                  icon: Icons.login_rounded,
+                  compact: true,
+                  height: 36,
+                  onTap: controller.youtubeAccount,
+                ),
+            ],
+          ),
+        ),
         Expanded(
           child: TopFade(
             child: Obx(

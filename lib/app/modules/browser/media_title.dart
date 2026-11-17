@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'redirect_guard.dart';
 
 /// Names for media found in the browser.
@@ -26,22 +28,95 @@ String mediaTitle({
   return 'Video';
 }
 
-/// A better name for a file download than the server's [suggested] one
-/// (or the link's file name) when that one is a code; null to keep it.
-String? downloadName({
+String downloadName({
   required String? suggested,
   required String url,
   required String pageTitle,
   required String pageUrl,
+  String? contentDisposition,
+  List<String> pageHints = const [],
 }) {
-  final given = (suggested?.trim().isNotEmpty ?? false) ? suggested!.trim() : _lastSegment(url);
-  final dot = given.lastIndexOf('.');
-  final base = dot > 0 ? given.substring(0, dot) : given;
-  final ext = dot > 0 ? given.substring(dot + 1) : '';
-  if (!looksGeneric(base)) return null;
-  final page = cleanPageTitle(pageTitle, pageUrl: pageUrl);
-  if (looksGeneric(page)) return null;
-  return ext.isEmpty || ext.length > 5 ? page : '$page.$ext';
+  final names = [
+    nameFromDisposition(contentDisposition),
+    _nameInLink(url),
+    _clean(suggested),
+    _clean(_lastSegment(url)),
+  ].whereType<String>().where((n) => n.isNotEmpty).toList();
+  for (final n in names) {
+    if (!looksGeneric(_withoutExt(n))) return n;
+  }
+  final ext = names.map(_extOf).firstWhere((e) => e.isNotEmpty, orElse: () => '');
+  for (final t in [cleanPageTitle(pageTitle, pageUrl: pageUrl), ...pageHints.map((h) => cleanPageTitle(h, pageUrl: pageUrl))]) {
+    if (looksGeneric(t)) continue;
+    if (ext.isEmpty || t.toLowerCase().endsWith('.$ext')) return t;
+    return '$t.$ext';
+  }
+  return names.firstOrNull ?? 'download';
+}
+
+String? nameFromDisposition(String? header) {
+  if (header == null || header.isEmpty) return null;
+  // RFC 6266: filename* (RFC 5987: charset'language'percent-encoded) wins over filename.
+  final star = RegExp(r'''filename\*\s*=\s*"?([^;"]+)"?''', caseSensitive: false).firstMatch(header);
+  if (star != null) {
+    final parts = star[1]!.trim().split("'");
+    if (parts.length >= 3) {
+      final value = parts.sublist(2).join("'");
+      try {
+        final bytes = Uri.decodeQueryComponent(value.replaceAll('+', '%2B'), encoding: latin1).codeUnits;
+        final name = parts[0].toLowerCase() == 'utf-8' ? utf8.decode(bytes) : latin1.decode(bytes);
+        if (name.trim().isNotEmpty) return _clean(name);
+      } catch (_) {}
+    }
+  }
+  final plain = RegExp(r'''filename\s*=\s*(?:"([^"]*)"|([^;]+))''', caseSensitive: false).firstMatch(header);
+  final value = (plain?[1] ?? plain?[2])?.trim();
+  return value == null || value.isEmpty ? null : _clean(value);
+}
+
+String? _nameInLink(String url) {
+  final q = Uri.tryParse(url)?.queryParameters ?? const <String, String>{};
+  for (final key in const ['response-content-disposition', 'rscd']) {
+    final name = nameFromDisposition(q[key]);
+    if (name != null) return name;
+  }
+  for (final key in const ['filename', 'file_name', 'file', 'name', 'title']) {
+    final v = q[key]?.trim() ?? '';
+    // A bare number or id (file=12345) is a key, not a name.
+    if (v.isNotEmpty && !RegExp(r'^\d+$').hasMatch(v)) return _clean(v);
+  }
+  return null;
+}
+
+String? _clean(String? name) {
+  var n = name?.trim() ?? '';
+  if (n.isEmpty) return null;
+  if (RegExp(r'%[0-9a-fA-F]{2}').hasMatch(n)) {
+    try {
+      n = Uri.decodeComponent(n);
+    } catch (_) {}
+  }
+  // UTF-8 bytes shown as Latin-1 ("à¦†…") come back as the real letters.
+  if (n.codeUnits.every((c) => c < 256) && n.codeUnits.any((c) => c >= 0xC0)) {
+    try {
+      n = utf8.decode(latin1.encode(n));
+    } catch (_) {}
+  }
+  n = n.split(RegExp(r'[/\\]')).last.replaceAll('"', '').trim();
+  return n.isEmpty ? null : n;
+}
+
+String _extOf(String name) {
+  final dot = name.lastIndexOf('.');
+  final ext = dot > 0 ? name.substring(dot + 1).toLowerCase() : '';
+  // "bin" is Android's guess for "unknown": the server's type names it better later.
+  return RegExp(r'^(?=.*[a-z])[a-z0-9]{1,5}$').hasMatch(ext) && ext != 'bin' ? ext : '';
+}
+
+String _withoutExt(String name) {
+  final dot = name.lastIndexOf('.');
+  final ext = dot > 0 ? name.substring(dot + 1).toLowerCase() : '';
+  return RegExp(r'^(?=.*[a-z])[a-z0-9]{1,5}$').hasMatch(ext) ? name.substring(0, dot) : name;
 }
 
 /// [title] without the site's name and streaming-site filler:
@@ -72,6 +147,12 @@ bool looksGeneric(String title) {
   if (RegExp(r'\.(m3u8|mpd|mp4|webm|mkv|ts|m4s|php|html?|aspx?)$').hasMatch(t)) {
     return looksGeneric(t.substring(0, t.lastIndexOf('.')));
   }
+  // Codes with dots or other marks inside (KSUxH_Go3rh9CGC8.cVrpFcHH…): a long run of letters
+  // mixed with digits; release names (The.Odyssey.2026.1080p) only have short parts.
+  if (!t.contains(' ') &&
+      _longRun.allMatches(t).any((m) => _digit.hasMatch(m[0]!) && _letter.hasMatch(m[0]!))) {
+    return true;
+  }
   // Codes: one long "word" of letters and digits (a8f7e6d2c1…, x7KpQ2_mZ9).
   if (!t.contains(' ') && t.length >= 10 && RegExp(r'^[a-z0-9_\-=]+$').hasMatch(t) && RegExp(r'\d').hasMatch(t)) {
     return true;
@@ -79,10 +160,14 @@ bool looksGeneric(String title) {
   return false;
 }
 
+final _longRun = RegExp(r'[a-z0-9]{16,}');
+final _digit = RegExp(r'\d');
+final _letter = RegExp('[a-z]');
+
 const _genericWords = {
   'video', 'videos', 'player', 'video player', 'embed', 'watch', 'stream', 'streaming', 'untitled',
   'loading', 'loading...', 'home', 'index', 'master', 'playlist', 'manifest', 'chunklist', 'media', 'file',
-  'download', 'movie', 'movies', 'jwplayer', 'jw player', 'plyr', 'videojs', 'video.js', 'blank', 'about:blank',
+  'download', 'downloadfile', 'movie', 'movies', 'jwplayer', 'jw player', 'plyr', 'videojs', 'video.js', 'blank', 'about:blank',
   'online', 'free', 'hd', 'mp4', 'iframe', 'redirecting', 'redirecting...', 'just a moment...', 'please wait',
 };
 
