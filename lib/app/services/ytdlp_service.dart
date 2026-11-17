@@ -66,11 +66,6 @@ class YtDlpService extends GetxService {
       _cacheDir = '${tmp.path}/ytdlp-cache';
       workRoot = '${tmp.path}/ytdlp-work';
       await Directory(workRoot).create(recursive: true);
-      // iOS has no yt-dlp (docs/ios-support.md); downloads use the fast lookup.
-      if (Platform.isIOS) {
-        if (!_ready.isCompleted) _ready.complete();
-        return;
-      }
       version.value = await YtDlpBridge.init();
       ready.value = true;
       if (!_ready.isCompleted) _ready.complete();
@@ -173,9 +168,6 @@ class YtDlpService extends GetxService {
   /// Title, formats etc. of one video. Concurrent calls for the same URL
   /// share one yt-dlp run.
   Future<YtInfo> info(String url) {
-    if (Platform.isIOS) {
-      return Future.error(YtDlpException("YouTube's quick lookup didn't work for this video. Try again later."));
-    }
     final cached = _infoCache[url];
     if (cached != null && DateTime.now().difference(cached.at) < _infoTtl) {
       return Future.value(cached.info);

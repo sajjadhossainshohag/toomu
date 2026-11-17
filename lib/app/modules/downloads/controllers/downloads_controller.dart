@@ -2,10 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/shell_open.dart';
 import '../../../data/models/download_task.dart';
 import '../../../data/models/track.dart';
 import '../../../data/models/video_item.dart';
@@ -97,7 +97,7 @@ class DownloadsController extends GetxController {
         ),
       );
     } else {
-      await OpenFilex.open(t.filePath);
+      await openFile(t.filePath);
     }
   }
 

@@ -47,7 +47,9 @@ abstract class Formatters {
     // No leading dots (hidden file) or trailing dots/spaces (SD cards and
     // Windows drop them, so the name changes under us).
     final safe = fitBytes(cleaned, maxBytes).replaceAll(RegExp(r'^[.\s]+|[.\s]+$'), '');
-    return safe.isEmpty ? 'download' : safe;
+    if (safe.isEmpty) return 'download';
+    // Windows device names: no file may be called "CON" or "nul.mp4".
+    return RegExp(r'^(con|prn|aux|nul|com[1-9]|lpt[1-9])$', caseSensitive: false).hasMatch(safe) ? '${safe}_' : safe;
   }
 
   /// [text] cut to at most [maxBytes] UTF-8 bytes, between whole letters

@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
 
+import '../../../core/utils/host_os.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/media_manifest.dart';
@@ -87,8 +88,8 @@ class BrowserController extends GetxController {
     useShouldOverrideUrlLoading: true,
     // Popups then open in this tab, where onNavigate can block them.
     supportMultipleWindows: false,
-    // Ad blocking asks about every request (Android only; iPhone gets the
-    // ad-hiding style alone).
+    // Ad blocking asks about every request (Android only; Windows' WebView2
+    // gets the ad-hiding style alone).
     useShouldInterceptRequest: blockAds && Platform.isAndroid,
   );
 
@@ -322,7 +323,7 @@ class BrowserController extends GetxController {
   }
 
   void _open(String target) {
-    // iOS asks shouldOverrideUrlLoading about loadUrl too.
+    // Some platforms ask shouldOverrideUrlLoading about loadUrl too.
     _allowNext = target;
     web?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
   }
@@ -390,7 +391,7 @@ class BrowserController extends GetxController {
   MediaButtonMode get mediaButton => mediaButtonMode(
         supportedPage: extractor.value != null,
         found: capture.items.length,
-        canScan: Platform.isAndroid,
+        canScan: HostOs.hasYtDlp,
       );
 
   /// The media button slides away while reading (scrolling down).
@@ -526,7 +527,7 @@ class BrowserController extends GetxController {
   // -------------------------------------------------------- yt-dlp on the page
 
   Future<void> searchPage() async {
-    if (searching.value || !Platform.isAndroid) return;
+    if (searching.value || !HostOs.hasYtDlp) return;
     searching.value = true;
     searchError.value = null;
     final page = url.value;

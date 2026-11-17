@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../core/utils/host_os.dart';
 import '../core/values/app_constants.dart';
 import '../data/models/track.dart';
 import 'storage_service.dart';
@@ -69,8 +70,10 @@ class AudioPlayerService extends GetxService {
   bool get hasMedia => current != null;
 
   Future<AudioPlayerService> init() async {
-    final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.music());
+    if (HostOs.usesAudioSession) {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+    }
 
     favorites.addAll(
         (_storage.read<List>(AppConstants.kFavorites) ?? const []).cast<String>());

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 import 'app/core/theme/app_theme.dart';
 import 'app/core/utils/device_profile.dart';
+import 'app/core/utils/host_os.dart';
 import 'app/core/values/app_constants.dart';
 import 'app/routes/app_pages.dart';
 import 'app/services/app_services.dart';
@@ -13,13 +15,15 @@ import 'app/services/storage_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (HostOs.usesMediaKitAudio) JustAudioMediaKit.ensureInitialized(windows: true);
   await Future.wait([
     // The app's screens are designed for portrait; the video player rotates
     // itself as needed and restores this when it closes.
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
     StorageService.init(),
     DeviceProfile.init(),
-    JustAudioBackground.init(
+    if (HostOs.usesAudioNotification)
+      JustAudioBackground.init(
       androidNotificationChannelId: AppConstants.playbackChannelId,
       androidNotificationChannelName: AppConstants.playbackChannelName,
       androidNotificationOngoing: true,

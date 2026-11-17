@@ -21,6 +21,13 @@ void main() {
       expect(name, startsWith('৩৭ হাজার টাকায়'));
     });
 
+    test('a video titled like a Windows device name still saves', () {
+      expect(Formatters.fileName('CON'), 'CON_');
+      expect(Formatters.fileName('nul'), 'nul_');
+      expect(Formatters.fileName('COM1'), 'COM1_');
+      expect(Formatters.fileName('Concert'), 'Concert');
+    });
+
     test('never cuts inside a letter (Bengali conjuncts, emoji)', () {
       final title = '${'ক্ষ' * 30}🎵🎵🎵👨‍👩‍👧';
       for (var max = 1; max < 120; max++) {

@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/utils/error_text.dart';
 import '../core/utils/formatters.dart';
+import '../core/utils/host_os.dart';
 import '../core/utils/media_manifest.dart';
 import '../core/utils/subtitles.dart';
 import '../core/values/app_constants.dart';
@@ -20,14 +21,12 @@ import '../data/models/download_task.dart';
 import '../data/models/tiktok_item.dart';
 import '../data/models/media_format.dart';
 import '../data/models/video_meta.dart';
-import '../data/models/yt_info.dart';
 import '../data/providers/youtube_provider.dart';
 import '../data/providers/ytdlp/ytdlp_bridge.dart';
 import '../data/repositories/download_repository.dart';
 import 'media_scanner_service.dart';
 import 'permission_service.dart';
 import 'settings_service.dart';
-import 'stream_downloader.dart';
 import 'stream_proxy.dart';
 import 'tiktok_service.dart';
 import 'storage_service.dart';
@@ -118,11 +117,10 @@ class DownloadService extends GetxService {
 
   /// Progress notification (native DownloadProgressService).
   static const _notify = MethodChannel('toomu/download_notify');
-  static const _merge = MethodChannel('toomu/media_merge');
   Timer? _notifyTimer;
 
   Future<DownloadService> init() async {
-    final root = await _resolveRootDir();
+    final root = await resolveRootDir();
     await _useRoot(root);
     if (Platform.isAndroid) {
       // Same storage as the finished files: yt-dlp's last step is then a rename, not a full copy.
@@ -181,7 +179,7 @@ class DownloadService extends GetxService {
     // Android 7–9: without the permission at start-up the files went to the
     // app's private folder; once granted, new downloads use Download/Toomu.
     if (granted && Platform.isAndroid && downloadRoot != _publicRoot) {
-      final root = await _resolveRootDir();
+      final root = await resolveRootDir();
       if (root.path == _publicRoot) await _useRoot(root);
     }
   }
@@ -570,7 +568,7 @@ class DownloadService extends GetxService {
     if (token == null) return;
     _stopReasons[task.id] = reason;
     token.cancel(reason);
-    if (task.source != DownloadSource.direct && Platform.isAndroid) {
+    if (task.source != DownloadSource.direct) {
       unawaited(YtDlpBridge.cancel(task.id));
     }
   }
@@ -615,8 +613,6 @@ class DownloadService extends GetxService {
         task.phase.value = DownloadPhase.video;
         await _downloadDirect(task, token, onBytes);
         await File(task.partPath).rename(task.filePath);
-      } else if (Platform.isIOS) {
-        await _downloadNative(task, token, onBytes);
       } else if (task.source == DownloadSource.youtube) {
         await _downloadYtDlp(task, token, onBytes);
       } else {
@@ -1051,122 +1047,6 @@ class DownloadService extends GetxService {
     await _deleteQuietly(work);
   }
 
-  Future<void> _downloadNative(
-    DownloadTask task,
-    CancelToken token,
-    void Function(int) onBytes,
-  ) async {
-    if (task.source == DownloadSource.stream) return _downloadStreamIos(task, token, onBytes);
-    if (task.source != DownloadSource.youtube) {
-      throw StateError('TikTok downloads are not available on iPhone yet.');
-    }
-    task.phase.value = DownloadPhase.lookingUp;
-    await YtDlpService.to.whenReady;
-    final fast = await _youtube
-        .fastLinks(task.videoId)
-        .timeout(const Duration(seconds: 15), onTimeout: () => null);
-    _checkStopped(token);
-    if (fast == null || !fast.full) {
-      throw StateError("YouTube didn't give download links for this video. Try again later.");
-    }
-    final audio = fast.info.bestAudio;
-    if (audio == null || audio.ext != 'm4a' || !audio.isDirect) {
-      throw StateError('No AAC audio for this video.');
-    }
-    YtFormat? video;
-    if (task.kind == DownloadKind.video) {
-      final maxClass = int.tryParse(task.qualityLabel.replaceAll('p', '')) ?? 1080;
-      final avc = fast.info.videoFormats
-          .where((f) =>
-              f.isDirect &&
-              !f.hasAudio &&
-              (f.vcodec?.startsWith('avc1') ?? false) &&
-              MediaFormat.qualityClass(f.width, f.height!) <= maxClass)
-          .toList()
-        ..sort((a, b) => b.height!.compareTo(a.height!));
-      if (avc.isEmpty) throw StateError("That quality isn't available right now. Pick another one.");
-      video = avc.first;
-    }
-
-    final work = _workDirOf(task);
-    await Directory(work).create(recursive: true);
-    final parts = [
-      if (video != null) (format: video, path: '$work/video.mp4', phase: DownloadPhase.video),
-      (format: audio, path: '$work/audio.m4a', phase: DownloadPhase.audio),
-    ];
-    task.totalBytes.value = parts.fold<int>(0, (s, p) => s + (p.format.filesize ?? 0));
-    var done = 0;
-    for (final p in parts) {
-      task.phase.value = p.phase;
-      final f = p.format;
-      final uri = Uri.parse(StreamProxy.to.wrap(f.url!, headers: f.httpHeaders, videoId: task.videoId));
-      final before = done;
-      await _fetch(
-        total: f.filesize ?? 0,
-        partPath: p.path,
-        token: token,
-        onBytes: (b) => onBytes(before + b),
-        connections: SettingsService.to.connectionsPerDownload.value,
-        request: (from, to) => (url: uri, headers: {...f.httpHeaders, 'Range': 'bytes=$from-$to'}),
-      );
-      done += File(p.path).lengthSync();
-    }
-    _checkStopped(token);
-
-    if (video != null) {
-      task.phase.value = DownloadPhase.merging;
-      final merged = '$work/merged.mp4';
-      await _merge.invokeMethod<void>('merge', {
-        'video': parts.first.path,
-        'audio': parts.last.path,
-        'out': merged,
-      });
-      await File(merged).rename(task.filePath);
-    } else {
-      await File(parts.last.path).rename(task.filePath);
-    }
-    await _deleteQuietly(work);
-  }
-
-  Future<void> _downloadStreamIos(
-    DownloadTask task,
-    CancelToken token,
-    void Function(int) onBytes,
-  ) async {
-    final work = _workDirOf(task);
-    final downloader = StreamDownloader(
-      dio: _dio,
-      native: _merge,
-      connections: SettingsService.to.connectionsPerDownload.value,
-      fetchFile: (url, headers, path, token, onFile) async {
-        final uri = Uri.parse(url);
-        final info = await _probeDirect(uri, token, headers);
-        await _fetch(
-          total: info.total,
-          partPath: path,
-          token: token,
-          onBytes: onFile,
-          connections: SettingsService.to.connectionsPerDownload.value,
-          request: (from, to) => (url: uri, headers: {...headers, 'Range': 'bytes=$from-$to'}),
-          rangeSupported: info.ranges,
-        );
-      },
-    );
-    final result = await downloader.download(
-      url: task.url!,
-      headers: await _requestHeaders(task),
-      work: work,
-      maxHeight: int.tryParse(task.qualityLabel.replaceAll('p', '')) ?? 0,
-      audioOnly: task.kind == DownloadKind.audio,
-      cancel: token,
-      onBytes: onBytes,
-      onTotal: (total) => task.totalBytes.value = total,
-      onPhase: (phase) => task.phase.value = phase,
-    );
-    await File(result).rename(task.filePath);
-    await _deleteQuietly(work);
-  }
-
   static const _progressTemplate =
       'download:[toomu] %(info.format_id)s %(progress.downloaded_bytes)s '
       '%(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s';
@@ -1500,30 +1380,6 @@ class DownloadService extends GetxService {
         _ => ['--add-header', '${e.key}:${e.value}'],
       },
   ];
-
-  /// Size and range support of a direct URL, from a 1-byte range request.
-  Future<({int total, bool ranges})> _probeDirect(
-    Uri uri,
-    CancelToken token, [
-    Map<String, String> headers = const {},
-  ]) async {
-    final r = await _dio.get<ResponseBody>(
-      uri.toString(),
-      cancelToken: token,
-      options: Options(
-        responseType: ResponseType.stream,
-        headers: {...headers, 'Range': 'bytes=0-0'},
-      ),
-    );
-    unawaited(r.data?.stream.listen(null).cancel());
-    if (r.statusCode == 206) {
-      final range = r.headers.value('content-range') ?? '';
-      final total = int.tryParse(range.split('/').last) ?? 0;
-      if (total > 0) return (total: total, ranges: true);
-    }
-    final length = int.tryParse(r.headers.value('content-length') ?? '') ?? 0;
-    return (total: length, ranges: false);
-  }
 
   /// Downloads [total] bytes into [partPath], resuming what's on disk.
   /// Uses up to [connections] parallel connections, each writing its pieces
@@ -1977,7 +1833,8 @@ class DownloadService extends GetxService {
 
   static const _publicRoot = '/storage/emulated/0/Download/${AppConstants.downloadFolderName}';
 
-  Future<Directory> _resolveRootDir() async {
+  @visibleForTesting
+  static Future<Directory> resolveRootDir() async {
     if (Platform.isAndroid) {
       // Public Download/Toomu so files are visible to other apps.
       final public = Directory(_publicRoot);
@@ -1991,6 +1848,11 @@ class DownloadService extends GetxService {
         final ext = await getExternalStorageDirectory();
         if (ext != null) return ext;
       }
+    }
+    if (HostOs.isWindows) {
+      // %USERPROFILE%\Downloads\Toomu, where people look for downloads.
+      final downloads = await getDownloadsDirectory();
+      if (downloads != null) return Directory('${downloads.path}/${AppConstants.downloadFolderName}');
     }
     final docs = await getApplicationDocumentsDirectory();
     return Directory('${docs.path}/${AppConstants.downloadFolderName}');

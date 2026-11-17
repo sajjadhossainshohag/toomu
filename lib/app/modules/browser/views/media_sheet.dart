@@ -1,9 +1,8 @@
-import 'dart:io';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/utils/host_os.dart';
 import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
 import '../../../core/utils/formatters.dart';
@@ -128,7 +127,7 @@ class _MediaSheetState extends State<_MediaSheet> {
                 ],
               ),
             ),
-            if (Platform.isAndroid && page == null)
+            if (HostOs.hasYtDlp && page == null)
               Padding(
                 padding: EdgeInsets.only(top: 8 * scale),
                 child: searching

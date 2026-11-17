@@ -1,6 +1,6 @@
 /// The browser's media button (bottom-right corner).
 enum MediaButtonMode {
-  /// Nothing to offer (iPhone, where pages can't be read for videos).
+  /// Nothing to offer (yt-dlp can't read pages here).
   hidden,
 
   /// Nothing found yet: a small grey button that asks yt-dlp to read the page.

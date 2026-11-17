@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -544,7 +543,7 @@ class YoutubeController extends GetxController {
       return;
     }
 
-    formatsStatus.value = !Platform.isIOS && !ytdlp.ready.value
+    formatsStatus.value = !ytdlp.ready.value
         ? 'Preparing downloader (first run)…'
         : ytdlp.updating.value
         ? 'Updating downloader…'
@@ -671,10 +670,6 @@ class YoutubeController extends GetxController {
   bool _listLoading = false;
 
   Future<void> openCollection(String url) async {
-    if (Platform.isIOS) {
-      showSnack('Android only for now', "Downloading a whole playlist or channel needs yt-dlp, which iPhone doesn't have.");
-      return;
-    }
     if (_listLoading) return;
     _listLoading = true;
     showSnack('Getting the list…', 'Long playlists take a few seconds.', duration: const Duration(minutes: 2));

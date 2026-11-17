@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/host_os.dart';
+import '../../../core/utils/shell_open.dart';
 import '../../../core/values/app_constants.dart';
 import '../../../services/download_service.dart';
 import '../../../services/floating_button_service.dart';
@@ -83,10 +87,9 @@ class SettingsController extends GetxController {
     if (n != null) settings.setConnectionsPerDownload(n);
   }
 
-  void showFolder() => showNoticeDialog(
-        title: 'Download location',
-        message: downloadFolder,
-      );
+  void showFolder() => HostOs.isWindows
+      ? unawaited(openInExplorer(downloadFolder))
+      : showNoticeDialog(title: 'Download location', message: downloadFolder);
 
   Future<void> cleanTemporaryFiles() async {
     final freed = await DownloadService.to.cleanTemporaryFiles();

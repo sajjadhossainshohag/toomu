@@ -2,9 +2,9 @@
 #  - Android APKs: every push to main or by hand (arm64 only, for speed);
 #    every v* tag (arm64 + armv7). Analyze + Dart and Kotlin tests run
 #    alongside the build (job "check"); a failure stops the release.
-#  - iOS: turned off (see the commented-out ios job).
+#  - Windows x64 (zip): every build, alongside Android.
 #  - Every successful build of main publishes a GitHub Release under a new
-#    tag (vYYYY.MM.DD-HHMM, Bangladesh time) with the APK; a pushed v* tag
+#    tag (vYYYY.MM.DD-HHMM, Bangladesh time) with the APK and Windows zip; a pushed v* tag
 #    publishes one under that tag with all files.
 #
 # Release signing (optional, recommended — phones only update an app signed
@@ -133,45 +133,44 @@ jobs:
           path: dist/*
           retention-days: 14
 
-  # iOS: off. The .ipa is unsigned and iPhones only install signed apps
-  # (AltStore / Sideloadly can sign it with a free Apple ID; installing it
-  # straight needs the Apple Developer Program and signing here). To turn it
-  # back on, uncomment this job and add ios to the release job's needs.
-# ios:
-#   runs-on: macos-latest
-#   timeout-minutes: 60
-#   steps:
-#     - uses: actions/checkout@v4
-#
-#     - uses: subosito/flutter-action@v2
-#       with:
-#         flutter-version: ${{ env.FLUTTER_VERSION }}
-#         channel: stable
-#         cache: true
-#
-#     - run: flutter pub get
-#
-#     # Unsigned: install with your own Apple signing (e.g. AltStore /
-#     # Sideloadly) — App Store distribution needs certificates + profiles.
-#     - name: Build iOS (no code signing)
-#       run: |
-#         flutter build ios --release --no-codesign \
-#           --obfuscate --split-debug-info=build/symbols-ios \
-#           --dart-define=TOOMU_BUILD="ci ${GITHUB_SHA::7} ios"
-#         mkdir -p dist/Payload
-#         cp -R build/ios/iphoneos/Runner.app dist/Payload/
-#         (cd dist && zip -qr toomu-unsigned.ipa Payload && rm -rf Payload)
-#         ls -lh dist
-#
-#     - uses: actions/upload-artifact@v4
-#       with:
-#         name: toomu-ios
-#         path: dist/*
-#         retention-days: 14
+  # Windows x64: the app folder zipped (unzip anywhere, run toomu.exe).
+  # yt-dlp, FFmpeg and Deno download on first launch (WindowsYtDlp).
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build Windows
+        run: |
+          flutter build windows --release \
+            --obfuscate --split-debug-info=build/symbols-windows \
+            --dart-define=TOOMU_BUILD="ci ${GITHUB_SHA::7} windows"
+          mkdir -p dist
+          (cd build/windows/x64/runner/Release && 7z a -tzip -bso0 "$GITHUB_WORKSPACE/dist/toomu-windows-x64.zip" .)
+          (cd build && 7z a -tzip -bso0 "$GITHUB_WORKSPACE/dist/debug-symbols-windows.zip" symbols-windows)
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: toomu-windows
+          path: dist/*
+          retention-days: 14
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
-    needs: [check, android]
+    needs: [check, android, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -189,7 +188,7 @@ jobs:
           notes="Built by CI from ${GITHUB_SHA::7}."
           [ -f dist/toomu-arm64-v8a.apk ] && notes+=$'\n- toomu-arm64-v8a.apk — most phones'
           [ -f dist/toomu-armeabi-v7a.apk ] && notes+=$'\n- toomu-armeabi-v7a.apk — older 32-bit phones'
-          [ -f dist/toomu-unsigned.ipa ] && notes+=$'\n- toomu-unsigned.ipa — iOS, unsigned (YouTube downloads up to 1080p; no TikTok downloads, bubble or PiP)'
+          [ -f dist/toomu-windows-x64.zip ] && notes+=$'\n- toomu-windows-x64.zip — Windows 10/11 (unzip, run toomu.exe)'
           notes+=$'\n- debug-symbols-*.zip — to read crash stack traces'
           # A tag created with the workflow's token doesn't start another run.
           gh release create "$tag" dist/* --target "${GITHUB_SHA}" \

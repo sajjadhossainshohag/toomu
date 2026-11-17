@@ -93,7 +93,7 @@ void main() {
       expect(DownloadService.workDirFor('42', root: root, legacyRoot: legacy), '$root/42');
     });
 
-    test('without a folder next to the files (iOS, or it could not be made) the app cache is used', () {
+    test('without a folder next to the files (it could not be made) the app cache is used', () {
       expect(DownloadService.workDirFor('42', root: '', legacyRoot: legacy), '$legacy/42');
       expect(DownloadService.workDirFor('42', root: '', legacyRoot: ''), '');
     });

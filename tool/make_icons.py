@@ -12,7 +12,7 @@ from PIL import Image
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BRAND = ROOT / "branding"
 RES = ROOT / "android/app/src/main/res"
-IOS = ROOT / "ios/Runner/Assets.xcassets/AppIcon.appiconset"
+WIN_ICO = ROOT / "windows/runner/resources/app_icon.ico"
 
 # Progress ring around a faceted play triangle with a download arrow on it.
 RING = "M512 222 A290 290 0 1 1 512 802 A290 290 0 1 1 512 222 Z"
@@ -132,11 +132,8 @@ def main():
     for folder, px in {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}.items():
         rounded.resize((px, px), Image.LANCZOS).save(RES / f"mipmap-{folder}/ic_launcher.png")
 
-    # App Store rejects icons with an alpha channel; iOS applies its own corner mask.
-    for f in IOS.glob("Icon-App-*.png"):
-        pt, scale = f.stem.removeprefix("Icon-App-").split("@")
-        px = round(float(pt.split("x")[0]) * int(scale.rstrip("x")))
-        square.convert("RGB").resize((px, px), Image.LANCZOS).save(f)
+    # Windows: taskbar, title bar and Explorer pick the size they need.
+    rounded.save(WIN_ICO, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 
     android_vectors()
 

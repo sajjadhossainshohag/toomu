@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:io' show ProcessException;
 
 import 'package:flutter/services.dart';
+
+import '../../../core/utils/host_os.dart';
+import 'windows_ytdlp.dart';
 
 /// Result of one yt-dlp run.
 class YtDlpResult {
@@ -57,7 +61,8 @@ class YtDlpCanceled implements Exception {
   String toString() => 'yt-dlp run canceled';
 }
 
-/// Thin Dart side of android/.../YtDlpBridge.kt (youtubedl-android).
+/// Thin Dart side of android/.../YtDlpBridge.kt (youtubedl-android); on
+/// Windows, [WindowsYtDlp] runs yt-dlp.exe itself.
 abstract class YtDlpBridge {
   static const _methods = MethodChannel('toomu/ytdlp');
   static const _events = EventChannel('toomu/ytdlp/progress');
@@ -66,21 +71,38 @@ abstract class YtDlpBridge {
       _events.receiveBroadcastStream().cast<Map<dynamic, dynamic>>();
 
   /// Unpacks Python/FFmpeg on first launch; returns the yt-dlp version.
-  static Future<String?> init() => _methods.invokeMethod<String>('init');
+  static Future<String?> init() =>
+      HostOs.isWindows ? _windows.init() : _methods.invokeMethod<String>('init');
 
-  static Future<String?> version() => _methods.invokeMethod<String>('version');
+  static Future<String?> version() =>
+      HostOs.isWindows ? _windows.version() : _methods.invokeMethod<String>('version');
+
+  static WindowsYtDlp get _windows => WindowsYtDlp.instance;
 
   /// True while the bundled yt-dlp runs (no update has succeeded yet: first
   /// launch, or restored after an interrupted update).
-  static Future<bool> needsUpdate() async => await _methods.invokeMethod<bool>('needsUpdate') ?? false;
+  static Future<bool> needsUpdate() async => HostOs.isWindows
+      ? _windows.needsUpdate()
+      : await _methods.invokeMethod<bool>('needsUpdate') ?? false;
 
   /// Downloads the latest yt-dlp release from GitHub ("stable"/"nightly").
-  static Future<String?> update(String channel) =>
-      _methods.invokeMethod<String>('update', {'channel': channel});
+  static Future<String?> update(String channel) => HostOs.isWindows
+      ? _windows.update(channel)
+      : _methods.invokeMethod<String>('update', {'channel': channel});
 
   /// Runs yt-dlp; the last element of [args] must be the URL.
   /// Output lines arrive on [onLine] while it runs.
   static Future<YtDlpResult> run(String id, List<String> args, {void Function(String line)? onLine}) async {
+    if (HostOs.isWindows) {
+      final sub = onLine == null ? null : _windows.lines.where((e) => e.id == id).listen((e) => onLine(e.line));
+      try {
+        return await _windows.run(id, args);
+      } on ProcessException catch (e) {
+        throw YtDlpException(e.message);
+      } finally {
+        await sub?.cancel();
+      }
+    }
     StreamSubscription<Map<dynamic, dynamic>>? sub;
     if (onLine != null) {
       sub = _progress.where((e) => e['id'] == id).listen((e) => onLine('${e['line']}'));
@@ -100,6 +122,7 @@ abstract class YtDlpBridge {
     }
   }
 
-  static Future<bool> cancel(String id) async =>
-      (await _methods.invokeMethod<bool>('cancel', {'id': id})) ?? false;
+  static Future<bool> cancel(String id) async => HostOs.isWindows
+      ? _windows.cancel(id)
+      : (await _methods.invokeMethod<bool>('cancel', {'id': id})) ?? false;
 }

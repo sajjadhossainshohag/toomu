@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/utils/host_os.dart';
 import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
 import '../../../core/values/app_constants.dart';
@@ -125,7 +126,7 @@ class SettingsView extends GetView<SettingsController> {
                         onTap: () => controller.settings
                             .setClipboardLinks(!controller.settings.clipboardLinks.value),
                       ),
-                      if (Platform.isAndroid) ...[
+                      if (HostOs.hasYtDlp) ...[
                       AppRow(
                         icon: Icons.call_split_rounded,
                         tint: ColorConstants.tileEqualizer,
@@ -137,7 +138,7 @@ class SettingsView extends GetView<SettingsController> {
                         icon: Icons.folder_rounded,
                         tint: ColorConstants.tileStorage,
                         label: 'Download location',
-                        value: 'Download/${AppConstants.downloadFolderName}',
+                        value: HostOs.downloadFolderLabel,
                         onTap: controller.showFolder,
                       ),
                       ],
@@ -193,7 +194,7 @@ class SettingsView extends GetView<SettingsController> {
                   AppGroup(
                     title: 'Downloader',
                     rows: <Widget>[
-                      if (Platform.isAndroid) ...[
+                      if (HostOs.hasYtDlp) ...[
                       AppRow(
                         icon: Icons.system_update_alt_rounded,
                         tint: ColorConstants.tileDownloads,
