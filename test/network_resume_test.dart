@@ -50,7 +50,10 @@ void main() {
     late Directory tmp;
 
     setUp(() async {
-      DownloadService.stallLimit = const Duration(seconds: 2);
+      // Short limits: the same stall, three retries and give-up, in a
+      // second instead of ~20 s each.
+      DownloadService.stallLimit = const Duration(milliseconds: 600);
+      DownloadService.retryBackoff = const Duration(milliseconds: 50);
       origin = SilentServer(20 * _mb);
       await origin.start();
       tmp = Directory.systemTemp.createTempSync('silent');

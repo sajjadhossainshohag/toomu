@@ -9,14 +9,15 @@ Toomu is a Flutter app for Android and Windows (no iOS/macOS): YouTube/TikTok/we
 ```bash
 flutter pub get
 flutter analyze                                   # CI fails on any issue (flutter_lints)
-flutter test                                      # unit tests in test/
+flutter test                                      # unit tests in test/ (~20 s; timers are shortened in tests via @visibleForTesting statics)
+flutter test $(tool/test_shard.sh 0 3)            # one CI shard (0..2 of 3)
 flutter test test/windows_ytdlp_test.dart         # one file
 flutter test test/windows_ytdlp_test.dart --plain-name "drops the Android aria2c option"   # one test
 tool/build_release.sh                             # release APKs per ABI (arm64, armv7), obfuscated
 flutter build windows --release                   # Windows x64 (needs a Windows PC with Visual Studio's C++ workload)
 ```
 
-- CI (`.github/workflows/build.yml`, Flutter 3.41.1): push to `main` builds the arm64 APK (armv7 too on tags) and a Windows x64 zip, while a parallel `check` job runs `flutter analyze` + `flutter test`; every successful main build publishes a GitHub Release under a new tag (`vYYYY.MM.DD-HHMM`, Bangladesh time); a pushed `v*` tag publishes one under that tag with armv7 too.
+- CI (`.github/workflows/build.yml`, Flutter 3.41.1): push to `main` builds the arm64 APK (armv7 too on tags) and a Windows x64 zip, while parallel jobs run `flutter analyze`, the Dart tests split by file into 3 shards (`tool/test_shard.sh`, all CPU cores each) and the Kotlin tests; every successful main build publishes a GitHub Release under a new tag (`vYYYY.MM.DD-HHMM`, Bangladesh time); a pushed `v*` tag publishes one under that tag with armv7 too.
 - `--dart-define=TOOMU_BUILD=...` labels the build in Settings → Diagnostics.
 - Release signing: `android/key.properties` or `ANDROID_KEYSTORE_*` env/secrets; otherwise the debug key.
 - The Gradle `merge*NativeLibs` tasks run `tool/trim_ytdlp_bundles.py` (needs `python3`; skipped with a warning if missing) to strip unused files from yt-dlp's bundled Python/FFmpeg archives.

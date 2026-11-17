@@ -104,6 +104,10 @@ class DownloadService extends GetxService {
   @visibleForTesting
   static Duration stallLimit = const Duration(seconds: 30);
 
+  /// Wait before retry n is n times this (tests make it short).
+  @visibleForTesting
+  static Duration retryBackoff = const Duration(seconds: 2);
+
   @visibleForTesting
   static int retriesAfterLoss({required int previous, required bool progressed}) => progressed ? 1 : previous + 1;
   final Map<String, int> _networkRetries = {};
@@ -1837,7 +1841,7 @@ class DownloadService extends GetxService {
         if (retries >= 3) rethrow;
         if (e.response == null && link != null && !await online(link)) rethrow;
         retries++;
-        await Future<void>.delayed(Duration(seconds: 2 * retries));
+        await Future<void>.delayed(retryBackoff * retries);
       }
     }
   }

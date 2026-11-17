@@ -87,8 +87,13 @@ class StreamProxy extends GetxService {
   static const _firstPiece = 1 << 20;
   static const _maxPiece = 8 << 20;
 
-  /// A piece that sends nothing for this long is asked for again.
-  static const _stallLimit = Duration(seconds: 12);
+  /// A piece that sends nothing for this long is asked for again (tests
+  /// make it short).
+  @visibleForTesting
+  static Duration stallLimit = const Duration(seconds: 12);
+  /// Wait before asking again after failure n is n times this.
+  @visibleForTesting
+  static Duration retryStep = const Duration(milliseconds: 300);
   static const _flushEvery = 256 << 10;
   static const _maxFailures = 6;
 
@@ -336,7 +341,7 @@ class StreamProxy extends GetxService {
       if (++failures > _maxFailures) {
         throw HttpException('YouTube refused the stream (${status ?? piece.error})');
       }
-      await Future<void>.delayed(Duration(milliseconds: 300 * failures));
+      await Future<void>.delayed(retryStep * failures);
     }
   }
 
@@ -351,7 +356,7 @@ class StreamProxy extends GetxService {
         final n = name.toLowerCase();
         if (n != 'range' && n != 'accept-encoding' && n != 'host') req.headers.set(name, value);
       });
-      res = await req.close().timeout(_stallLimit);
+      res = await req.close().timeout(stallLimit);
     } catch (e) {
       return _Piece(0, error: e);
     }
@@ -388,10 +393,10 @@ class StreamProxy extends GetxService {
     }
 
     // While a flush waits, the player's buffer is full: that is not a stall.
-    stall = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (flushing || idle.elapsed < _stallLimit) return;
+    stall = Timer.periodic(stallLimit < const Duration(seconds: 2) ? stallLimit ~/ 4 : const Duration(seconds: 1), (_) {
+      if (flushing || idle.elapsed < stallLimit) return;
       sub.cancel();
-      finish(error: 'no data for ${_stallLimit.inSeconds} s');
+      finish(error: 'no data for ${stallLimit.inMilliseconds} ms');
     });
 
     sub = from.listen(

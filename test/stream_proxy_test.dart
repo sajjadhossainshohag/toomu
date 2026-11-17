@@ -107,6 +107,9 @@ void main() {
   var lookupFails = false;
 
   setUp(() async {
+    // A short stall limit: the same stalls, found in a second, not 12 s.
+    StreamProxy.stallLimit = const Duration(seconds: 1);
+    StreamProxy.retryStep = const Duration(milliseconds: 20);
     yt = FakeYoutube(length, freeBytes: free);
     await yt.start();
     lookupDone = Completer<void>();
@@ -178,7 +181,8 @@ void main() {
       if (!paused && body.length > 1 << 20) {
         paused = true;
         sub.pause();
-        Timer(const Duration(seconds: 15), sub.resume);
+        // Longer than the stall limit.
+        Timer(StreamProxy.stallLimit * 3, sub.resume);
       }
     }, onDone: done.complete, onError: done.completeError);
     await done.future;

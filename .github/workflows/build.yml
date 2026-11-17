@@ -1,7 +1,8 @@
 # Builds Toomu automatically.
 #  - Android APKs: every push to main or by hand (arm64 only, for speed);
-#    every v* tag (arm64 + armv7). Analyze + Dart and Kotlin tests run
-#    alongside the build (job "check"); a failure stops the release.
+#    every v* tag (arm64 + armv7). Analyze, the Dart tests (3 shards) and
+#    the Kotlin tests run alongside the builds, each its own job; any
+#    failure stops the release.
 #  - Windows x64 (zip): every build, alongside Android.
 #  - Every successful build of main publishes a GitHub Release under a new
 #    tag (vYYYY.MM.DD-HHMM, Bangladesh time) with the APK and Windows zip; a pushed v* tag
@@ -27,32 +28,67 @@ env:
   FLUTTER_VERSION: '3.41.1'
 
 jobs:
-  check:
+  # Checks run as parallel jobs: analyze, the Dart tests (split in shards)
+  # and the Kotlin tests, so none waits for another.
+  analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
-      # For the Kotlin unit tests.
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-
       - run: flutter pub get
       - run: flutter analyze --no-pub
-      - run: flutter test --no-pub
 
-      # Kotlin unit tests (android/app/src/test), e.g. the yt-dlp file repair.
-      # android/gradlew isn't in git: --config-only has Flutter write it
-      # (and Gradle's settings) without building anything.
+  # Dart tests in TEST_SHARDS jobs at once, split by test file (each file is
+  # compiled once, in one shard; package:test's --total-shards would
+  # compile every file in every shard). Each job runs its files on all of
+  # the runner's CPU cores (flutter's default leaves some idle).
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false # show every failing shard, not just the first
+      matrix:
+        shard: [0, 1, 2]
+    env:
+      TEST_SHARDS: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Tests (shard ${{ matrix.shard }} of ${{ env.TEST_SHARDS }})
+        run: |
+          files=$(tool/test_shard.sh "${{ matrix.shard }}" "$TEST_SHARDS")
+          echo "$files"
+          flutter test --no-pub --concurrency="$(nproc)" $files
+
+  # Kotlin unit tests (android/app/src/test), e.g. the yt-dlp file repair.
+  # android/gradlew isn't in git: --config-only has Flutter write it
+  # (and Gradle's settings) without building anything.
+  kotlin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
       - name: Android unit tests
         run: |
           flutter build apk --config-only
@@ -170,7 +206,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
-    needs: [check, android, windows]
+    needs: [analyze, test, kotlin, android, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
