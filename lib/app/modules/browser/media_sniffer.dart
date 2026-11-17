@@ -37,7 +37,7 @@ const mediaSnifferJs = r'''
     if (!url || typeof url !== 'string' || url.indexOf('blob:') === 0) return;
     try { url = new URL(url, location.href).href; } catch (e) { return; }
     if (!/^https?:/i.test(url) || url.length > 4000 || SKIP.test(url)) return;
-    var key = url + '|' + (extra.duration ? Math.round(extra.duration) : '') + '|' + (extra.height || '');
+    var key = url + '|' + (extra.duration ? Math.round(extra.duration) : '') + '|' + (extra.height || '') + '|' + (extra.subs ? extra.subs.length : '');
     if (seen[key]) return;
     seen[key] = 1;
     var m = { url: url, source: source, page: location.href, title: document.title || '', ua: navigator.userAgent };
@@ -54,8 +54,13 @@ const mediaSnifferJs = r'''
         poster: el.poster || '',
         duration: isFinite(el.duration) ? el.duration : 0,
         width: el.videoWidth || 0,
-        height: el.videoHeight || 0
+        height: el.videoHeight || 0,
+        subs: []
       };
+      var tracks = el.querySelectorAll('track');
+      for (var t = 0; t < tracks.length; t++) {
+        extra.subs.push({ url: tracks[t].src, lang: tracks[t].srclang, kind: tracks[t].kind });
+      }
       report(el.currentSrc || el.src, 'element', extra);
       var sources = el.querySelectorAll('source');
       for (var j = 0; j < sources.length; j++) report(sources[j].src, 'element', extra);

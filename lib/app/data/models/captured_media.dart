@@ -39,6 +39,7 @@ class CapturedMedia {
   Duration? duration;
   final List<StreamVariant> variants;
   final bool protected;
+  final Map<String, String> subtitles = {};
 
   bool get isStream => type != CapturedType.file;
 

@@ -9,6 +9,7 @@ import '../../core/utils/media_manifest.dart';
 import '../../data/models/captured_media.dart';
 import '../../data/models/download_task.dart';
 import '../../services/download_service.dart';
+import '../../core/utils/subtitles.dart';
 import 'media_title.dart';
 
 class MediaCapture {
@@ -125,7 +126,7 @@ class MediaCapture {
       pageUrl: pageUrl(),
       mediaUrl: url,
     );
-    _applyElement(media, m);
+    applyElement(media, m);
     _add(media, fromRequest: m['source'] == 'request');
   }
 
@@ -261,14 +262,15 @@ class MediaCapture {
   void _updateFromElement(String url, Map<String, dynamic> m) {
     for (final i in items) {
       if (i.url == url) {
-        _applyElement(i, m);
+        applyElement(i, m);
         items.refresh();
         return;
       }
     }
   }
 
-  static void _applyElement(CapturedMedia media, Map<String, dynamic> m) {
+  @visibleForTesting
+  static void applyElement(CapturedMedia media, Map<String, dynamic> m) {
     final seconds = (m['duration'] as num?)?.toDouble() ?? 0;
     if (seconds > 0 && media.duration == null) {
       media.duration = Duration(milliseconds: (seconds * 1000).round());
@@ -280,5 +282,9 @@ class MediaCapture {
     }
     final poster = m['poster'];
     if (poster is String && poster.startsWith('http') && media.poster.isEmpty) media.poster = poster;
+    final subs = Subtitles.fromTracks(m['subs']);
+    for (final e in subs.entries) {
+      media.subtitles.putIfAbsent(e.key, () => e.value);
+    }
   }
 }

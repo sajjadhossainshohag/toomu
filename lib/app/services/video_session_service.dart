@@ -9,6 +9,7 @@ import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../core/utils/subtitles.dart';
 import '../data/models/video_item.dart';
 import '../data/models/youtube_stream.dart';
 import '../data/providers/local_video_provider.dart';
@@ -252,6 +253,8 @@ class VideoSessionService extends GetxService {
     // Read ahead into the 32 MB memory buffer only. On disk, read-ahead has
     // no size limit: more mobile data and more work for the phone.
     set('cache-on-disk', 'no');
+    // Sidecar subtitles are added explicitly in openItem; mpv's own search would add them twice.
+    set('sub-auto', 'no');
   }
 
   /// Opens [item] in the player (at [start] if given): a file, or a stream
@@ -270,6 +273,18 @@ class VideoSessionService extends GetxService {
       final exists = file.existsSync();
       debugPrint('[Video] opening file ${path.split('/').last} '
           '(${exists ? '${(file.lengthSync() / 1048576).toStringAsFixed(1)} MB' : 'MISSING'})');
+    }
+    final mpv = p.platform;
+    if (mpv is NativePlayer) {
+      try {
+        // mpv keeps sub-files for every later file, so it is reset per open.
+        await mpv.command(['change-list', 'sub-files', 'clr', '']);
+        for (final s in path == null ? const <String>[] : Subtitles.sidecarsOf(path)) {
+          await mpv.command(['change-list', 'sub-files', 'append', s]);
+        }
+      } catch (e) {
+        debugPrint('[Video] subtitle files: $e');
+      }
     }
     await p.open(
       Media(

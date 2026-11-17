@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:toomu/app/core/utils/media_manifest.dart';
+import 'package:toomu/app/data/models/captured_media.dart';
 import 'package:toomu/app/data/models/download_task.dart';
+import 'package:toomu/app/modules/browser/media_capture.dart';
 
 void main() {
   group('HLS', () {
@@ -149,6 +151,78 @@ lo.m3u8
       final odd = DownloadTask.fromJson({...json, 'status': 'someFutureState', 'headers': null});
       expect(odd.status.value, DownloadStatus.paused);
       expect(odd.headers, isEmpty);
+      expect(odd.subtitles, isEmpty);
+    });
+
+    test('subtitle links from the page survive a save', () {
+      final t = DownloadTask(
+        id: '1',
+        title: 't',
+        kind: DownloadKind.video,
+        extension: 'mp4',
+        filePath: '/x.mp4',
+        createdAt: DateTime(2026),
+        source: DownloadSource.direct,
+        subtitles: const {'en': 'https://a.com/en.vtt'},
+      );
+      expect(DownloadTask.fromJson(t.toJson()).subtitles, {'en': 'https://a.com/en.vtt'});
+    });
+  });
+
+  group('own subtitles', () {
+    test('HLS master with a subtitle track', () {
+      const master = '''
+#EXTM3U
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",LANGUAGE="en",NAME="English",URI="subs/en.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,SUBTITLES="subs"
+360/index.m3u8
+''';
+      expect(MediaManifest.hasSubtitles(master), isTrue);
+    });
+
+    test('HLS with only audio tracks, or closed captions inside the video, has none to fetch', () {
+      const master = '''
+#EXTM3U
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="en",URI="audio/en.m3u8"
+#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID="cc",NAME="CC1",INSTREAM-ID="CC1"
+#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,AUDIO="a",CLOSED-CAPTIONS="cc"
+360/index.m3u8
+''';
+      expect(MediaManifest.hasSubtitles(master), isFalse);
+    });
+
+    test('DASH text tracks in any of their spellings', () {
+      for (final set in [
+        '<AdaptationSet contentType="text" lang="en">',
+        '<AdaptationSet mimeType="text/vtt" lang="en">',
+        '<AdaptationSet mimeType="application/ttml+xml">',
+        '<AdaptationSet mimeType="application/mp4" codecs="stpp">',
+        '<AdaptationSet mimeType="application/mp4"><Representation codecs="wvtt"/>',
+      ]) {
+        expect(MediaManifest.hasSubtitles('<MPD><Period>$set</AdaptationSet></Period></MPD>'), isTrue, reason: set);
+      }
+      expect(
+        MediaManifest.hasSubtitles('<MPD><AdaptationSet mimeType="video/mp4" codecs="avc1"/></MPD>'),
+        isFalse,
+      );
+    });
+
+    test('subtitle tracks of a video element are kept with the captured video', () {
+      final media = CapturedMedia(
+        url: 'https://a.com/v.mp4',
+        type: CapturedType.file,
+        kind: DownloadKind.video,
+        pageUrl: 'https://a.com/watch',
+        headers: const {},
+      );
+      MediaCapture.applyElement(media, {
+        'subs': [
+          {'url': 'https://a.com/en.vtt', 'lang': 'en', 'kind': 'subtitles'},
+        ],
+      });
+      expect(media.subtitles, {'en': 'https://a.com/en.vtt'});
+      MediaCapture.applyElement(media, {'subs': []});
+      expect(media.subtitles, {'en': 'https://a.com/en.vtt'}, reason: 'a later scan without tracks keeps them');
     });
   });
 }

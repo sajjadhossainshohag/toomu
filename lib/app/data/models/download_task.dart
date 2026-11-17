@@ -46,6 +46,7 @@ class DownloadTask {
     this.convert,
     this.pageUrl,
     this.headers = const {},
+    this.subtitles = const {},
     int totalBytes = 0,
     int receivedBytes = 0,
     DownloadStatus status = DownloadStatus.queued,
@@ -66,6 +67,7 @@ class DownloadTask {
   // User-Agent and Referer only: cookies are read fresh from the WebView at
   // each start, so a renewed Cloudflare pass is used and none are stored.
   Map<String, String> headers;
+  final Map<String, String> subtitles;
   final String title;
   final String author;
   final String thumbnailUrl;
@@ -161,6 +163,7 @@ class DownloadTask {
     'convert': convert,
     'pageUrl': pageUrl,
     'headers': headers,
+    if (subtitles.isNotEmpty) 'subtitles': subtitles,
     'kind': kind.name,
     'extension': extension,
     'qualityLabel': qualityLabel,
@@ -188,6 +191,9 @@ class DownloadTask {
     convert: json['convert'] as String?,
     pageUrl: json['pageUrl'] as String?,
     headers: ((json['headers'] as Map?) ?? const {}).map(
+      (k, v) => MapEntry('$k', '$v'),
+    ),
+    subtitles: ((json['subtitles'] as Map?) ?? const {}).map(
       (k, v) => MapEntry('$k', '$v'),
     ),
     kind: DownloadKind.values.asNameMap()[json['kind']] ?? DownloadKind.file,

@@ -449,6 +449,7 @@ class BrowserController extends GetxController {
         pageUrl: m.pageUrl,
         headers: m.headers,
         thumbnailUrl: m.poster,
+        subtitles: m.subtitles,
       );
     } else {
       final h = variant?.height ?? m.bestHeight;
@@ -468,6 +469,7 @@ class BrowserController extends GetxController {
         size: _sizeFor(m, variant),
         pageUrl: m.pageUrl,
         headers: m.headers,
+        subtitles: m.subtitles,
       );
     }
     showSnack('Download started', m.title, duration: const Duration(seconds: 2));

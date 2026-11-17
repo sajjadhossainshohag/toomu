@@ -135,6 +135,12 @@ abstract class MediaManifest {
     );
   }
 
+  static final _subtitleTracks = RegExp(
+    r'TYPE=SUBTITLES|contentType="text"|mimeType="(text/vtt|application/ttml\+xml)"|codecs="(stpp|wvtt)',
+  );
+
+  static bool hasSubtitles(String manifest) => _subtitleTracks.hasMatch(manifest);
+
   static Duration? isoDuration(String s) {
     final m = RegExp(r'^P(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$')
         .firstMatch(s.trim());

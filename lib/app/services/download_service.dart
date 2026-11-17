@@ -13,6 +13,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/utils/error_text.dart';
 import '../core/utils/formatters.dart';
+import '../core/utils/media_manifest.dart';
+import '../core/utils/subtitles.dart';
 import '../core/values/app_constants.dart';
 import '../data/models/download_task.dart';
 import '../data/models/tiktok_item.dart';
@@ -213,6 +215,7 @@ class DownloadService extends GetxService {
     String? pageUrl,
     Map<String, String> headers = const {},
     String thumbnailUrl = '',
+    Map<String, String> subtitles = const {},
   }) async {
     await PermissionService.to.requestStorageWrite();
     final uri = Uri.parse(url);
@@ -241,6 +244,7 @@ class DownloadService extends GetxService {
         url: url,
         pageUrl: pageUrl,
         headers: headers,
+        subtitles: kind == DownloadKind.video ? subtitles : const {},
         title: base,
         author: uri.host,
         thumbnailUrl: thumbnailUrl,
@@ -266,6 +270,7 @@ class DownloadService extends GetxService {
     int size = 0,
     String? pageUrl,
     Map<String, String> headers = const {},
+    Map<String, String> subtitles = const {},
   }) async {
     await PermissionService.to.requestStorageWrite();
     final dir = kind == DownloadKind.audio ? _audioDir : _videoDir;
@@ -278,6 +283,7 @@ class DownloadService extends GetxService {
         url: url,
         pageUrl: pageUrl,
         headers: headers,
+        subtitles: kind == DownloadKind.video ? subtitles : const {},
         title: title,
         author: Uri.tryParse(pageUrl ?? url)?.host ?? '',
         thumbnailUrl: thumbnailUrl,
@@ -402,6 +408,9 @@ class DownloadService extends GetxService {
         freed += await _deleteQuietly(p);
       }
       if (deleteFiles) {
+        for (final s in Subtitles.sidecarsOf(task.filePath)) {
+          freed += await _deleteQuietly(s);
+        }
         freed += await _deleteQuietly(task.filePath);
         MediaScannerService.to.scan(task.filePath); // drop it from MediaStore
       }
@@ -513,6 +522,10 @@ class DownloadService extends GetxService {
       } else {
         await _downloadSite(task, token, onBytes);
       }
+      if (task.source == DownloadSource.youtube && task.kind == DownloadKind.video) {
+        await _saveSubtitles(task);
+      }
+      if (task.subtitles.isNotEmpty) await _savePageSubtitles(task);
 
       task.receivedBytes.value = task.totalBytes.value;
       task.status.value = DownloadStatus.completed;
@@ -1118,6 +1131,9 @@ class DownloadService extends GetxService {
     if (r.canceled || token.isCancelled) throw const _Stopped();
     if (!r.ok) throw YtDlpException(localFileProblem(r.err) ?? r.err);
     _findOutput(task, target, dir, base);
+    if (task.source == DownloadSource.stream && task.kind == DownloadKind.video) {
+      await _saveStreamSubtitles(task, dir, work, base);
+    }
     await _deleteQuietly(work);
   }
 
@@ -1135,6 +1151,67 @@ class DownloadService extends GetxService {
   }
 
   static final _youtube = YoutubeProvider();
+
+  Future<void> _savePageSubtitles(DownloadTask task) async {
+    for (final MapEntry(key: lang, value: url) in task.subtitles.entries) {
+      try {
+        final cookies = await webCookies(url);
+        final r = await _dio.get<String>(
+          url,
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: {...task.headers, if (cookies.isNotEmpty) 'Cookie': cookies},
+            receiveTimeout: const Duration(seconds: 20),
+          ),
+        );
+        final text = r.data ?? '';
+        if (!Subtitles.looksLikeSubtitles(text)) continue;
+        await File(Subtitles.sidecarPath(task.filePath, lang, Subtitles.extOf(url))).writeAsString(text);
+      } catch (e) {
+        debugPrint('[Download] $lang subtitles failed: $e');
+      }
+    }
+  }
+
+  Future<void> _saveStreamSubtitles(DownloadTask task, String dir, String work, String base) async {
+    final id = '${task.id}-subs';
+    try {
+      final headers = await _requestHeaders(task);
+      final manifest = await _dio.get<String>(
+        task.url!,
+        options: Options(responseType: ResponseType.plain, headers: headers),
+      );
+      if (!MediaManifest.hasSubtitles(manifest.data ?? '')) return;
+      final r = await YtDlpService.to
+          .runUrl(id, [
+            '--skip-download',
+            '--write-subs',
+            '--sub-langs', 'all',
+            // Subtitle playlists are hundreds of tiny pieces: one at a time took 55 s for a 10-minute sample.
+            '--concurrent-fragments', '8',
+            '-P', 'home:$dir',
+            '-P', 'temp:$work',
+            '-o', '${base.replaceAll('%', '%%')}.%(ext)s',
+            ...headerArgs(headers),
+          ], task.url!)
+          .timeout(const Duration(minutes: 5));
+      debugPrint('[Download] stream subtitles ${r.ok ? 'saved' : 'failed'}');
+    } catch (e) {
+      unawaited(YtDlpBridge.cancel(id));
+      debugPrint('[Download] no stream subtitles: $e');
+    }
+  }
+
+  static Future<void> _saveSubtitles(DownloadTask task) async {
+    try {
+      final saved = await _youtube
+          .saveSubtitles(task.videoId, task.filePath, Subtitles.wanted(PlatformDispatcher.instance.locale))
+          .timeout(const Duration(seconds: 20));
+      debugPrint('[Download] subtitles: ${saved.length}');
+    } catch (e) {
+      debugPrint('[Download] no subtitles: $e');
+    }
+  }
 
   /// [task]'s video as yt-dlp info JSON built from the fast lookup — only
   /// with whole-file links (visionOS client); null otherwise.

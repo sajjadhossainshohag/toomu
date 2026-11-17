@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
+import '../../core/utils/subtitles.dart';
 import '../models/youtube_stream.dart';
 import '../models/yt_info.dart';
 
@@ -82,6 +83,24 @@ class YoutubeProvider {
   }
 
   Future<Video> video(String videoId) => _yt.videos.get(videoId);
+
+  Future<List<String>> saveSubtitles(String videoId, String videoPath, List<String> langs) async {
+    final cc = _yt.videos.closedCaptions;
+    final manifest = await cc.getManifest(videoId, formats: const [ClosedCaptionFormat.srv3]);
+    final saved = <String>[];
+    for (final t in Subtitles.pick(manifest.tracks, langs)) {
+      try {
+        final track = await cc.get(t);
+        if (track.captions.isEmpty) continue;
+        final path = Subtitles.sidecarPath(videoPath, t.language.code);
+        await File(path).writeAsString(Subtitles.srt(track.captions));
+        saved.add(path);
+      } catch (e) {
+        debugPrint('[YouTube] ${t.language.code} subtitles failed: $e');
+      }
+    }
+    return saved;
+  }
 
   // ------------------------------------------------------- fast lookup
 
