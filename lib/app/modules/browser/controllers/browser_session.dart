@@ -35,6 +35,10 @@ class BrowserSession extends GetxController {
 
   BrowserController get tab => active.value!;
 
+  /// The tab the browser was opened for ("Refresh link" from Downloads):
+  /// once its link is found, the browser closes back to Downloads.
+  BrowserController? _openedFor;
+
   @override
   void onInit() {
     super.onInit();
@@ -49,7 +53,7 @@ class BrowserSession extends GetxController {
 
     final arg = Get.arguments;
     if (arg is DownloadTask) {
-      newTab(refreshFor: arg);
+      _openedFor = newTab(refreshFor: arg);
     } else if (arg is String && arg.isNotEmpty) {
       newTab(url: arg);
     } else if (restored.isNotEmpty) {
@@ -85,6 +89,7 @@ class BrowserSession extends GetxController {
   BrowserController _register(BrowserController c) {
     Get.put(c, tag: c.id);
     c.openTab = (url, {required background}) => newTab(url: url, opener: c, background: background);
+    c.onRefreshed = () => identical(c, _openedFor) ? Get.back<void>() : close(c);
     _workers[c.id] = [
       for (final rx in <RxInterface<Object?>>[c.url, c.title, c.showingNewTab]) ever(rx, (_) => _save()),
     ];
@@ -152,8 +157,11 @@ class BrowserSession extends GetxController {
     _save();
   }
 
-  /// Closes tab [c]. Closing the last one leaves a new-tab page.
+  /// Closes tab [c]. Closing the last one leaves a new-tab page. The tab
+  /// switcher stays open (closing several tabs there is one tap each).
   void close(BrowserController c) {
+    final wasShown = identical(active.value, c);
+    final switcher = showingSwitcher.value;
     final next = _order.close(c.id);
     tabs.remove(c);
     live.remove(c.id);
@@ -161,9 +169,10 @@ class BrowserSession extends GetxController {
     if (next == null) {
       active.value = null;
       newTab();
-    } else {
+    } else if (wasShown) {
       activate(tabs.firstWhere((t) => t.id == next));
     }
+    showingSwitcher.value = switcher;
     _save();
   }
 
@@ -212,8 +221,15 @@ class BrowserSession extends GetxController {
     _saveTimer = Timer(const Duration(seconds: 1), _saveNow);
   }
 
+  /// Refresh-link tabs are a one-off errand: not brought back next time.
   void _saveNow() {
-    final list = [for (final c in tabs) (url: c.tabUrl, title: c.tabTitle)];
-    BrowserStore.to.saveTabs(list, active.value == null ? -1 : tabs.indexOf(active.value!));
+    final kept = [
+      for (final c in tabs)
+        if (c.refreshFor == null) c,
+    ];
+    final list = [for (final c in kept) (url: c.tabUrl, title: c.tabTitle)];
+    // The shown tab may be the refresh tab (not saved): then the last one.
+    final shown = active.value == null ? -1 : kept.indexOf(active.value!);
+    BrowserStore.to.saveTabs(list, shown >= 0 ? shown : kept.length - 1);
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
@@ -37,8 +38,13 @@ class BrowserStore extends GetxService {
   BrowsingHistory history = BrowsingHistory();
   late final Bookmarks bookmarks = Bookmarks(_visits(_store, _bookmarksKey));
 
-  /// Reads the history once (the browser starts this when it opens).
-  Future<void> loadHistory() => _historyLoading ??= _loadHistory();
+  /// Reads the history once (the browser starts this when it opens). A
+  /// failed read (I/O) is tried again next time instead of leaving history
+  /// off for the rest of the session.
+  Future<void> loadHistory() => _historyLoading ??= _loadHistory().catchError((Object e) {
+    _historyLoading = null;
+    throw e;
+  });
 
   Future<void> _loadHistory() async {
     final box = await _openHistory();
@@ -61,7 +67,8 @@ class BrowserStore extends GetxService {
   ];
 
   void visit(String url, String title) {
-    unawaited(loadHistory());
+    // Errors stay here (logged), not one unhandled error per page.
+    unawaited(loadHistory().catchError((Object e) => debugPrint('[Browser] history not read: $e')));
     if (history.visit(url, title, DateTime.now())) _historyChanged();
   }
 

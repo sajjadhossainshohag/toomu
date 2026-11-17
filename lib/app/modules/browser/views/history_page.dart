@@ -64,21 +64,26 @@ class _HistoryPageState extends State<HistoryPage> {
                     message: _query.value.isEmpty ? 'Pages you visit show up here.' : 'Try other words.',
                   );
                 }
-                final groups = store.history.byDay(visits, DateTime.now());
-                return ListView(
+                // Built as they scroll into view: up to 3000 visits, each
+                // with a site icon to fetch.
+                final rows = <Object>[
+                  for (final g in store.history.byDay(visits, DateTime.now())) ...[g.label, ...g.visits],
+                ];
+                return ListView.builder(
                   padding: EdgeInsets.only(bottom: 24 * context.scale),
-                  children: <Widget>[
-                    for (final g in groups) ...<Widget>[
-                      PageListLabel(g.label),
-                      for (final v in g.visits)
-                        PageRow(
-                          visit: v,
-                          trailing: _time(v.at),
-                          onTap: () => _open(v.url),
-                          onRemove: () => store.removeVisit(v),
-                        ),
-                    ],
-                  ],
+                  itemCount: rows.length,
+                  itemBuilder: (_, i) {
+                    final row = rows[i];
+                    if (row is String) return PageListLabel(row);
+                    final v = row as PageVisit;
+                    return PageRow(
+                      key: ObjectKey(v),
+                      visit: v,
+                      trailing: _time(v.at),
+                      onTap: () => _open(v.url),
+                      onRemove: () => store.removeVisit(v),
+                    );
+                  },
                 );
               }),
             ),

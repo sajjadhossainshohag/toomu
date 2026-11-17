@@ -63,6 +63,24 @@ void main() {
     expect(opened, 1, reason: 'read once');
   });
 
+  test('a history read that failed once is tried again, and visits never throw', () async {
+    final hist = await box();
+    var attempts = 0;
+    final s = BrowserStore(await box(), () async {
+      if (++attempts == 1) throw const FileSystemException('disk busy');
+      return hist;
+    });
+    final errors = <Object>[];
+    await runZonedGuarded(() async {
+      s.visit('https://a.com/', 'A'); // first read fails: logged, not thrown
+      await Future<void>.delayed(Duration.zero);
+    }, (e, _) => errors.add(e));
+    expect(errors, isEmpty);
+    await s.loadHistory(); // tried again
+    expect(attempts, 2);
+    expect(s.history.entries.map((v) => v.url), ['https://a.com/'], reason: 'the early visit is kept');
+  });
+
   test('pages visited while history is still loading are kept, newest first', () async {
     final hist = await box();
     await hist.write('history', [

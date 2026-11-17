@@ -20,6 +20,10 @@ class _TabWebViewState extends State<TabWebView> {
   PullToRefreshController? _pull;
   late final FindInteractionController _find;
 
+  /// The page's scripts, built when its WebView is made (it reads them
+  /// only then), fresh for each page.
+  late final _scripts = c.userScripts;
+
   BrowserController get c => widget.tab;
 
   @override
@@ -40,7 +44,7 @@ class _TabWebViewState extends State<TabWebView> {
   Widget build(BuildContext context) => InAppWebView(
     initialUrlRequest: URLRequest(url: WebUri(c.restoreUrl)),
     initialSettings: c.settings,
-    initialUserScripts: c.userScripts,
+    initialUserScripts: _scripts,
     pullToRefreshController: _pull,
     findInteractionController: _find,
     onWebViewCreated: c.onCreated,

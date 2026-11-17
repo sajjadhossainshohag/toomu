@@ -133,6 +133,9 @@ class MixedFeedPage implements FeedPage {
   /// Searches asked for more per page while scrolling.
   static const advancePerPage = 2;
 
+  /// Pages of nothing but repeats before a scroll gives up.
+  static const maxRepeatPages = 12;
+
   /// Runs [queries] through [search] at once. Searches that fail are left
   /// out; only when all fail does the error come through.
   static Future<MixedFeedPage> load(
@@ -190,8 +193,9 @@ class MixedFeedPage implements FeedPage {
       if (videos.isNotEmpty) return MixedFeedPage._(videos, [..._sources, ...arrived], late, seen);
     }
     var sources = [..._sources, ...arrived];
-    // A page can be all repeats; try a little further before giving up.
-    for (var tries = 0; tries < 3 && sources.isNotEmpty; tries++) {
+    // A page can be all repeats: keep going while any search has more (the
+    // cap only guards against a search that answers the same page forever).
+    for (var tries = 0; tries < maxRepeatPages && sources.isNotEmpty; tries++) {
       // The first few in line; they go to the back after (taking turns).
       final picked = sources.take(advancePerPage).toList();
       final next = await Future.wait([
@@ -202,13 +206,14 @@ class MixedFeedPage implements FeedPage {
       final videos = _interleave(advanced, seen);
       if (videos.isNotEmpty) return MixedFeedPage._(videos, sources, late, seen);
     }
-    // Everything shown has run out: wait for searches still answering.
+    // Nothing new from the others: wait for searches still answering, and
+    // keep every search that still has pages.
     if (late.isNotEmpty) {
       await Future.wait([for (final p in late) p.future]);
       final last = [for (final p in late) ?p.page];
       late = const [];
       final videos = _interleave(last, seen);
-      if (videos.isNotEmpty) return MixedFeedPage._(videos, last, late, seen);
+      if (videos.isNotEmpty) return MixedFeedPage._(videos, [...sources, ...last], late, seen);
     }
     return null;
   }

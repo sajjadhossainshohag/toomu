@@ -239,6 +239,44 @@ void main() {
       expect(await y.cancel('h'), isFalse); // nothing left to stop
     });
 
+    test('a download canceled while FFmpeg is still downloading never starts', () async {
+      github.holdFfmpeg = Completer<void>();
+      var launches = 0;
+      final y = WindowsYtDlp(
+        toolsDir: () async => tools,
+        github: github.base,
+        ffmpegZip: github.base.resolve('/ffmpeg.zip'),
+        denoZip: github.base.resolve('/deno.zip'),
+        launch: (exe, args) {
+          if (!args.contains('--version')) launches++;
+          return Process.start('sh', [exe, ...args]);
+        },
+        unzip: (zip, out) async {
+          final r = await Process.run('unzip', ['-q', zip, '-d', out]);
+          if (r.exitCode != 0) throw ToolInstallException('${r.stderr}');
+        },
+        killTree: (p) async => p.kill(),
+        minBinaryBytes: 20,
+      );
+      made.add(y);
+      await y.init();
+      final run = y.run('w', ['-f', 'bv+ba', 'u']);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(await y.cancel('w'), isTrue, reason: 'it is waiting: the cancel is kept');
+      github.holdFfmpeg!.complete();
+      final r = await run.timeout(const Duration(seconds: 10));
+      expect(r.canceled, isTrue);
+      expect(launches, 0, reason: 'yt-dlp was never started');
+    });
+
+    test('a cancel when nothing runs does not stop the next run', () async {
+      final y = bridge();
+      await y.init();
+      expect(await y.cancel('later'), isFalse);
+      final r = await y.run('later', ['--skip-download', 'u']);
+      expect(r.ok, isTrue);
+    });
+
     test('a lookup does not wait for FFmpeg to download; a download does', () async {
       github.holdFfmpeg = Completer<void>();
       final y = bridge();

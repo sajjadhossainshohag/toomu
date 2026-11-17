@@ -74,6 +74,9 @@ class WindowsYtDlp {
   final Map<String, Process> _running = {};
   final Set<String> _canceled = {};
 
+  /// Runs still waiting for FFmpeg or an update, before yt-dlp starts.
+  final Set<String> _waiting = {};
+
   String _dir = '';
   Future<void>? _init;
 
@@ -318,15 +321,25 @@ class WindowsYtDlp {
   static bool isLookup(List<String> args) =>
       args.contains('--skip-download') || args.contains('-J') || args.contains('--dump-single-json');
 
+  static const _canceledResult = YtDlpResult(exitCode: -1, out: '', err: '', canceled: true);
+
   Future<YtDlpResult> run(String id, List<String> args) async {
-    await _ensure();
-    if (!isLookup(args) && !_hasFfmpeg) {
-      await (_extras ??= _installExtras()).timeout(const Duration(minutes: 10), onTimeout: () {});
+    _canceled.remove(id);
+    _waiting.add(id);
+    try {
+      await _ensure();
+      if (!isLookup(args) && !_hasFfmpeg) {
+        await (_extras ??= _installExtras()).timeout(const Duration(minutes: 10), onTimeout: () {});
+      }
+      await _updating?.catchError((Object _) {});
+    } finally {
+      _waiting.remove(id);
     }
-    await _updating?.catchError((Object _) {});
+    // Canceled while waiting (FFmpeg's first download can take minutes):
+    // don't start it at all.
+    if (_canceled.remove(id)) return _canceledResult;
     final ffmpeg = _hasFfmpeg ? _ffmpegDir : null;
     final deno = File(_deno).existsSync() ? _deno : null;
-    _canceled.remove(id);
     final process = await _launch(_ytdlp, commandLine(args, ffmpegDir: ffmpeg, deno: deno));
     _running[id] = process;
     final out = StringBuffer();
@@ -345,14 +358,20 @@ class WindowsYtDlp {
     final code = await process.exitCode;
     await Future.wait(reading);
     _running.remove(id);
-    if (_canceled.remove(id)) return const YtDlpResult(exitCode: -1, out: '', err: '', canceled: true);
+    if (_canceled.remove(id)) return _canceledResult;
     return YtDlpResult(exitCode: code, out: out.toString(), err: err.toString());
   }
 
   /// Stops run [id] with everything it started (Python, FFmpeg).
   Future<bool> cancel(String id) async {
     final p = _running[id];
-    if (p == null) return false;
+    if (p == null) {
+      // Not started yet: remembered, so the run stops before starting. Only
+      // for a run that is waiting: a stray cancel must not stop a later one.
+      if (!_waiting.contains(id)) return false;
+      _canceled.add(id);
+      return true;
+    }
     _canceled.add(id);
     await _killTree(p);
     return true;

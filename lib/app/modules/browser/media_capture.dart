@@ -23,13 +23,23 @@ class MediaCapture {
 
   String userAgent = '';
 
-  final Dio _dio = Dio(
+  // Made on first use (a restored tab may never load a page) and closed
+  // with its tab.
+  Dio? _dioOrNull;
+  Dio get _dio => _dioOrNull ??= Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 15),
       validateStatus: (s) => s != null && s < 400,
     ),
   );
+
+  /// The tab closed: its connections go too.
+  void dispose() {
+    _dioOrNull?.close(force: true);
+    _dioOrNull = null;
+  }
+
   final Set<String> _seen = {};
   final Set<String> _partOfMaster = {};
   final Set<String> _segmentKeys = {};
@@ -88,12 +98,10 @@ class MediaCapture {
       _probing++;
       final generation = _generation;
       unawaited(
-        _probe(m, generation)
-            .catchError((Object e) => debugPrint('[Capture] ${m['url']}: $e'))
-            .whenComplete(() {
-              _probing--;
-              _pump();
-            }),
+        _probe(m, generation).catchError((Object e) => debugPrint('[Capture] ${m['url']}: $e')).whenComplete(() {
+          _probing--;
+          _pump();
+        }),
       );
     }
   }
@@ -130,12 +138,7 @@ class MediaCapture {
     _add(media, fromRequest: m['source'] == 'request');
   }
 
-  Future<CapturedMedia?> _hls(
-    String url,
-    String page,
-    Map<String, String> headers,
-    Map<String, String> request,
-  ) async {
+  Future<CapturedMedia?> _hls(String url, String page, Map<String, String> headers, Map<String, String> request) async {
     final text = await _text(url, request);
     if (!text.trimLeft().startsWith('#EXTM3U')) return null;
     final info = MediaManifest.parseHls(text, Uri.parse(url));
@@ -206,10 +209,7 @@ class MediaCapture {
   ) async {
     final r = await _dio.get<ResponseBody>(
       url,
-      options: Options(
-        responseType: ResponseType.stream,
-        headers: {...request, 'Range': 'bytes=0-0'},
-      ),
+      options: Options(responseType: ResponseType.stream, headers: {...request, 'Range': 'bytes=0-0'}),
     );
     unawaited(r.data?.stream.listen(null).cancel());
     final type = (r.headers.value('content-type') ?? '').split(';').first.trim().toLowerCase();

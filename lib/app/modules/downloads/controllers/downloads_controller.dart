@@ -10,6 +10,7 @@ import '../../../data/models/download_task.dart';
 import '../../../data/models/track.dart';
 import '../../../data/models/video_item.dart';
 import '../../../routes/app_pages.dart';
+import '../../browser/controllers/browser_session.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
 import '../../../services/audio_player_service.dart';
 import '../../../services/download_service.dart';
@@ -37,7 +38,16 @@ class DownloadsController extends GetxController {
   void pauseAll() => _service.pauseAll();
   void resumeAll() => _service.resumeAll();
 
-  void refreshLink(DownloadTask t) => Get.toNamed(Routes.browser, arguments: t);
+  /// Opens the page again to find the file's new link: in a tab of the
+  /// browser if it's already open (its Downloads sheet), else the browser.
+  void refreshLink(DownloadTask t) {
+    if (Get.isRegistered<BrowserSession>()) {
+      Get.until((route) => route.settings.name == Routes.browser);
+      BrowserSession.to.newTab(refreshFor: t);
+      return;
+    }
+    Get.toNamed(Routes.browser, arguments: t);
+  }
 
   void toggle(DownloadTask t) {
     switch (t.status.value) {

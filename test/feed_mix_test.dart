@@ -148,4 +148,49 @@ void main() {
       expect(failed.message, contains("Couldn't load your YouTube home"));
     });
   });
+
+  group('the feed does not end early', () {
+    /// "aa": page [n] shows video n, except pages 1..[repeats], which repeat
+    /// page 0 (nothing new); [last] pages in all.
+    FeedPage aa(int n, {required int repeats, required int last}) =>
+        _Fixed(n >= 1 && n <= repeats ? 0 : n, () async => n < last ? aa(n + 1, repeats: repeats, last: last) : null);
+
+    test('several pages of repeats in a row still lead on to new videos', () async {
+      final page = await MixedFeedPage.load(['aa'], (q) async => aa(0, repeats: 4, last: 6), grace: fast);
+      final next = await page.nextPage();
+      expect(next, isNotNull, reason: 'it kept going past the repeats');
+      expect(next!.videos.map((v) => v.id.value), ['aa00000005x']);
+    });
+
+    test('a slow search arriving late does not drop the searches still going', () async {
+      const repeats = MixedFeedPage.maxRepeatPages;
+      final slow = Completer<FeedPage>();
+      final page = await MixedFeedPage.load(['aa', 'bb'], (q) {
+        if (q == 'bb') return slow.future;
+        return Future.value(aa(0, repeats: repeats, last: repeats + 1));
+      }, grace: fast);
+      // "aa" only repeats itself for a while; "bb" answers meanwhile.
+      Timer(const Duration(milliseconds: 50), () => slow.complete(_Search('bb', pages: 1, asked: {})));
+      final withBb = (await page.nextPage())!;
+      expect(withBb.videos.map(_topic).toSet(), {'bb'});
+      final after = await withBb.nextPage();
+      expect(after?.videos.map((v) => v.id.value), [
+        'aa000000${(repeats + 1).toString().padLeft(2, '0')}x',
+      ], reason: '"aa" still had a page: it must not be dropped when "bb" came in');
+    });
+  });
+}
+
+/// A search page whose videos are "aa0000000Nx" for page [n].
+class _Fixed implements FeedPage {
+  _Fixed(this.n, this._next);
+
+  final int n;
+  final Future<FeedPage?> Function() _next;
+
+  @override
+  List<Video> get videos => [_video('aa000000${n.toString().padLeft(2, '0')}x')];
+
+  @override
+  Future<FeedPage?> nextPage() => _next();
 }

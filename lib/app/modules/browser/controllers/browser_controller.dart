@@ -66,6 +66,9 @@ class BrowserController extends GetxController {
   /// Set by the session: opens [url] in another tab.
   void Function(String url, {required bool background})? openTab;
 
+  /// Set by the session: this tab's "Refresh link" errand is done.
+  VoidCallback? onRefreshed;
+
   /// This tab is the one shown (others are paused in the background).
   bool foreground = true;
 
@@ -147,7 +150,10 @@ class BrowserController extends GetxController {
     useShouldInterceptRequest: blockAds && Platform.isAndroid,
   );
 
-  late final userScripts = UnmodifiableListView<UserScript>([
+  /// Built for each new WebView (a dropped tab's page is rebuilt later):
+  /// a list kept from the first one would miss filters loaded since, and
+  /// sites allowed in another tab. Cheap: the big ad script is shared.
+  UnmodifiableListView<UserScript> get userScripts => UnmodifiableListView<UserScript>([
     if (blockAds) _adHidingScript(),
     if (SettingsService.to.captureMedia.value)
       UserScript(
@@ -182,9 +188,6 @@ class BrowserController extends GetxController {
     if (_blockRedirects || blockAds) unawaited(Blocklist.load());
     // EasyList: the hiding stylesheet follows once it's read.
     if (blockAds) unawaited(AdFilters.load().then((_) => _refreshAdScript(reload: false)));
-    if (Platform.isAndroid) {
-      _lifecycle = AppLifecycleListener(onHide: () => unawaited(_run(false)), onShow: () => unawaited(_run(true)));
-    }
   }
 
   @override
@@ -193,6 +196,7 @@ class BrowserController extends GetxController {
     _suggestDioOrNull?.close(force: true);
     _suggestTimer?.cancel();
     _suggestCancel?.cancel();
+    capture.dispose();
     _lifecycle?.dispose();
     address.dispose();
     addressFocus.dispose();
@@ -203,6 +207,11 @@ class BrowserController extends GetxController {
 
   void onCreated(InAppWebViewController c) {
     web = c;
+    // Pause the page while the app is hidden: only tabs with a page need it
+    // (most of 30 restored tabs never get one).
+    if (Platform.isAndroid) {
+      _lifecycle ??= AppLifecycleListener(onHide: () => unawaited(_run(false)), onShow: () => unawaited(_run(true)));
+    }
     _loading(restoreUrl);
     if (blockAds) {
       c.addJavaScriptHandler(
@@ -251,8 +260,14 @@ class BrowserController extends GetxController {
     restoreUrl = url.value;
     if (!_editingAddress) address.text = displayAddress(url.value);
     _detect(url.value);
-    // Its title arrives later (onTitle); the last page's title isn't it.
-    BrowserStore.to.visit(url.value, '');
+    // The title may have come before the address (see onTitle): ask the
+    // page. If it comes after, onTitle sets it then.
+    final page = url.value;
+    BrowserStore.to.visit(page, '');
+    try {
+      final t = await web?.getTitle();
+      if (t != null && t.isNotEmpty) BrowserStore.to.retitle(page, t);
+    } catch (_) {}
     canGoBack.value = await web?.canGoBack() ?? false;
     canGoForward.value = await web?.canGoForward() ?? false;
   }
@@ -336,9 +351,17 @@ class BrowserController extends GetxController {
     if (reload) await c.reload();
   }
 
-  void onTitle(String? t) {
+  /// A single-page site can set its new title before telling us its new
+  /// address: the title goes to the page the WebView actually shows, not
+  /// the last address we heard of.
+  Future<void> onTitle(String? t) async {
     title.value = t ?? '';
-    BrowserStore.to.retitle(url.value, title.value);
+    final shown = title.value;
+    String page = url.value;
+    try {
+      page = (await web?.getUrl())?.toString() ?? page;
+    } catch (_) {}
+    BrowserStore.to.retitle(page, shown);
   }
 
   void onLoadStop() => _pullToRefresh?.endRefreshing();
@@ -1111,8 +1134,9 @@ class BrowserController extends GetxController {
     if (!MediaManifest.sameMedia(old, task.totalBytes.value, m.url, m.size)) return;
     _refreshed = true;
     DownloadService.to.replaceLink(task, m.url, m.headers, size: m.size);
-    // Back first: Get.back() would close the snackbar instead of the page.
-    Get.back();
+    // Before the snackbar: closing the browser would close it instead.
+    // Only this tab goes, unless the browser was opened just for it.
+    onRefreshed?.call();
     showSnack('Link refreshed', 'The download continues.', duration: const Duration(seconds: 3));
   }
 

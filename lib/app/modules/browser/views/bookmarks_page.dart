@@ -42,19 +42,21 @@ class BookmarksPage extends StatelessWidget {
                     message: _query.value.isEmpty ? 'Tap ☆ in the ⋮ menu to save a page here.' : 'Try other words.',
                   );
                 }
-                return ListView(
+                return ListView.builder(
                   padding: EdgeInsets.only(top: 8 * context.scale, bottom: 24 * context.scale),
-                  children: <Widget>[
-                    for (final b in items)
-                      PageRow(
-                        visit: b,
-                        onTap: () {
-                          Get.back<void>();
-                          session.tab.navigate(b.url);
-                        },
-                        onRemove: () => store.removeBookmark(b.url),
-                      ),
-                  ],
+                  itemCount: items.length,
+                  itemBuilder: (_, i) {
+                    final b = items[i];
+                    return PageRow(
+                      key: ObjectKey(b),
+                      visit: b,
+                      onTap: () {
+                        Get.back<void>();
+                        session.tab.navigate(b.url);
+                      },
+                      onRemove: () => store.removeBookmark(b.url),
+                    );
+                  },
                 );
               }),
             ),
