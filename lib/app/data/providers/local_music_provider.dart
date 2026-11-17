@@ -68,6 +68,8 @@ class ArtworkCache {
   static const _maxEntries = 300;
   static final _cache = <String, Future<Uint8List?>>{}; // insertion-ordered
 
+  static void clear() => _cache.clear();
+
   static Future<Uint8List?> load(int songId, {int size = 200}) {
     final key = '$songId@$size';
     final hit = _cache.remove(key);

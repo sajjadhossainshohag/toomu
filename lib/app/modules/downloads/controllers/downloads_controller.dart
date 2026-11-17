@@ -56,7 +56,7 @@ class DownloadsController extends GetxController {
 
   /// Audio plays in Toomu's player; video opens in the system player.
   Future<void> open(DownloadTask t) async {
-    final exists = File(t.filePath).existsSync();
+    final exists = await File(t.filePath).exists();
     debugPrint('[Downloads] open ${t.kind.name}: ${t.filePath.split('/').last} (${exists ? 'found' : 'MISSING'})');
     if (!exists) {
       showSnack('File missing', 'The file was moved or deleted.');
@@ -83,12 +83,12 @@ class DownloadsController extends GetxController {
     } else if (t.kind == DownloadKind.video) {
       // Play downloaded videos in Toomu's player, with the other downloaded
       // videos as the playlist.
-      final videos = completed
-          .where(
-            (c) =>
-                c.kind == DownloadKind.video && File(c.filePath).existsSync(),
-          )
-          .toList();
+      final candidates = completed.where((c) => c.kind == DownloadKind.video).toList();
+      final present = await Future.wait(candidates.map((c) => File(c.filePath).exists()));
+      final videos = [
+        for (var i = 0; i < candidates.length; i++)
+          if (present[i]) candidates[i],
+      ];
       await Get.toNamed(
         Routes.videoPlayer,
         arguments: VideoPlaylist(
@@ -117,10 +117,9 @@ class DownloadsController extends GetxController {
   /// null if the user cancelled.
   Future<bool?> _confirmDelete(DownloadTask t) async {
     final finished = t.status.value == DownloadStatus.completed;
-    final exists = finished && File(t.filePath).existsSync();
-    final size = exists
-        ? ' (${Formatters.bytes(File(t.filePath).lengthSync())})'
-        : '';
+    final stat = finished ? await FileStat.stat(t.filePath) : null;
+    final exists = stat != null && stat.type != FileSystemEntityType.notFound;
+    final size = exists ? ' (${Formatters.bytes(stat.size)})' : '';
     final choice = await showDeleteDialog(
       title: finished ? 'Delete download?' : 'Cancel download?',
       message: finished
@@ -137,7 +136,7 @@ class DownloadsController extends GetxController {
   Future<void> clearCompleted() async {
     final count = completed.length;
     if (count == 0) return;
-    final bytes = _service.completedBytesOnDisk();
+    final bytes = await _service.completedBytesOnDisk();
     final choice = await showDeleteDialog(
       title: 'Clear completed?',
       message:

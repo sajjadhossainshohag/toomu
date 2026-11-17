@@ -10,8 +10,8 @@ class AppTheme {
   static const double cardRadius = 16;
   static const double tileRadius = 20;
 
-  static ThemeData get light => _build(_scheme(BrandColors.ocean, dark: false));
-  static ThemeData get dark => _build(_scheme(BrandColors.ocean, dark: true));
+  static final ThemeData light = _build(_scheme(BrandColors.ocean, dark: false));
+  static final ThemeData dark = _build(_scheme(BrandColors.ocean, dark: true));
 
   static ColorScheme _scheme(BrandColors brand, {required bool dark}) {
     final Color ink = ColorConstants.textOn(dark);

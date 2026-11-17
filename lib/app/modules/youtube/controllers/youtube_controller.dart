@@ -16,6 +16,7 @@ import '../../../data/models/media_format.dart';
 import '../../../data/models/video_item.dart';
 import '../../../data/models/video_meta.dart';
 import '../../../data/models/yt_info.dart';
+import '../../../data/repositories/feed_repository.dart';
 import '../../../services/stream_proxy.dart';
 import '../../../services/tiktok_service.dart';
 import '../../home/controllers/home_controller.dart';
@@ -168,6 +169,14 @@ class YoutubeController extends GetxController {
   final feedError = RxnString();
   FeedPage? _feedPage;
   final Map<int, ({List<Video> items, FeedPage? page})> _feedCache = {};
+  late final FeedRepository _feedStore = FeedRepository(_storage);
+
+  String get _feedStoreKey {
+    final first = categories.isEmpty ? null : categories.first;
+    return first?.load != null ? 'account:${first!.label}' : 'search:${_feedQuery(0)}';
+  }
+
+  Worker? _signInWatch;
 
   // Format sheet state
   final selectedVideo = Rxn<VideoMeta>();
@@ -187,7 +196,7 @@ class YoutubeController extends GetxController {
     categories.assignAll(
       account.signedIn.value ? _accountCategories : _searchCategories,
     );
-    ever(account.signedIn, (_) {
+    _signInWatch = ever(account.signedIn, (_) {
       _searchFallback = false;
       _resetFeed();
     });
@@ -200,11 +209,14 @@ class YoutubeController extends GetxController {
   @override
   void onReady() {
     super.onReady();
-    loadFeed();
+    final saved = _feedStore.load(_feedStoreKey);
+    if (saved != null && feed.isEmpty) feed.assignAll(saved);
+    loadFeed(refresh: saved != null);
   }
 
   @override
   void onClose() {
+    _signInWatch?.dispose();
     searchText.dispose();
     _yt.dispose();
     super.onClose();
@@ -251,6 +263,7 @@ class YoutubeController extends GetxController {
       _feedPage = page;
       feed.assignAll(_downloadable(page.videos));
       _feedCache[index] = (items: feed.toList(), page: page);
+      if (index == 0) unawaited(_feedStore.save(_feedStoreKey, feed));
     } catch (e) {
       debugPrint('[YouTube] feed failed: $e');
       if (index == feedIndex.value) feedError.value = ErrorText.of(e);
@@ -281,6 +294,8 @@ class YoutubeController extends GetxController {
       feedLoadingMore.value = false;
     }
   }
+
+  void trimFeedCache() => _feedCache.removeWhere((i, _) => i != feedIndex.value);
 
   /// Live streams (no duration) can't be downloaded; keep them out.
   static Iterable<Video> _downloadable(Iterable<Video> list) =>

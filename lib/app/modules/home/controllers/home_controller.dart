@@ -9,6 +9,8 @@ import '../../../services/tiktok_service.dart';
 
 import '../../../core/utils/link_parser.dart';
 import '../../../data/models/video_item.dart';
+import '../../../data/providers/local_music_provider.dart';
+import '../../../data/providers/local_video_provider.dart';
 import '../../../routes/app_pages.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
 import '../../../extractors/direct_file_extractor.dart';
@@ -62,6 +64,14 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) checkClipboard();
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    PaintingBinding.instance.imageCache.clear();
+    ArtworkCache.clear();
+    VideoThumbCache.clear();
+    if (Get.isRegistered<YoutubeController>()) Get.find<YoutubeController>().trimFeedCache();
   }
 
   /// Nav bar tap / programmatic switch: jump straight there (no scrolling

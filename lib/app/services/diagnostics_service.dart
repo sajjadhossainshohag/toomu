@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
+import '../core/utils/device_profile.dart';
 import 'storage_service.dart';
 
 /// In-app log of the last few hundred diagnostic lines. Some phones (Honor,
@@ -16,15 +15,15 @@ import 'storage_service.dart';
 class DiagnosticsService extends GetxService {
   static DiagnosticsService get to => Get.find();
 
-  static const _key = 'diagnostics_log';
+  static const key = 'diagnostics_log';
   static const _max = 300;
 
-  final _storage = StorageService.to;
+  final _storage = StorageService.logs;
   final lines = <String>[].obs;
   Timer? _saveTimer;
 
   DiagnosticsService init() {
-    lines.assignAll((_storage.read<List>(_key) ?? const []).cast<String>());
+    lines.assignAll((_storage.read<List>(key) ?? const []).cast<String>());
     final original = debugPrint;
     debugPrint = (String? message, {int? wrapWidth}) {
       original(message, wrapWidth: wrapWidth);
@@ -33,12 +32,11 @@ class DiagnosticsService extends GetxService {
     // Which build is running (set by tool/build_release.sh).
     const build = String.fromEnvironment('TOOMU_BUILD', defaultValue: 'dev build');
     add('— app started ($build) —');
-    if (Platform.isAndroid) {
-      unawaited(DeviceInfoPlugin().androidInfo.then(
-        (i) => add('device: ${i.manufacturer} ${i.model}, Android ${i.version.release} '
-            '(SDK ${i.version.sdkInt}), ${i.supportedAbis.join('/')}'),
-        onError: (_) {},
-      ));
+    final i = DeviceProfile.android;
+    if (i != null) {
+      add('device: ${i.manufacturer} ${i.model}, Android ${i.version.release} '
+          '(SDK ${i.version.sdkInt}), ${i.supportedAbis.join('/')}, '
+          '${i.physicalRamSize} MB RAM${DeviceProfile.lowEnd ? ' (low-end mode)' : ''}');
     }
     return this;
   }
@@ -55,7 +53,7 @@ class DiagnosticsService extends GetxService {
     if (lines.length > _max) lines.removeRange(0, lines.length - _max);
     _saveTimer ??= Timer(const Duration(seconds: 2), () {
       _saveTimer = null;
-      _storage.write(_key, lines.toList());
+      _storage.write(key, lines.toList());
     });
   }
 
@@ -63,6 +61,6 @@ class DiagnosticsService extends GetxService {
 
   void clear() {
     lines.clear();
-    _storage.remove(_key);
+    _storage.remove(key);
   }
 }

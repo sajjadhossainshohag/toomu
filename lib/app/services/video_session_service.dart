@@ -9,6 +9,7 @@ import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../core/utils/device_profile.dart';
 import '../core/utils/subtitles.dart';
 import '../data/models/video_item.dart';
 import '../data/models/youtube_stream.dart';
@@ -126,7 +127,15 @@ class VideoSessionService extends GetxService {
     if (_player != null) return;
     // mpv's warnings and errors go to the diagnostics log (why a file or
     // stream won't open).
-    _player = Player(configuration: const PlayerConfiguration(title: 'Toomu', logLevel: MPVLogLevel.warn));
+    MediaKit.ensureInitialized(); // loads libmpv: on first video, not at app start
+    _player = Player(
+      configuration: PlayerConfiguration(
+        title: 'Toomu',
+        logLevel: MPVLogLevel.warn,
+        // Used for read-ahead and again for the seek-back cache.
+        bufferSize: DeviceProfile.lowEnd ? 16 << 20 : 32 << 20,
+      ),
+    );
     _video = VideoController(_player!);
     _configure(_player!);
     String? lastLog;
@@ -250,7 +259,7 @@ class VideoSessionService extends GetxService {
     // read for a while (fast links running out, waiting for yt-dlp's):
     // media_kit's 5 s would make mpv give up and reconnect in a loop.
     set('network-timeout', '60');
-    // Read ahead into the 32 MB memory buffer only. On disk, read-ahead has
+    // Read ahead into the memory buffer only. On disk, read-ahead has
     // no size limit: more mobile data and more work for the phone.
     set('cache-on-disk', 'no');
     // Sidecar subtitles are added explicitly in openItem; mpv's own search would add them twice.

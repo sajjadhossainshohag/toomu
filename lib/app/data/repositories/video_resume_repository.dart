@@ -7,20 +7,20 @@ class VideoResumeRepository {
 
   static final VideoResumeRepository instance = VideoResumeRepository._();
 
-  static const _key = 'video_positions';
+  static const storageKey = 'video_positions';
   static const _max = 300;
 
   /// Positions closer than this to either end aren't worth resuming.
   static const margin = Duration(seconds: 10);
 
-  StorageService get _storage => StorageService.to;
+  StorageService get _storage => StorageService.positions;
 
   Map<String, int> _all() =>
-      Map<String, int>.from((_storage.read<Map>(_key) ?? const {}).cast<String, int>());
+      Map<String, int>.from((_storage.read<Map>(storageKey) ?? const {}).cast<String, int>());
 
   // Called for every video tile while scrolling: no copy of the whole map.
   Duration? positionOf(String key) {
-    final ms = _storage.read<Map>(_key)?[key];
+    final ms = _storage.read<Map>(storageKey)?[key];
     return ms is int ? Duration(milliseconds: ms) : null;
   }
 
@@ -38,6 +38,6 @@ class VideoResumeRepository {
     while (all.length > _max) {
       all.remove(all.keys.first);
     }
-    await _storage.write(_key, all);
+    await _storage.write(storageKey, all);
   }
 }

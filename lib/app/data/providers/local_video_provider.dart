@@ -25,6 +25,8 @@ class VideoThumbCache {
   static const _maxEntries = 300;
   static final _cache = <int, Future<Uint8List?>>{}; // insertion-ordered
 
+  static void clear() => _cache.clear();
+
   static Future<Uint8List?> load(int videoId) {
     final hit = _cache.remove(videoId);
     if (hit != null) return _cache[videoId] = hit; // refresh LRU position

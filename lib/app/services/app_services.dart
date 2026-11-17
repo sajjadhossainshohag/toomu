@@ -1,5 +1,8 @@
 import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
 
+import '../core/values/app_constants.dart';
+import '../data/repositories/video_resume_repository.dart';
 import 'audio_player_service.dart';
 import 'diagnostics_service.dart';
 import 'download_service.dart';
@@ -19,7 +22,15 @@ import 'ytdlp_service.dart';
 /// Feature-scoped controllers live in each module's Binding instead.
 abstract class AppServices {
   static Future<void> init() async {
-    Get.put(StorageService(), permanent: true);
+    final storage = Get.put(StorageService(), permanent: true);
+    for (final (box, key) in [
+      (StorageService.logsBox, DiagnosticsService.key),
+      (StorageService.downloadsBox, AppConstants.kDownloadTasks),
+      (StorageService.positionsBox, VideoResumeRepository.storageKey),
+    ]) {
+      Get.put(storage.split(GetStorage(box), key), tag: box, permanent: true);
+    }
+    Get.put(StorageService(GetStorage(StorageService.queueBox)), tag: StorageService.queueBox, permanent: true);
     Get.put(DiagnosticsService().init(), permanent: true); // before anything logs
     Get.put(SettingsService().init(), permanent: true);
     await Future.wait([

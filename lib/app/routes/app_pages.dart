@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 
+import '../core/utils/device_profile.dart';
 import '../modules/browser/bindings/browser_binding.dart';
 import '../modules/browser/views/browser_view.dart';
 import '../modules/home/bindings/home_binding.dart';
@@ -22,6 +23,8 @@ class AppPages {
 
   static const initial = Routes.home;
 
+  static Transition motion(Transition t) => DeviceProfile.reduceMotion ? Transition.noTransition : t;
+
   static final routes = <GetPage<dynamic>>[
     GetPage(
       name: _Paths.home,
@@ -32,14 +35,14 @@ class AppPages {
       name: _Paths.player,
       page: () => const PlayerView(),
       binding: PlayerBinding(),
-      transition: Transition.downToUp,
+      transition: motion(Transition.downToUp),
       fullscreenDialog: true,
     ),
     GetPage(
       name: _Paths.browser,
       page: () => const BrowserView(),
       binding: BrowserBinding(),
-      transition: Transition.downToUp,
+      transition: motion(Transition.downToUp),
     ),
     GetPage(
       name: _Paths.videoPlayer,

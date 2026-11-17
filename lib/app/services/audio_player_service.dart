@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -55,6 +57,9 @@ class AudioPlayerService extends GetxService {
   final equalizerEnabled = false.obs;
 
   final List<StreamSubscription<dynamic>> _subs = [];
+  StreamSubscription<Duration>? _positionSub;
+  AppLifecycleListener? _lifecycle;
+  final _queueStore = StorageService.queue;
 
   Track? get current {
     final i = currentIndex.value;
@@ -76,9 +81,11 @@ class AudioPlayerService extends GetxService {
         final id = current?.id;
         if (id != null) _trackErrors.add(id);
       }),
-      player.playingStream.listen((v) => playing.value = v),
+      player.playingStream.listen((v) {
+        if (playing.value && !v) _saveQueue();
+        playing.value = v;
+      }),
       player.processingStateStream.listen((v) => processing.value = v),
-      player.positionStream.listen(_onPosition),
       player.bufferedPositionStream.listen((v) => buffered.value = v),
       player.durationStream.listen((v) => duration.value = v ?? Duration.zero),
       player.shuffleModeEnabledStream.listen((v) => shuffle.value = v),
@@ -89,8 +96,90 @@ class AudioPlayerService extends GetxService {
       player.positionDiscontinuityStream.listen(_onDiscontinuity),
     ]);
 
+    _watchPosition(visible: true);
+    _lifecycle = AppLifecycleListener(
+      onHide: () {
+        _watchPosition(visible: false);
+        _saveQueue();
+      },
+      onShow: () => _watchPosition(visible: true),
+    );
+
     if (Platform.isAndroid) await _restoreEqualizer();
+    // After the first frame: loading a file must not slow down the start.
+    SchedulerBinding.instance.addPostFrameCallback((_) => unawaited(_restoreQueue()));
     return this;
+  }
+
+  void _watchPosition({required bool visible}) {
+    _positionSub?.cancel();
+    // Hidden, nothing reads the position often (A-B repeat still does).
+    final stream = visible || abEnd.value != null
+        ? player.createPositionStream(
+            steps: 800,
+            minPeriod: const Duration(milliseconds: 16),
+            maxPeriod: const Duration(milliseconds: 200),
+          )
+        : player.createPositionStream(
+            minPeriod: const Duration(seconds: 1),
+            maxPeriod: const Duration(seconds: 1),
+          );
+    _positionSub = stream.listen(_onPosition);
+  }
+
+  void _saveQueue() {
+    final i = currentIndex.value;
+    if (i == null || queue.isEmpty || !queue.every((t) => t.restorable)) {
+      _queueStore.remove(AppConstants.kAudioQueue);
+      return;
+    }
+    _queueStore.write(AppConstants.kAudioQueue, {
+      'tracks': [for (final t in queue) t.toJson()],
+      'index': i,
+      'positionMs': player.position.inMilliseconds,
+    });
+  }
+
+  Future<void> _restoreQueue() async {
+    final saved = _queueStore.read<Map>(AppConstants.kAudioQueue);
+    if (saved == null || hasMedia) return;
+    try {
+      final tracks = [
+        for (final m in saved['tracks'] as List) Track.fromJson(Map<String, dynamic>.from(m as Map)),
+      ];
+      final present = await Future.wait(tracks.map((t) => File(t.path!).exists()));
+      final restored = restoredQueue(
+        tracks,
+        present,
+        (saved['index'] as num).toInt(),
+        Duration(milliseconds: (saved['positionMs'] as num? ?? 0).toInt()),
+      );
+      if (restored == null || hasMedia) return;
+      queue.assignAll(restored.tracks);
+      await player.setAudioSources(
+        restored.tracks.map((t) => t.toAudioSource()).toList(),
+        initialIndex: restored.index,
+        initialPosition: restored.position,
+      );
+    } catch (e) {
+      debugPrint('[Audio] last queue not restored: $e');
+      _queueStore.remove(AppConstants.kAudioQueue);
+      if (!player.playing) queue.clear();
+    }
+  }
+
+  static ({List<Track> tracks, int index, Duration position})? restoredQueue(
+    List<Track> saved,
+    List<bool> present,
+    int index,
+    Duration position,
+  ) {
+    final kept = [for (var i = 0; i < saved.length; i++) if (present[i]) saved[i]];
+    if (kept.isEmpty) return null;
+    final current = index >= 0 && index < saved.length && present[index] ? saved[index] : null;
+    return current == null
+        ? (tracks: kept, index: 0, position: Duration.zero)
+        : (tracks: kept, index: kept.indexOf(current), position: position);
   }
 
   // ------------------------------------------------------------- playback
@@ -144,6 +233,7 @@ class AudioPlayerService extends GetxService {
   /// Mini bar ✕: stops playback, clears the queue and removes the
   /// notification, so the mini bar disappears.
   Future<void> close() async {
+    _queueStore.remove(AppConstants.kAudioQueue);
     cancelSleepTimer();
     clearAbRepeat();
     queue.clear();
@@ -368,6 +458,8 @@ class AudioPlayerService extends GetxService {
     for (final s in _subs) {
       s.cancel();
     }
+    _positionSub?.cancel();
+    _lifecycle?.dispose();
     _sleepTimer?.cancel();
     player.dispose();
     super.onClose();

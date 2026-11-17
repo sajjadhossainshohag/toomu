@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
@@ -54,6 +56,8 @@ class VideoCard extends StatelessWidget {
                   CachedNetworkImage(
                     imageUrl: video.thumbnails.highResUrl,
                     fit: BoxFit.cover,
+                    // The 1280 px original decoded at full size took ~3.5 MB of RAM per card.
+                    memCacheWidth: math.min(1280, (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round()),
                     placeholder: (_, _) =>
                         const ArtworkPlaceholder(size: 375, radius: 0, icon: Icons.smart_display_rounded),
                     errorWidget: (_, _, _) =>

@@ -66,7 +66,7 @@ class DownloadService extends GetxService {
   static const _chunk = 10 * 1024 * 1024;
   static const _minSteal = 2 * 1024 * 1024;
 
-  late final DownloadRepository _repo = DownloadRepository(StorageService.to);
+  late final DownloadRepository _repo = DownloadRepository(StorageService.downloads);
   final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 20),
@@ -106,9 +106,7 @@ class DownloadService extends GetxService {
 
   Future<DownloadService> init() async {
     final root = await _resolveRootDir();
-    _videoDir = await Directory('${root.path}/Video').create(recursive: true);
-    _audioDir = await Directory('${root.path}/Audio').create(recursive: true);
-    _filesDir = await Directory('${root.path}/Files').create(recursive: true);
+    await _useRoot(root);
     if (Platform.isAndroid) {
       // Same storage as the finished files: yt-dlp's last step is then a rename, not a full copy.
       try {
@@ -155,13 +153,29 @@ class DownloadService extends GetxService {
 
   String get downloadRoot => _videoDir.parent.path;
 
+  Future<void> _useRoot(Directory root) async {
+    _videoDir = await Directory('${root.path}/Video').create(recursive: true);
+    _audioDir = await Directory('${root.path}/Audio').create(recursive: true);
+    _filesDir = await Directory('${root.path}/Files').create(recursive: true);
+  }
+
+  Future<void> _storageReady() async {
+    final granted = await PermissionService.to.requestStorageWrite();
+    // Android 7–9: without the permission at start-up the files went to the
+    // app's private folder; once granted, new downloads use Download/Toomu.
+    if (granted && Platform.isAndroid && downloadRoot != _publicRoot) {
+      final root = await _resolveRootDir();
+      if (root.path == _publicRoot) await _useRoot(root);
+    }
+  }
+
   // ---------------------------------------------------------------- public API
 
   Future<DownloadTask> enqueue({
     required VideoMeta video,
     required MediaFormat format,
   }) async {
-    await PermissionService.to.requestStorageWrite();
+    await _storageReady();
     final dir = format.kind == DownloadKind.audio ? _audioDir : _videoDir;
     final base = Formatters.fileName(video.title);
     final suffix = format.kind == DownloadKind.video
@@ -190,7 +204,7 @@ class DownloadService extends GetxService {
 
   /// A TikTok video (no watermark), saved with the videos.
   Future<DownloadTask> enqueueTiktok(TiktokItem item) async {
-    await PermissionService.to.requestStorageWrite();
+    await _storageReady();
     final caption = item.caption.trim().isEmpty
         ? 'TikTok ${item.id}'
         : item.caption.trim();
@@ -228,7 +242,7 @@ class DownloadService extends GetxService {
     String thumbnailUrl = '',
     Map<String, String> subtitles = const {},
   }) async {
-    await PermissionService.to.requestStorageWrite();
+    await _storageReady();
     final uri = Uri.parse(url);
     var name = fileName?.trim();
     if (name == null || name.isEmpty) {
@@ -283,7 +297,7 @@ class DownloadService extends GetxService {
     Map<String, String> headers = const {},
     Map<String, String> subtitles = const {},
   }) async {
-    await PermissionService.to.requestStorageWrite();
+    await _storageReady();
     final dir = kind == DownloadKind.audio ? _audioDir : _videoDir;
     final base = Formatters.fileName(title);
     final suffix = kind == DownloadKind.video && qualityLabel.isNotEmpty ? ' ($qualityLabel)' : '';
@@ -441,10 +455,10 @@ class DownloadService extends GetxService {
       tasks.where((t) => t.status.value == DownloadStatus.completed).toList();
 
   /// Size of finished files that still exist on disk.
-  int completedBytesOnDisk() => completed.fold(0, (sum, t) {
-    final f = File(t.filePath);
-    return sum + (f.existsSync() ? f.lengthSync() : 0);
-  });
+  Future<int> completedBytesOnDisk() async {
+    final stats = await Future.wait(completed.map((t) => FileStat.stat(t.filePath)));
+    return stats.fold<int>(0, (sum, s) => sum + (s.type == FileSystemEntityType.notFound ? 0 : s.size));
+  }
 
   Future<int> clearCompleted({bool deleteFiles = false}) =>
       removeMany(completed, deleteFiles: deleteFiles);
@@ -1765,12 +1779,12 @@ class DownloadService extends GetxService {
     }
   }
 
+  static const _publicRoot = '/storage/emulated/0/Download/${AppConstants.downloadFolderName}';
+
   Future<Directory> _resolveRootDir() async {
     if (Platform.isAndroid) {
       // Public Download/Toomu so files are visible to other apps.
-      final public = Directory(
-        '/storage/emulated/0/Download/${AppConstants.downloadFolderName}',
-      );
+      final public = Directory(_publicRoot);
       try {
         await public.create(recursive: true);
         final probe = File('${public.path}/.probe');

@@ -41,6 +41,16 @@ class MusicController extends GetxController {
   // sorted library is kept until the songs or the sort order change.
   List<Track>? _sorted;
   SongSort? _sortedBy;
+  // The four tabs all filter the same songs: one pass per search, not four.
+  final _filter = ''.obs;
+  List<Track>? _filtered, _filteredFrom;
+  String? _filteredFor;
+
+  @override
+  void onInit() {
+    super.onInit();
+    debounce(query, (String q) => _filter.value = q, time: const Duration(milliseconds: 200));
+  }
 
   @override
   void onReady() {
@@ -74,16 +84,21 @@ class MusicController extends GetxController {
 
   int get totalSongs => _all.length;
 
-  List<Track> get songs {
-    final q = query.value.trim().toLowerCase();
+  List<Track> get songs => [..._filteredSongs()];
+
+  List<Track> _filteredSongs() {
+    final q = _filter.value.trim().toLowerCase();
     final sorted = _sortedSongs();
-    return q.isEmpty
-        ? [...sorted]
-        : sorted
-            .where((t) =>
-                t.title.toLowerCase().contains(q) ||
-                t.displayAlbum.toLowerCase().contains(q))
-            .toList();
+    if (q.isEmpty) return sorted;
+    final cached = _filtered;
+    if (cached != null && _filteredFor == q && identical(_filteredFrom, sorted)) return cached;
+    _filteredFor = q;
+    _filteredFrom = sorted;
+    return _filtered = sorted
+        .where((t) =>
+            t.title.toLowerCase().contains(q) ||
+            t.displayAlbum.toLowerCase().contains(q))
+        .toList();
   }
 
   List<Track> _sortedSongs() {
@@ -111,12 +126,12 @@ class MusicController extends GetxController {
       );
 
   List<Track> get favorites =>
-      songs.where((t) => audio.favorites.contains(t.id)).toList();
+      _filteredSongs().where((t) => audio.favorites.contains(t.id)).toList();
 
   List<MusicCollection> _group(
       String Function(Track) key, String Function(Track)? sub) {
     final map = <String, List<Track>>{};
-    for (final t in songs) {
+    for (final t in _filteredSongs()) {
       map.putIfAbsent(key(t), () => []).add(t);
     }
     final groups = map.entries.map((e) {

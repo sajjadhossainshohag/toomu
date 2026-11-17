@@ -1,22 +1,16 @@
 import 'dart:io';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
+
+import '../core/utils/device_profile.dart';
 
 class PermissionService extends GetxService {
   static PermissionService get to => Get.find();
 
-  int _sdkInt = 0;
+  Future<PermissionService> init() async => this;
 
-  Future<PermissionService> init() async {
-    if (Platform.isAndroid) {
-      _sdkInt = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
-    }
-    return this;
-  }
-
-  int get androidSdk => _sdkInt;
+  int get _sdkInt => DeviceProfile.androidSdk;
 
   /// Read access to the device music library.
   Future<bool> requestAudio() async {
@@ -29,7 +23,8 @@ class PermissionService extends GetxService {
   Future<bool> requestVideo() async {
     if (!Platform.isAndroid) return true;
     final permission = _sdkInt >= 33 ? Permission.videos : Permission.storage;
-    return (await permission.request()).isGranted;
+    final status = await permission.request();
+    return status.isGranted || status.isLimited; // limited: Android 14+ "Select videos"
   }
 
   /// Write access to the public Download folder. Android 10+ (scoped

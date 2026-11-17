@@ -70,6 +70,34 @@ class Track {
     );
   }
 
+  bool get restorable => sourceBuilder == null && path != null; // stream links expire
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'uri': uri,
+        'album': album,
+        'path': path,
+        'durationMs': duration?.inMilliseconds,
+        'localSongId': localSongId,
+        'albumId': albumId,
+        'artworkUrl': artworkUrl,
+        'dateAdded': dateAdded,
+      };
+
+  factory Track.fromJson(Map<String, dynamic> m) => Track(
+        id: m['id'] as String,
+        title: m['title'] as String,
+        uri: m['uri'] as String,
+        album: m['album'] as String?,
+        path: m['path'] as String?,
+        duration: m['durationMs'] == null ? null : Duration(milliseconds: (m['durationMs'] as num).toInt()),
+        localSongId: (m['localSongId'] as num?)?.toInt(),
+        albumId: (m['albumId'] as num?)?.toInt(),
+        artworkUrl: m['artworkUrl'] as String?,
+        dateAdded: (m['dateAdded'] as num?)?.toInt(),
+      );
+
   AudioSource toAudioSource() {
     final art = artworkUrl != null
         ? Uri.parse(artworkUrl!)

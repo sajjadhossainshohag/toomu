@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:just_audio_background/just_audio_background.dart';
-import 'package:media_kit/media_kit.dart';
 
 import 'app/core/theme/app_theme.dart';
+import 'app/core/utils/device_profile.dart';
 import 'app/core/values/app_constants.dart';
 import 'app/routes/app_pages.dart';
 import 'app/services/app_services.dart';
 import 'app/services/settings_service.dart';
+import 'app/services/storage_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized(); // libmpv for the video player
   await Future.wait([
     // The app's screens are designed for portrait; the video player rotates
     // itself as needed and restores this when it closes.
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
-    GetStorage.init(),
+    StorageService.init(),
+    DeviceProfile.init(),
     JustAudioBackground.init(
       androidNotificationChannelId: AppConstants.playbackChannelId,
       androidNotificationChannelName: AppConstants.playbackChannelName,
@@ -28,6 +28,11 @@ Future<void> main() async {
       notificationColor: const Color(0xFF7C4DFF),
     ),
   ]);
+  if (DeviceProfile.lowEnd) {
+    PaintingBinding.instance.imageCache
+      ..maximumSizeBytes = 40 << 20
+      ..maximumSize = 300;
+  }
 
   // Global, app-lifetime services (storage, permissions, downloads, audio…).
   await AppServices.init();
@@ -50,7 +55,7 @@ class ToomuApp extends StatelessWidget {
         themeMode: settings.themeMode.value,
         initialRoute: AppPages.initial,
         getPages: AppPages.routes,
-        defaultTransition: Transition.cupertino,
+        defaultTransition: AppPages.motion(Transition.cupertino),
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 
 import '../core/theme/color_constants.dart';
 import '../core/theme/design_metrics.dart';
+import '../core/utils/device_profile.dart';
 import 'app_switch.dart';
 import 'gradient_pill.dart';
 import 'outline_pill.dart';
@@ -155,6 +156,7 @@ class _AppDialog extends StatelessWidget {
     final Color ink = ColorConstants.textOn(dark);
 
     return BackdropFilter(
+      enabled: !DeviceProfile.lowEnd, // a full-screen blur drops frames on weak GPUs
       filter: ImageFilter.blur(sigmaX: 2.5, sigmaY: 2.5),
       child: Center(
         child: Padding(

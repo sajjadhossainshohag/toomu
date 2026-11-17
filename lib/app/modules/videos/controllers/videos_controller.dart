@@ -35,9 +35,20 @@ class VideosController extends GetxController {
   final query = ''.obs;
   final sort = VideoSort.recent.obs;
   final _all = <VideoItem>[].obs;
+  final _filter = ''.obs;
+  // Sorting thousands of videos on every rebuild stutters; kept until the
+  // videos or the sort order change.
+  List<VideoItem>? _sorted;
+  VideoSort? _sortedBy;
 
   /// Bumped when coming back from the player so resume bars refresh.
   final watchedVersion = 0.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    debounce(query, (String q) => _filter.value = q, time: const Duration(milliseconds: 200));
+  }
 
   @override
   void onReady() {
@@ -56,7 +67,9 @@ class VideosController extends GetxController {
     hasPermission.value = await PermissionService.to.requestVideo();
     if (hasPermission.value) {
       try {
-        _all.assignAll(await _provider.videos());
+        final found = await _provider.videos();
+        _sorted = null;
+        _all.assignAll(found);
       } catch (e) {
         debugPrint('[Videos] library query failed: $e');
         showSnack('Videos', ErrorText.of(e));
@@ -68,23 +81,33 @@ class VideosController extends GetxController {
   int get total => _all.length;
 
   List<VideoItem> get videos {
-    final q = query.value.trim().toLowerCase();
-    final list = q.isEmpty
-        ? [..._all]
-        : _all
+    final q = _filter.value.trim().toLowerCase();
+    final sorted = _sortedVideos();
+    return q.isEmpty
+        ? [...sorted]
+        : sorted
             .where((v) => v.title.toLowerCase().contains(q) || (v.folder?.toLowerCase().contains(q) ?? false))
             .toList();
-    switch (sort.value) {
+  }
+
+  List<VideoItem> _sortedVideos() {
+    final by = sort.value;
+    final all = _all.toList(); // read on every call so Obx keeps listening
+    final cached = _sorted;
+    if (cached != null && _sortedBy == by) return cached;
+    switch (by) {
       case VideoSort.recent:
-        list.sort((a, b) => b.dateAdded.compareTo(a.dateAdded));
+        all.sort((a, b) => b.dateAdded.compareTo(a.dateAdded));
       case VideoSort.name:
-        list.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        final keys = {for (final v in all) v: v.title.toLowerCase()};
+        all.sort((a, b) => keys[a]!.compareTo(keys[b]!));
       case VideoSort.size:
-        list.sort((a, b) => b.size.compareTo(a.size));
+        all.sort((a, b) => b.size.compareTo(a.size));
       case VideoSort.duration:
-        list.sort((a, b) => (b.duration ?? Duration.zero).compareTo(a.duration ?? Duration.zero));
+        all.sort((a, b) => (b.duration ?? Duration.zero).compareTo(a.duration ?? Duration.zero));
     }
-    return list;
+    _sortedBy = by;
+    return _sorted = all;
   }
 
   List<VideoFolder> get folders {

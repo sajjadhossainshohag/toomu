@@ -27,10 +27,12 @@ abstract class AppConstants {
   static const kMaxConcurrent = 'max_concurrent_downloads';
   static const kConnections = 'connections_per_download';
   static const kFavorites = 'favorite_track_ids';
+  static const kAudioQueue = 'audio_queue';
   static const kEqualizerEnabled = 'eq_enabled';
   static const kEqualizerGains = 'eq_gains';
   static const kSearchHistory = 'yt_search_history';
   static const kRemoteConfig = 'remote_config_cache';
+  static const kFeedCache = 'home_feed_cache';
   static const kYtdlpChannel = 'ytdlp_channel';
   static const kBubbleEnabled = 'floating_button_enabled';
   static const kVideoBackgroundPlay = 'video_background_play';
