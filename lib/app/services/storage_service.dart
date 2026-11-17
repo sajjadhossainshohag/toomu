@@ -10,17 +10,22 @@ class StorageService extends GetxService {
   static StorageService get downloads => Get.find(tag: downloadsBox);
   static StorageService get positions => Get.find(tag: positionsBox);
   static StorageService get queue => Get.find(tag: queueBox);
+  static StorageService get browser => Get.find(tag: browserBox);
 
   static const logsBox = 'logs';
   static const downloadsBox = 'downloads';
   static const positionsBox = 'positions';
   static const queueBox = 'queue';
+  static const browserBox = 'browser';
+
+  /// Browser history: opened when the browser first needs it, not at start-up.
+  static const historyBox = 'browser_history';
 
   static Future<void> init() => Future.wait([
         GetStorage.init(),
         // GetStorage rewrites a box's whole file on every write: data written
         // often gets a file of its own instead of rewriting everything else.
-        for (final box in [logsBox, downloadsBox, positionsBox, queueBox]) GetStorage.init(box),
+        for (final box in [logsBox, downloadsBox, positionsBox, queueBox, browserBox]) GetStorage.init(box),
       ]);
 
   final GetStorage _box;

@@ -20,8 +20,8 @@ class AdBlocker {
     this.isListed = Blocklist.contains,
     Set<String> Function()? allowedSites,
     FilterEngine? Function()? filters,
-  })  : _allowed = allowedSites ?? (() => const {}),
-        _filters = filters ?? (() => AdFilters.engine);
+  }) : _allowed = allowedSites ?? (() => const {}),
+       _filters = filters ?? (() => AdFilters.engine);
 
   final bool Function(String host) isListed;
   final Set<String> Function() _allowed;
@@ -124,8 +124,10 @@ class AdFilters {
       if (file == null) return;
       final sw = Stopwatch()..start();
       engine = await _parse(file.path);
-      debugPrint('[AdFilters] ${engine!.networkFilterCount} URL filters, '
-          '${engine!.genericSelectorCount} hiding rules in ${sw.elapsedMilliseconds} ms');
+      debugPrint(
+        '[AdFilters] ${engine!.networkFilterCount} URL filters, '
+        '${engine!.genericSelectorCount} hiding rules in ${sw.elapsedMilliseconds} ms',
+      );
     } catch (e) {
       debugPrint('[AdFilters] $e');
     }
@@ -149,6 +151,23 @@ const adSelectors = <String>[
   'iframe[src*="googlesyndication.com"]',
   'iframe[src*="adservice.google."]',
 ];
+
+/// [adHidingJs], built once while the allowed sites and the filter list
+/// stay the same: [genericCss] is ~0.5 MB, and every tab's page asks for
+/// the script. Tabs then share one string instead of a copy each.
+String adHidingJsFor(Set<String> allowedSites, {String genericCss = ''}) {
+  final key = (([...allowedSites]..sort()).join(','), identityHashCode(genericCss), genericCss.length);
+  final hit = _adScript;
+  if (hit != null && hit.key == key) return hit.js;
+  final js = adHidingJs(allowedSites, genericCss: genericCss);
+  _adScript = (key: key, js: js);
+  return js;
+}
+
+({(String, int, int) key, String js})? _adScript;
+
+/// The browser closed: no page needs the script until it opens again.
+void forgetAdHidingJs() => _adScript = null;
 
 /// Page script (document start, main frame): adds [genericCss] at once,
 /// then asks the app (`toomuCss` handler) for the site's own rules and

@@ -165,6 +165,22 @@ class MainActivity : AudioServiceActivity() {
             }
         }
 
+        MethodChannel(messenger, "toomu/clipboard").setMethodCallHandler { call, result ->
+            val path = call.argument<String>("path")
+            if (call.method != "copyImage" || path == null) return@setMethodCallHandler result.notImplemented()
+            try {
+                val shown = ImageClipboard.copy(
+                    this,
+                    java.io.File(path),
+                    call.argument<String>("mimeType") ?: "image/*",
+                    call.argument<String>("label") ?: "Image",
+                )
+                result.success(shown)
+            } catch (e: Exception) {
+                result.error("COPY", e.message, null)
+            }
+        }
+
         MethodChannel(messenger, "toomu/update").setMethodCallHandler { call, result ->
             val path = call.argument<String>("path")
             if (call.method != "install" || path == null) return@setMethodCallHandler result.notImplemented()

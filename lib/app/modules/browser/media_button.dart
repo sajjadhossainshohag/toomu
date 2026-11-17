@@ -54,6 +54,10 @@ class ScrollHider {
     return visible;
   }
 
+  /// The page jumped by itself (the top bar's show/hide resized it): take
+  /// [y] as the new starting point without showing or hiding anything.
+  void rebase(int y) => _anchor = y;
+
   /// A new page: start shown.
   void reset() {
     visible = true;

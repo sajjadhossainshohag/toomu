@@ -368,10 +368,7 @@ class _PageResultTile extends StatelessWidget {
                   ),
                   SizedBox(height: 3 * scale),
                   Text(
-                    [
-                      'Found by yt-dlp',
-                      if (info.duration != null) Formatters.duration(info.duration),
-                    ].join(' • '),
+                    ['Found by yt-dlp', if (info.duration != null) Formatters.duration(info.duration)].join(' • '),
                     style: TextStyle(fontSize: 12 * scale, color: ink.withValues(alpha: 0.6)),
                   ),
                 ],

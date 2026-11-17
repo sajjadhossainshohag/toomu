@@ -317,6 +317,63 @@ class DownloadService extends GetxService {
     );
   }
 
+  /// Saves [bytes] the page already has (an inline or script-made image)
+  /// as a finished download: there is no link to download it from.
+  Future<DownloadTask> saveBytes({
+    required List<int> bytes,
+    required String fileName,
+    String? pageUrl,
+    String? mimeType,
+  }) async {
+    await _storageReady();
+    final task = await writeFinished(
+      bytes: bytes,
+      fileName: fileName,
+      mimeType: mimeType,
+      pageUrl: pageUrl,
+      dirFor: (kind) => switch (kind) {
+        DownloadKind.video => _videoDir,
+        DownloadKind.audio => _audioDir,
+        DownloadKind.file => _filesDir,
+      },
+      taken: (p) => tasks.any((t) => t.filePath == p),
+    );
+    await _add(task);
+    MediaScannerService.to.scan(task.filePath);
+    return task;
+  }
+
+  /// Writes [bytes] under a free name in its folder and returns the
+  /// finished task for it.
+  @visibleForTesting
+  static Future<DownloadTask> writeFinished({
+    required List<int> bytes,
+    required String fileName,
+    required Directory Function(DownloadKind kind) dirFor,
+    String? mimeType,
+    String? pageUrl,
+    bool Function(String path)? taken,
+  }) async {
+    final (:base, :ext, :kind) = directName(fileName, mimeType: mimeType);
+    final path = uniquePath(dirFor(kind).path, base, ext, taken: taken);
+    await File(path).writeAsBytes(bytes, flush: true);
+    return DownloadTask(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      source: DownloadSource.direct,
+      pageUrl: pageUrl,
+      title: base,
+      author: Uri.tryParse(pageUrl ?? '')?.host ?? '',
+      kind: kind,
+      extension: ext,
+      qualityLabel: ext.toUpperCase(),
+      filePath: path,
+      createdAt: DateTime.now(),
+      totalBytes: bytes.length,
+      receivedBytes: bytes.length,
+      status: DownloadStatus.completed,
+    );
+  }
+
   Future<DownloadTask> enqueueStream({
     required String url,
     required String title,
@@ -1858,14 +1915,17 @@ class DownloadService extends GetxService {
     return Directory('${docs.path}/${AppConstants.downloadFolderName}');
   }
 
-  String _uniquePath(String dir, String base, String ext) {
+  String _uniquePath(String dir, String base, String ext) =>
+      uniquePath(dir, base, ext, taken: (p) => tasks.any((t) => t.filePath == p));
+
+  /// `dir/base.ext`, or `dir/base (1).ext` etc. when that name is used on
+  /// disk, by an unfinished download, or by [taken].
+  @visibleForTesting
+  static String uniquePath(String dir, String base, String ext, {bool Function(String path)? taken}) {
     var candidate = '$dir/$base.$ext';
     var i = 1;
-    bool taken(String p) =>
-        File(p).existsSync() ||
-        File('$p.part').existsSync() ||
-        tasks.any((t) => t.filePath == p);
-    while (taken(candidate)) {
+    bool used(String p) => File(p).existsSync() || File('$p.part').existsSync() || (taken?.call(p) ?? false);
+    while (used(candidate)) {
       candidate = '$dir/$base ($i).$ext';
       i++;
     }

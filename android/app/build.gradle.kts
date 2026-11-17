@@ -143,5 +143,8 @@ dependencies {
     // Multi-connection downloader for faster YouTube downloads (+~7 MB/ABI).
     implementation("io.github.junkfood02.youtubedl-android:aria2c:$youtubedlAndroid")
 
+    // FileProvider for "Copy image" (plugins already bring it in).
+    implementation("androidx.core:core:1.13.1")
+
     testImplementation("junit:junit:4.13.2")
 }

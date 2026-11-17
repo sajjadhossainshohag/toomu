@@ -4,6 +4,7 @@ import 'package:get_storage/get_storage.dart';
 import '../core/values/app_constants.dart';
 import '../data/repositories/video_resume_repository.dart';
 import 'audio_player_service.dart';
+import 'browser_store.dart';
 import 'diagnostics_service.dart';
 import 'download_service.dart';
 import 'floating_button_service.dart';
@@ -31,8 +32,10 @@ abstract class AppServices {
       Get.put(storage.split(GetStorage(box), key), tag: box, permanent: true);
     }
     Get.put(StorageService(GetStorage(StorageService.queueBox)), tag: StorageService.queueBox, permanent: true);
+    Get.put(StorageService(GetStorage(StorageService.browserBox)), tag: StorageService.browserBox, permanent: true);
     Get.put(DiagnosticsService().init(), permanent: true); // before anything logs
     Get.put(SettingsService().init(), permanent: true);
+    Get.put(BrowserStore(), permanent: true); // reads lazily, on first use
     await Future.wait([
       Get.putAsync(() => YoutubeAccountService().init(), permanent: true),
       Get.putAsync(() => StreamProxy().init(), permanent: true), // 127.0.0.1, instant
