@@ -8,7 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' show CookieManager, WebUri;
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:path_provider/path_provider.dart';
 
 import '../core/utils/error_text.dart';
@@ -65,6 +65,17 @@ class DownloadService extends GetxService {
   /// Bytes per HTTP range request for direct downloads.
   static const _chunk = 10 * 1024 * 1024;
   static const _minSteal = 2 * 1024 * 1024;
+  static const _minPiece = 1024 * 1024;
+
+  @visibleForTesting
+  static int pieceSizeFor(int total, int connections) {
+    final even = (total + connections - 1) ~/ (connections < 1 ? 1 : connections);
+    return even.clamp(_minPiece, _chunk);
+  }
+
+  @visibleForTesting
+  static List<String> fragmentArgs(DownloadSource source, int connections) =>
+      source == DownloadSource.stream && connections > 1 ? ['--concurrent-fragments', '$connections'] : const [];
 
   late final DownloadRepository _repo = DownloadRepository(StorageService.downloads);
   final Dio _dio = Dio(
@@ -1022,6 +1033,7 @@ class DownloadService extends GetxService {
         partPath: p.path,
         token: token,
         onBytes: (b) => onBytes(before + b),
+        connections: SettingsService.to.connectionsPerDownload.value,
         request: (from, to) => (url: uri, headers: {...f.httpHeaders, 'Range': 'bytes=$from-$to'}),
       );
       done += File(p.path).lengthSync();
@@ -1061,6 +1073,7 @@ class DownloadService extends GetxService {
           partPath: path,
           token: token,
           onBytes: onFile,
+          connections: SettingsService.to.connectionsPerDownload.value,
           request: (from, to) => (url: uri, headers: {...headers, 'Range': 'bytes=$from-$to'}),
           rangeSupported: info.ranges,
         );
@@ -1138,24 +1151,36 @@ class DownloadService extends GetxService {
         debugPrint('[Download] first bytes after ${sw.elapsedMilliseconds} ms');
       },
     );
-    final r = await yt.runUrl(
-      task.id,
-      [
-        '-f', task.ytdlpFormat,
-        ..._postProcessArgs(task),
-        '-P', 'home:$dir',
-        '-P', 'temp:$work',
-        '-o', '${base.replaceAll('%', '%%')}.%(ext)s',
-        '--progress-template', _progressTemplate,
-        // TikTok's firewall pass from the link check, same browser identity.
-        ...task.source == DownloadSource.tiktok
-            ? await TiktokService.ytDlpArgs()
-            : headerArgs(await _requestHeaders(task)),
-      ],
-      task.url!,
-      onLine: progress.onLine,
-    );
+    final connections = SettingsService.to.connectionsPerDownload.value;
+    Future<YtDlpResult> run(int fragments) async => yt.runUrl(
+          task.id,
+          [
+            '-f', task.ytdlpFormat,
+            ..._postProcessArgs(task),
+            '-P', 'home:$dir',
+            '-P', 'temp:$work',
+            '-o', '${base.replaceAll('%', '%%')}.%(ext)s',
+            '--progress-template', _progressTemplate,
+            ...fragmentArgs(task.source, fragments),
+            // TikTok's firewall pass from the link check, same browser identity.
+            ...task.source == DownloadSource.tiktok
+                ? await TiktokService.ytDlpArgs()
+                : headerArgs(await _requestHeaders(task)),
+          ],
+          task.url!,
+          onLine: progress.onLine,
+        );
+    var r = await run(connections);
     if (r.canceled || token.isCancelled) throw const _Stopped();
+    if (!r.ok && localFileProblem(r.err) == null && fragmentArgs(task.source, connections).isNotEmpty) {
+      // Some sites refuse many requests at once: the same download one segment at a time.
+      debugPrint('[Download] parallel segments failed; retrying one at a time');
+      await _deleteQuietly(work);
+      await Directory(work).create(recursive: true);
+      progress.reset();
+      r = await run(1);
+      if (r.canceled || token.isCancelled) throw const _Stopped();
+    }
     if (!r.ok) throw YtDlpException(localFileProblem(r.err) ?? r.err);
     _findOutput(task, target, dir, base);
     if (task.source == DownloadSource.stream && task.kind == DownloadKind.video) {
@@ -1312,25 +1337,71 @@ class DownloadService extends GetxService {
     CancelToken token,
     void Function(int) onBytes,
   ) async {
-    final uri = Uri.parse(task.url!);
-    final headers = await _requestHeaders(task);
-    final info = await _probeDirect(uri, token, headers);
-    // A different size means the file at this link changed: its old bytes
-    // must not be joined with the new ones.
-    if (info.total > 0 && task.totalBytes.value > 0 && info.total != task.totalBytes.value) {
-      for (final p in _tempPathsOf(task)) {
-        await _deleteQuietly(p);
-      }
-    }
-    task.totalBytes.value = info.total;
-    await _fetch(
-      total: info.total,
-      partPath: task.partPath,
+    await downloadUrl(
+      Uri.parse(task.url!),
+      await _requestHeaders(task),
+      task.partPath,
+      connections: SettingsService.to.connectionsPerDownload.value,
       token: token,
       onBytes: onBytes,
-      request: (from, to) => (url: uri, headers: {...headers, 'Range': 'bytes=$from-$to'}),
-      rangeSupported: info.ranges,
+      knownTotal: task.totalBytes.value,
+      onTotal: (total) async {
+        // A different size means the file at this link changed: its old bytes
+        // must not be joined with the new ones.
+        if (total > 0 && task.totalBytes.value > 0 && total != task.totalBytes.value) {
+          for (final p in _tempPathsOf(task)) {
+            await _deleteQuietly(p);
+          }
+        }
+        task.totalBytes.value = total;
+      },
     );
+  }
+
+  @visibleForTesting
+  Future<void> downloadUrl(
+    Uri uri,
+    Map<String, String> headers,
+    String partPath, {
+    required int connections,
+    required CancelToken token,
+    required void Function(int) onBytes,
+    int knownTotal = 0,
+    Future<void> Function(int total)? onTotal,
+  }) async {
+    // The first piece doubles as the size check: no extra round trip before the download starts.
+    final first = await _dio.get<ResponseBody>(
+      uri.toString(),
+      cancelToken: token,
+      options: Options(
+        responseType: ResponseType.stream,
+        headers: {...headers, 'Range': 'bytes=0-${_minPiece - 1}'},
+      ),
+    );
+    Response<ResponseBody>? opened = first;
+    try {
+      var total = int.tryParse(first.headers.value('content-length') ?? '') ?? 0;
+      var ranges = false;
+      if (first.statusCode == 206) {
+        final range = first.headers.value('content-range') ?? '';
+        final whole = int.tryParse(range.split('/').last) ?? 0;
+        if (whole > 0) (total, ranges) = (whole, true);
+      }
+      await onTotal?.call(total);
+      opened = null;
+      await _fetch(
+        total: total,
+        partPath: partPath,
+        token: token,
+        onBytes: onBytes,
+        connections: connections,
+        first: first,
+        request: (from, to) => (url: uri, headers: {...headers, 'Range': 'bytes=$from-$to'}),
+        rangeSupported: ranges,
+      );
+    } finally {
+      if (opened != null) unawaited(opened.data?.stream.listen(null).cancel());
+    }
   }
 
   Future<Map<String, String>> _requestHeaders(DownloadTask t) async {
@@ -1382,31 +1453,34 @@ class DownloadService extends GetxService {
   }
 
   /// Downloads [total] bytes into [partPath], resuming what's on disk.
-  /// Uses up to `connectionsPerDownload` parallel connections, each fetching
-  /// whole chunks into `<part>.chunks/<n>`; the chunks are joined at the end.
+  /// Uses up to [connections] parallel connections, each writing its pieces
+  /// straight into the part file. [first], if given, is an open response
+  /// for the start of the file; it is used or closed.
   Future<void> _fetch({
     required int total,
     required String partPath,
     required CancelToken token,
     required void Function(int) onBytes,
     required RangeRequest request,
+    required int connections,
+    Response<ResponseBody>? first,
     bool rangeSupported = true,
   }) async {
     final part = File(partPath);
     final chunksDir = Directory(DownloadTask.chunksDirOf(partPath));
     if (partComplete(partPath, total)) {
+      if (first != null) unawaited(first.data?.stream.listen(null).cancel());
       onBytes(total);
       return;
     }
-    final connections = SettingsService.to.connectionsPerDownload.value;
     final startedSequential =
         part.existsSync() && part.lengthSync() > 0 && !chunksDir.existsSync();
 
     if (!rangeSupported || total <= 0) {
-      return _fetchWhole(partPath, request, token, onBytes, total);
+      return _fetchWhole(partPath, request, token, onBytes, total, first: first);
     }
-    if (connections <= 1 || total <= _chunk || startedSequential) {
-      return _fetchSequential(total, partPath, request, token, onBytes);
+    if (connections <= 1 || total <= _minPiece || startedSequential) {
+      return _fetchSequential(total, partPath, request, token, onBytes, first: first);
     }
     return fetchParallel(
       total,
@@ -1416,6 +1490,7 @@ class DownloadService extends GetxService {
       request,
       token,
       onBytes,
+      first: first,
     );
   }
 
@@ -1425,17 +1500,24 @@ class DownloadService extends GetxService {
     RangeRequest request,
     CancelToken token,
     void Function(int) onBytes,
-    int total,
-  ) async {
-    final req = request(0, 0);
-    final response = await _dio.get<ResponseBody>(
-      req.url.toString(),
-      cancelToken: token,
-      options: Options(
-        responseType: ResponseType.stream,
-        headers: {...req.headers}..remove('Range'),
-      ),
-    );
+    int total, {
+    Response<ResponseBody>? first,
+  }) async {
+    final Response<ResponseBody> response;
+    if (first != null && first.statusCode == 200) {
+      response = first;
+    } else {
+      if (first != null) unawaited(first.data?.stream.listen(null).cancel());
+      final req = request(0, 0);
+      response = await _dio.get<ResponseBody>(
+        req.url.toString(),
+        cancelToken: token,
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: {...req.headers}..remove('Range'),
+        ),
+      );
+    }
     final sink = File(partPath).openWrite();
     var received = 0;
     try {
@@ -1457,8 +1539,10 @@ class DownloadService extends GetxService {
     String partPath,
     RangeRequest request,
     CancelToken token,
-    void Function(int) onBytes,
-  ) async {
+    void Function(int) onBytes, {
+    Response<ResponseBody>? first,
+  }) async {
+    var opening = first;
     final part = File(partPath);
     if (!part.existsSync()) await part.create(recursive: true);
     var received = part.lengthSync();
@@ -1475,14 +1559,17 @@ class DownloadService extends GetxService {
         final end = (received + _chunk - 1).clamp(0, total - 1);
         await _withRetries(() async {
           final req = request(received, end);
-          final response = await _dio.get<ResponseBody>(
-            req.url.toString(),
-            cancelToken: token,
-            options: Options(
-              responseType: ResponseType.stream,
-              headers: req.headers,
-            ),
-          );
+          final usable = received == 0 && opening?.statusCode == 206 ? opening : null;
+          opening = null;
+          final response = usable ??
+              await _dio.get<ResponseBody>(
+                req.url.toString(),
+                cancelToken: token,
+                options: Options(
+                  responseType: ResponseType.stream,
+                  headers: req.headers,
+                ),
+              );
           if (response.statusCode != 206 && received > 0) throw _RangeIgnored(response.statusCode);
           await for (final chunk in response.data!.stream) {
             await raf.writeFrom(chunk);
@@ -1492,6 +1579,8 @@ class DownloadService extends GetxService {
         }, label: 'chunk at $received');
       }
     } finally {
+      final unused = opening;
+      if (unused != null) unawaited(unused.data?.stream.listen(null).cancel());
       await raf.close();
     }
     if (received < total) {
@@ -1511,12 +1600,13 @@ class DownloadService extends GetxService {
         !Directory(DownloadTask.chunksDirOf(partPath)).existsSync();
   }
 
-  static List<int>? _readJournal(File journal, int total, int count) {
+  static ({int chunk, List<int> written})? _readJournal(File journal, int total) {
     try {
       final j = jsonDecode(journal.readAsStringSync()) as Map<String, dynamic>;
       final written = (j['written'] as List).cast<int>();
-      if (j['total'] != total || j['chunk'] != _chunk || written.length != count) return null;
-      return written;
+      final chunk = j['chunk'] as int;
+      if (j['total'] != total || chunk <= 0 || written.length != (total + chunk - 1) ~/ chunk) return null;
+      return (chunk: chunk, written: written);
     } catch (_) {
       return null;
     }
@@ -1541,14 +1631,44 @@ class DownloadService extends GetxService {
     int connections,
     RangeRequest request,
     CancelToken token,
+    void Function(int) onBytes, {
+    Response<ResponseBody>? first,
+  }) async {
+    var opening = first;
+    try {
+      await _fetchParallel(total, partPath, chunksDir, connections, request, token, onBytes, () {
+        final r = opening;
+        opening = null;
+        return r?.statusCode == 206 ? r : null;
+      });
+    } finally {
+      final unused = opening;
+      if (unused != null) unawaited(unused.data?.stream.listen(null).cancel());
+    }
+  }
+
+  Future<void> _fetchParallel(
+    int total,
+    String partPath,
+    Directory chunksDir,
+    int connections,
+    RangeRequest request,
+    CancelToken token,
     void Function(int) onBytes,
+    Response<ResponseBody>? Function() takeFirst,
   ) async {
     await chunksDir.create(recursive: true);
-    const size = _chunk;
-    final count = (total + size - 1) ~/ size;
     final part = File(partPath);
     final journal = File('${chunksDir.path}/$_journalName');
-    final written = _readJournal(journal, total, count) ?? List.filled(count, 0);
+    final saved = _readJournal(journal, total);
+    final legacy = chunksDir.listSync().whereType<File>().where((f) {
+      final name = f.uri.pathSegments.last;
+      return name != _journalName && !name.endsWith('.tmp');
+    }).toList();
+    // Pieces saved by an older version are 10 MB each; a resumed download keeps its piece size.
+    final size = saved?.chunk ?? (legacy.isNotEmpty ? _chunk : pieceSizeFor(total, connections));
+    final count = (total + size - 1) ~/ size;
+    final written = saved?.written ?? List.filled(count, 0);
 
     final pieces = <_Piece>[];
     for (var i = 0; i < count; i++) {
@@ -1568,10 +1688,6 @@ class DownloadService extends GetxService {
     }
 
     // Pieces saved by an older version, one file each: moved into the part file once.
-    final legacy = chunksDir.listSync().whereType<File>().where((f) {
-      final name = f.uri.pathSegments.last;
-      return name != _journalName && !name.endsWith('.tmp');
-    }).toList();
     if (legacy.isNotEmpty) {
       final raf = await part.open(mode: FileMode.append);
       try {
@@ -1636,30 +1752,35 @@ class DownloadService extends GetxService {
       final raf = await part.open(mode: FileMode.append);
       try {
         await _withRetries(() async {
-          if (p.complete) return;
-          final req = request(p.start + p.written, p.end);
-          final response = await _dio.get<ResponseBody>(
-            req.url.toString(),
-            cancelToken: local,
-            options: Options(
-              responseType: ResponseType.stream,
-              headers: req.headers,
-            ),
-          );
-          if (response.statusCode != 206 && p.start + p.written > 0) throw _RangeIgnored(response.statusCode);
-          await raf.setPosition(p.start + p.written);
-          await for (final chunk in response.data!.stream) {
-            final room = p.remaining; // shrinks when a steal takes the tail
-            if (room <= 0) break;
-            final bytes = chunk.length > room ? chunk.sublist(0, room) : chunk;
-            // Counted before the write: a steal during it splits after these.
-            p.written += bytes.length;
-            done += bytes.length;
-            await raf.writeFrom(bytes);
-            // Only bytes already written go into the journal: a kill then never skips missing ones.
-            p.saved = p.written;
-            onBytes(done);
-            if (p.complete) break;
+          while (!p.complete) {
+            // The opening answer only covers the start of the file: the rest of the piece is asked for after it.
+            final opening = p.start + p.written == 0 ? takeFirst() : null;
+            final req = request(p.start + p.written, p.end);
+            final response = opening ??
+                await _dio.get<ResponseBody>(
+                  req.url.toString(),
+                  cancelToken: local,
+                  options: Options(
+                    responseType: ResponseType.stream,
+                    headers: req.headers,
+                  ),
+                );
+            if (response.statusCode != 206 && p.start + p.written > 0) throw _RangeIgnored(response.statusCode);
+            await raf.setPosition(p.start + p.written);
+            await for (final chunk in response.data!.stream) {
+              final room = p.remaining; // shrinks when a steal takes the tail
+              if (room <= 0) break;
+              final bytes = chunk.length > room ? chunk.sublist(0, room) : chunk;
+              // Counted before the write: a steal during it splits after these.
+              p.written += bytes.length;
+              done += bytes.length;
+              await raf.writeFrom(bytes);
+              // Only bytes already written go into the journal: a kill then never skips missing ones.
+              p.saved = p.written;
+              onBytes(done);
+              if (p.complete) break;
+            }
+            if (opening == null) break;
           }
         }, label: 'piece at ${p.start}');
       } finally {

@@ -77,7 +77,7 @@ class RemoteConfigService extends GetxService {
     if (connections is int &&
         connections > 0 &&
         _storage.read<int>(AppConstants.kConnections) == null) {
-      SettingsService.to.connectionsPerDownload.value = connections.clamp(1, 8);
+      SettingsService.to.connectionsPerDownload.value = connections.clamp(1, 16);
     }
 
     final siteList = json['sites'] as List?;

@@ -66,7 +66,7 @@ class SettingsController extends GetxController {
       title: 'Connections per download',
       selected: settings.connectionsPerDownload.value,
       options: <SheetOption<int>>[
-        for (final i in const [1, 2, 4, 6, 8])
+        for (final i in const [1, 2, 4, 6, 8, 12, 16])
           SheetOption(
             value: i,
             label: i == 1 ? '1 connection' : '$i connections',
@@ -74,7 +74,9 @@ class SettingsController extends GetxController {
                 ? 'Recommended'
                 : i == 1
                     ? 'Slowest, gentlest on the server'
-                    : null,
+                    : i > AppConstants.defaultConnectionsPerDownload
+                        ? 'Faster on slow servers; some refuse this many'
+                        : null,
           ),
       ],
     );

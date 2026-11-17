@@ -16,6 +16,8 @@ class FileServer {
   final int length;
   final Set<int> slowStarts = {};
   final List<int> starts = [];
+  final Set<int> connections = {};
+  bool ignoresRanges = false;
   int served = 0;
   int _busy = 0;
   late HttpServer server;
@@ -29,14 +31,19 @@ class FileServer {
   Future<void> start() async {
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((req) async {
-      final m = RegExp(r'bytes=(\d+)-(\d+)').firstMatch(req.headers.value('range') ?? '')!;
-      final from = int.parse(m[1]!), to = int.parse(m[2]!);
+      connections.add(req.connectionInfo!.remotePort);
+      final m = RegExp(r'bytes=(\d+)-(\d+)').firstMatch(req.headers.value('range') ?? '');
+      final ranged = m != null && !ignoresRanges;
+      final from = ranged ? int.parse(m[1]!) : 0;
+      final to = ranged ? (int.parse(m[2]!) < length ? int.parse(m[2]!) : length - 1) : length - 1;
       starts.add(from);
       _busy++;
-      final res = req.response
-        ..statusCode = 206
-        ..contentLength = to - from + 1
-        ..headers.set('content-range', 'bytes $from-$to/$length');
+      final res = req.response..contentLength = to - from + 1;
+      if (ranged) {
+        res
+          ..statusCode = 206
+          ..headers.set('content-range', 'bytes $from-$to/$length');
+      }
       try {
         for (var pos = from; pos <= to; pos += 64 << 10) {
           final end = pos + (64 << 10) - 1 < to ? pos + (64 << 10) - 1 : to;
@@ -197,6 +204,98 @@ void main() {
       expectWholeFile();
       expect(origin.served, greaterThanOrEqualTo(total - 13 * _mb));
       expect(origin.served, lessThan(total - 10 * _mb), reason: 'the saved 10 MB piece was not fetched again');
+    });
+  });
+
+  group('starting a download', () {
+    late Directory tmp;
+    late String part;
+    late FileServer origin;
+    final service = DownloadService();
+
+    setUp(() => tmp = Directory.systemTemp.createTempSync('start'));
+    tearDown(() async {
+      await origin.server.close(force: true);
+      tmp.deleteSync(recursive: true);
+    });
+
+    Future<void> download(int total, {int connections = 8}) async {
+      origin = FileServer(total);
+      await origin.start();
+      part = '${tmp.path.replaceAll(r'\', '/')}/file.zip.part';
+      await service.downloadUrl(
+        Uri.parse('http://127.0.0.1:${origin.server.port}/file.zip'),
+        const {},
+        part,
+        connections: connections,
+        token: CancelToken(),
+        onBytes: (_) {},
+      );
+      final bytes = File(part).readAsBytesSync();
+      expect(bytes.length, total);
+      for (var i = 0; i < total; i++) {
+        if (bytes[i] != byteAt(i)) fail('wrong byte at $i');
+      }
+    }
+
+    test('a 5 MB file uses several connections, not one like a browser', () async {
+      await download(5 * _mb);
+      expect(origin.connections.length, greaterThanOrEqualTo(4));
+    });
+
+    test('no separate size check: the first request already brings the start of the file', () async {
+      await download(30 * _mb + 5);
+      expect(origin.starts.where((s) => s == 0), hasLength(1), reason: 'byte 0 asked for once');
+      expect(origin.served, lessThan(30 * _mb + 5 + 4 * _mb), reason: 'the first answer was used, not thrown away');
+    });
+
+    test('a file smaller than the first request comes in that one request', () async {
+      await download(300 * 1024);
+      expect(origin.starts, [0]);
+    });
+
+    test('a server that ignores ranges sends the whole file in the first answer', () async {
+      final total = 3 * _mb + 11;
+      origin = FileServer(total)..ignoresRanges = true;
+      await origin.start();
+      part = '${tmp.path.replaceAll(r'\', '/')}/file.zip.part';
+      await service.downloadUrl(
+        Uri.parse('http://127.0.0.1:${origin.server.port}/file.zip'),
+        const {},
+        part,
+        connections: 8,
+        token: CancelToken(),
+        onBytes: (_) {},
+      );
+      expect(File(part).lengthSync(), total);
+      expect(origin.starts, [0], reason: 'one request in all');
+    });
+
+    test('16 connections are used when chosen', () async {
+      await download(160 * _mb, connections: 16);
+      expect(origin.connections.length, greaterThanOrEqualTo(16));
+    });
+  });
+
+  group('piece size', () {
+    test('pieces are sized so every connection gets work, 1 to 10 MB each', () {
+      expect(DownloadService.pieceSizeFor(5 * _mb, 8), _mb);
+      expect(DownloadService.pieceSizeFor(16 * _mb, 8), 2 * _mb);
+      expect(DownloadService.pieceSizeFor(15 * _mb, 8), 15 * _mb ~/ 8);
+      expect(DownloadService.pieceSizeFor(500 * _mb, 8), 10 * _mb);
+      expect(DownloadService.pieceSizeFor(300 * 1024, 8), _mb);
+    });
+  });
+
+  group('streams from other sites on Android', () {
+    test('segments are fetched in parallel with the chosen number of connections', () {
+      expect(DownloadService.fragmentArgs(DownloadSource.stream, 8), ['--concurrent-fragments', '8']);
+      expect(DownloadService.fragmentArgs(DownloadSource.stream, 16), ['--concurrent-fragments', '16']);
+    });
+
+    test('one connection, or a source that is one file, gets no extra arguments', () {
+      expect(DownloadService.fragmentArgs(DownloadSource.stream, 1), isEmpty);
+      expect(DownloadService.fragmentArgs(DownloadSource.tiktok, 8), isEmpty);
     });
   });
 }
