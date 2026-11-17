@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -16,10 +18,35 @@ class FileServer {
   final int length;
   final Set<int> slowStarts = {};
   final List<int> starts = [];
-  final Set<int> connections = {};
   bool ignoresRanges = false;
   int served = 0;
   int _busy = 0;
+
+  /// Most requests open at the same time.
+  int maxBusy = 0;
+
+  /// When set, bodies pause after their first bytes until this many requests
+  /// are open at once, so "N connections" doesn't depend on timing: on a
+  /// busy machine early pieces could otherwise finish before the last
+  /// request is accepted. Released for everyone after [holdLimit] if
+  /// never reached.
+  int holdUntilOpen = 0;
+  Duration holdLimit = const Duration(seconds: 5);
+  final _allOpen = Completer<void>();
+
+  /// When set, the server stops sending once it has served this many
+  /// bytes, until [release]: a test that pauses mid-download then always
+  /// catches it in the middle, however fast or slow the machine is.
+  int? stallAfter;
+  Completer<void> _released = Completer<void>();
+
+  /// Sends again (and no longer stalls).
+  void release() {
+    stallAfter = null;
+    if (!_released.isCompleted) _released.complete();
+    _released = Completer<void>();
+  }
+
   late HttpServer server;
 
   Future<void> idle() async {
@@ -31,13 +58,14 @@ class FileServer {
   Future<void> start() async {
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((req) async {
-      connections.add(req.connectionInfo!.remotePort);
       final m = RegExp(r'bytes=(\d+)-(\d+)').firstMatch(req.headers.value('range') ?? '');
       final ranged = m != null && !ignoresRanges;
       final from = ranged ? int.parse(m[1]!) : 0;
       final to = ranged ? (int.parse(m[2]!) < length ? int.parse(m[2]!) : length - 1) : length - 1;
       starts.add(from);
       _busy++;
+      if (_busy > maxBusy) maxBusy = _busy;
+      if (holdUntilOpen > 0 && _busy >= holdUntilOpen && !_allOpen.isCompleted) _allOpen.complete();
       final res = req.response..contentLength = to - from + 1;
       if (ranged) {
         res
@@ -46,10 +74,22 @@ class FileServer {
       }
       try {
         for (var pos = from; pos <= to; pos += 64 << 10) {
+          final stall = stallAfter;
+          if (stall != null && served >= stall) await _released.future;
           final end = pos + (64 << 10) - 1 < to ? pos + (64 << 10) - 1 : to;
           res.add(Uint8List.fromList([for (var i = pos; i <= end; i++) byteAt(i)]));
           await res.flush();
           served += end - pos + 1;
+          // After the first bytes (headers only don't go out): the opening
+          // request must arrive so the client starts the others.
+          if (holdUntilOpen > 0 && pos == from) {
+            await _allOpen.future.timeout(
+              holdLimit,
+              onTimeout: () {
+                if (!_allOpen.isCompleted) _allOpen.complete(); // never reached: stop holding anyone
+              },
+            );
+          }
           if (slowStarts.contains(from)) await Future<void>.delayed(const Duration(milliseconds: 40));
         }
         await res.close();
@@ -61,10 +101,8 @@ class FileServer {
     });
   }
 
-  RangeRequest get request => (from, to) => (
-        url: Uri.parse('http://127.0.0.1:${server.port}/file.mp4'),
-        headers: {'Range': 'bytes=$from-$to'},
-      );
+  RangeRequest get request =>
+      (from, to) => (url: Uri.parse('http://127.0.0.1:${server.port}/file.mp4'), headers: {'Range': 'bytes=$from-$to'});
 }
 
 void main() {
@@ -118,14 +156,14 @@ void main() {
     });
 
     Future<void> fetch({CancelToken? token, void Function(int)? onBytes}) => service.fetchParallel(
-          total,
-          part,
-          Directory(DownloadTask.chunksDirOf(part)),
-          4,
-          origin.request,
-          token ?? CancelToken(),
-          onBytes ?? (_) {},
-        );
+      total,
+      part,
+      Directory(DownloadTask.chunksDirOf(part)),
+      4,
+      origin.request,
+      token ?? CancelToken(),
+      onBytes ?? (_) {},
+    );
 
     void expectWholeFile() {
       final bytes = File(part).readAsBytesSync();
@@ -144,33 +182,73 @@ void main() {
     });
 
     test('a paused download resumes without fetching its saved bytes again', () async {
+      origin.stallAfter = 16 * _mb;
       final token = CancelToken();
-      await expectLater(fetch(token: token, onBytes: (b) {
-        if (b > 12 * _mb && !token.isCancelled) token.cancel('pause');
-      }), throwsA(anything));
+      await expectLater(
+        fetch(
+          token: token,
+          onBytes: (b) {
+            if (b > 12 * _mb && !token.isCancelled) token.cancel('pause');
+          },
+        ),
+        throwsA(anything),
+      );
+      origin.release();
       await origin.idle();
-      final saved = File(part).existsSync() || Directory(DownloadTask.chunksDirOf(part)).existsSync();
-      expect(saved, isTrue);
-      origin.served = 0;
+      // What the first run saved, per piece, from its progress record.
+      final journal = jsonDecode(File('${DownloadTask.chunksDirOf(part)}/written.json').readAsStringSync()) as Map;
+      final chunk = journal['chunk'] as int;
+      final written = (journal['written'] as List).cast<int>();
+      final saved = [
+        for (var i = 0; i < written.length; i++)
+          if (written[i] > 0) (from: i * chunk, to: i * chunk + written[i]),
+      ];
+      expect(written.fold(0, (a, b) => a + b), greaterThan(8 * _mb), reason: 'the pause came mid-download');
+      origin.starts.clear();
       await fetch();
       expectWholeFile();
-      expect(origin.served, lessThan(total - 8 * _mb), reason: 'the second run skipped what the first saved');
+      // Counting bytes served would also count what a connection still
+      // pushes after the client dropped it (a busy machine is slow to
+      // hang up); where the requests start is exact.
+      for (final start in origin.starts) {
+        expect(
+          saved.any((r) => start >= r.from && start < r.to),
+          isFalse,
+          reason: 'the second run asked again for saved bytes at $start',
+        );
+      }
     });
 
     test('pieces go straight into the file: no second copy of the data at the end', () async {
+      origin.stallAfter = 16 * _mb;
       final token = CancelToken();
-      await expectLater(fetch(token: token, onBytes: (b) {
-        if (b > 12 * _mb && !token.isCancelled) token.cancel('pause');
-      }), throwsA(anything));
+      await expectLater(
+        fetch(
+          token: token,
+          onBytes: (b) {
+            if (b > 12 * _mb && !token.isCancelled) token.cancel('pause');
+          },
+        ),
+        throwsA(anything),
+      );
+      origin.release();
       final temp = Directory(DownloadTask.chunksDirOf(part)).listSync().map((e) => e.uri.pathSegments.last);
       expect(temp, ['written.json'], reason: 'only the progress record, no per-piece copies');
     });
 
     test('a paused download shows the bytes it saved, not the length of its gappy file', () async {
+      origin.stallAfter = 16 * _mb;
       final token = CancelToken();
-      await expectLater(fetch(token: token, onBytes: (b) {
-        if (b > 12 * _mb && !token.isCancelled) token.cancel('pause');
-      }), throwsA(anything));
+      await expectLater(
+        fetch(
+          token: token,
+          onBytes: (b) {
+            if (b > 12 * _mb && !token.isCancelled) token.cancel('pause');
+          },
+        ),
+        throwsA(anything),
+      );
+      origin.release();
       await origin.idle();
       final shown = DownloadService.partBytesOnDisk(part);
       expect(shown, greaterThan(8 * _mb));
@@ -203,7 +281,11 @@ void main() {
       await fetch();
       expectWholeFile();
       expect(origin.served, greaterThanOrEqualTo(total - 13 * _mb));
-      expect(origin.served, lessThan(total - 10 * _mb), reason: 'the saved 10 MB piece was not fetched again');
+      // Where requests start, not bytes served: a busy machine is slow to
+      // hang up, and the server counts what it pushed meanwhile.
+      for (final start in origin.starts) {
+        expect(start >= 0 && start < 13 * _mb, isFalse, reason: 'saved bytes asked for again at $start');
+      }
     });
   });
 
@@ -219,8 +301,8 @@ void main() {
       tmp.deleteSync(recursive: true);
     });
 
-    Future<void> download(int total, {int connections = 8}) async {
-      origin = FileServer(total);
+    Future<void> download(int total, {int connections = 8, int holdUntilOpen = 0}) async {
+      origin = FileServer(total)..holdUntilOpen = holdUntilOpen;
       await origin.start();
       part = '${tmp.path.replaceAll(r'\', '/')}/file.zip.part';
       await service.downloadUrl(
@@ -239,14 +321,19 @@ void main() {
     }
 
     test('a 5 MB file uses several connections, not one like a browser', () async {
-      await download(5 * _mb);
-      expect(origin.connections.length, greaterThanOrEqualTo(4));
+      await download(5 * _mb, holdUntilOpen: 4);
+      expect(origin.maxBusy, greaterThanOrEqualTo(4), reason: '4 requests open at the same time');
     });
 
     test('no separate size check: the first request already brings the start of the file', () async {
       await download(30 * _mb + 5);
       expect(origin.starts.where((s) => s == 0), hasLength(1), reason: 'byte 0 asked for once');
-      expect(origin.served, lessThan(30 * _mb + 5 + 4 * _mb), reason: 'the first answer was used, not thrown away');
+      // The first answer brings bytes 0 to 1 MB; none of them is asked for again.
+      expect(
+        origin.starts.where((s) => s > 0 && s < _mb),
+        isEmpty,
+        reason: 'the first answer was used, not thrown away',
+      );
     });
 
     test('a file smaller than the first request comes in that one request', () async {
@@ -272,8 +359,8 @@ void main() {
     });
 
     test('16 connections are used when chosen', () async {
-      await download(160 * _mb, connections: 16);
-      expect(origin.connections.length, greaterThanOrEqualTo(16));
+      await download(160 * _mb, connections: 16, holdUntilOpen: 16);
+      expect(origin.maxBusy, greaterThanOrEqualTo(16), reason: '16 requests open at the same time');
     });
   });
 
