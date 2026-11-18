@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:toomu/app/modules/browser/ad_blocker.dart';
 import 'package:toomu/app/modules/browser/redirect_guard.dart';
 
 void main() {
@@ -26,9 +27,17 @@ example.com/path
     expect(hosts, {'ads.example.com', 'bet.example.net', 'plain.example.io'});
   });
 
-  test('closing the browser frees the blocklist', () {
+  test('reopening the browser soon after closing it does not read the lists again; a while later they are freed',
+      () async {
+    FilterLists.keepFor = const Duration(milliseconds: 50);
     Blocklist.hosts = {'bet.example'};
-    Blocklist.forget();
+    FilterLists.browserClosed();
+    FilterLists.browserOpened();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(Blocklist.contains('bet.example'), isTrue, reason: 'EasyList takes ~2 s to read; pages load unblocked meanwhile');
+
+    FilterLists.browserClosed();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(Blocklist.contains('bet.example'), isFalse);
   });
 

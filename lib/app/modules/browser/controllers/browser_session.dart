@@ -9,7 +9,6 @@ import '../../../services/browser_store.dart';
 import '../../../widgets/app_snackbar.dart';
 import '../ad_blocker.dart';
 import '../address.dart';
-import '../redirect_guard.dart';
 import '../tab_session.dart';
 import 'browser_controller.dart';
 
@@ -43,6 +42,7 @@ class BrowserSession extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    FilterLists.browserOpened();
     // History is read now, not at app start (the new-tab page shows it).
     unawaited(BrowserStore.to.loadHistory());
     // The newest ones: new tabs are saved at the end of the list.
@@ -74,8 +74,7 @@ class BrowserSession extends GetxController {
       _forget(c, now: true);
     }
     forgetAdHidingJs();
-    AdFilters.forget();
-    Blocklist.forget();
+    FilterLists.browserClosed();
     super.onClose();
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -148,6 +149,25 @@ class AdFilters {
   // unsendable.
   static Future<FilterEngine> _parse(String path) =>
       Isolate.run(() => FilterEngine.parse(File(path).readAsStringSync()));
+}
+
+abstract final class FilterLists {
+  @visibleForTesting
+  static Duration keepFor = const Duration(minutes: 5);
+
+  static Timer? _release;
+
+  static void browserOpened() => _release?.cancel();
+
+  // Freed only after a while: EasyList takes ~2 s to read again, pages load unblocked meanwhile, and the
+  // browser is often closed and reopened within a minute.
+  static void browserClosed() {
+    _release?.cancel();
+    _release = Timer(keepFor, () {
+      AdFilters.forget();
+      Blocklist.forget();
+    });
+  }
 }
 
 /// Common ad boxes (Google AdSense / Ad Manager, AMP ads, ad iframes),
