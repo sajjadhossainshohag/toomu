@@ -40,8 +40,8 @@ abstract class AppServices {
       Get.putAsync(() => YoutubeAccountService().init(), permanent: true),
       Get.putAsync(() => StreamProxy().init(), permanent: true), // 127.0.0.1, instant
       Get.putAsync(() => PermissionService().init(), permanent: true),
-      Get.putAsync(() => AudioPlayerService().init(), permanent: true), // needs only storage
     ]);
+    Get.put(AudioPlayerService().init(), permanent: true);
     Get.put(YtDlpService().init(), permanent: true); // unpacks in background
     Get.put(RemoteConfigService().init(), permanent: true);
     Get.put(MediaScannerService(), permanent: true);

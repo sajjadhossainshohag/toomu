@@ -18,8 +18,7 @@ class ShortsBinding extends Bindings {
         resolve: (v) => yt.resolveStream(v.id.value, v.title, duration: v.duration),
         play: (item) async {
           // Music and video shouldn't play at once.
-          final music = AudioPlayerService.to.player;
-          if (music.playing) await music.pause();
+          await AudioPlayerService.to.pause();
           session.attach(VideoPlaylist([item], 0), (_) {});
           await session.player.setPlaylistMode(PlaylistMode.single);
           await session.openItem(item);

@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 
 import '../core/utils/host_os.dart';
 import '../core/values/app_constants.dart';
@@ -26,13 +27,9 @@ class AudioPlayerService extends GetxService {
 
   final AndroidEqualizer equalizer = AndroidEqualizer();
   final AndroidLoudnessEnhancer loudness = AndroidLoudnessEnhancer();
-  late final AudioPlayer player = AudioPlayer(
-    audioPipeline: AudioPipeline(
-      androidAudioEffects: Platform.isAndroid
-          ? <AndroidAudioEffect>[equalizer, loudness]
-          : const <AndroidAudioEffect>[],
-    ),
-  );
+  AudioPlayer? _player;
+  AudioPlayer get player => _player ??= _createPlayer();
+  bool get hasPlayer => _player != null;
 
   // ---------------------------------------------------------------- state
   final queue = <Track>[].obs;
@@ -69,15 +66,23 @@ class AudioPlayerService extends GetxService {
 
   bool get hasMedia => current != null;
 
-  Future<AudioPlayerService> init() async {
-    if (HostOs.usesAudioSession) {
-      final session = await AudioSession.instance;
-      await session.configure(const AudioSessionConfiguration.music());
-    }
-
+  AudioPlayerService init() {
     favorites.addAll(
         (_storage.read<List>(AppConstants.kFavorites) ?? const []).cast<String>());
+    equalizerEnabled.value = _storage.read<bool>(AppConstants.kEqualizerEnabled) ?? false;
+    // After the first frame: loading a file must not slow down the start.
+    SchedulerBinding.instance.addPostFrameCallback((_) => unawaited(_restoreQueue()));
+    return this;
+  }
 
+  AudioPlayer _createPlayer() {
+    final player = _player = AudioPlayer(
+      audioPipeline: AudioPipeline(
+        androidAudioEffects: Platform.isAndroid
+            ? <AndroidAudioEffect>[equalizer, loudness]
+            : const <AndroidAudioEffect>[],
+      ),
+    );
     _subs.addAll([
       // Runtime errors (e.g. HTTP 403 halfway through a stream) arrive here.
       player.playbackEventStream.listen((_) {}, onError: (Object e, StackTrace _) {
@@ -108,11 +113,30 @@ class AudioPlayerService extends GetxService {
       onShow: () => _watchPosition(visible: true),
     );
 
-    if (Platform.isAndroid) await _restoreEqualizer();
-    // After the first frame: loading a file must not slow down the start.
-    SchedulerBinding.instance.addPostFrameCallback((_) => unawaited(_restoreQueue()));
-    return this;
+    if (Platform.isAndroid) unawaited(_restoreEqualizer());
+    return player;
   }
+
+  Future<void>? _platformReady;
+
+  // just_audio picks its platform when the first source loads, so the background
+  // plugin must be in place by then, not when the player is created.
+  Future<void> _preparePlatform() => _platformReady ??= () async {
+        if (HostOs.usesAudioNotification) {
+          await JustAudioBackground.init(
+            androidNotificationChannelId: AppConstants.playbackChannelId,
+            androidNotificationChannelName: AppConstants.playbackChannelName,
+            androidNotificationOngoing: true,
+            // Toomu mark in the status bar (android/app/src/main/res/drawable).
+            androidNotificationIcon: 'drawable/ic_stat_toomu',
+            notificationColor: const Color(0xFF7C4DFF),
+          );
+        }
+        if (HostOs.usesAudioSession) {
+          final session = await AudioSession.instance;
+          await session.configure(const AudioSessionConfiguration.music());
+        }
+      }();
 
   void _watchPosition({required bool visible}) {
     _positionSub?.cancel();
@@ -159,6 +183,7 @@ class AudioPlayerService extends GetxService {
       );
       if (restored == null || hasMedia) return;
       queue.assignAll(restored.tracks);
+      await _preparePlatform();
       await player.setAudioSources(
         restored.tracks.map((t) => t.toAudioSource()).toList(),
         initialIndex: restored.index,
@@ -204,6 +229,7 @@ class AudioPlayerService extends GetxService {
     clearAbRepeat();
     queue.assignAll(tracks);
     try {
+      await _preparePlatform();
       await player.setAudioSources(
         tracks.map((t) => t.toAudioSource()).toList(),
         initialIndex: index,
@@ -232,6 +258,10 @@ class AudioPlayerService extends GetxService {
   }
 
   void togglePlay() => player.playing ? player.pause() : player.play();
+
+  Future<void> pause() async {
+    if (_player?.playing ?? false) await _player!.pause();
+  }
 
   /// Mini bar ✕: stops playback, clears the queue and removes the
   /// notification, so the mini bar disappears.
@@ -420,9 +450,7 @@ class AudioPlayerService extends GetxService {
   }
 
   Future<void> _restoreEqualizer() async {
-    final enabled = _storage.read<bool>(AppConstants.kEqualizerEnabled) ?? false;
-    equalizerEnabled.value = enabled;
-    await equalizer.setEnabled(enabled);
+    await equalizer.setEnabled(equalizerEnabled.value);
     final gains = _storage.read<List>(AppConstants.kEqualizerGains);
     if (gains == null) return;
     // Parameters resolve once a source is loaded; apply lazily.
@@ -464,7 +492,7 @@ class AudioPlayerService extends GetxService {
     _positionSub?.cancel();
     _lifecycle?.dispose();
     _sleepTimer?.cancel();
-    player.dispose();
+    _player?.dispose();
     super.onClose();
   }
 }

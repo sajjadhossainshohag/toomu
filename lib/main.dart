@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 import 'app/core/theme/app_theme.dart';
@@ -23,15 +22,6 @@ Future<void> main() async {
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
     StorageService.init(),
     DeviceProfile.init(),
-    if (HostOs.usesAudioNotification)
-      JustAudioBackground.init(
-      androidNotificationChannelId: AppConstants.playbackChannelId,
-      androidNotificationChannelName: AppConstants.playbackChannelName,
-      androidNotificationOngoing: true,
-      // Toomu mark in the status bar (android/app/src/main/res/drawable).
-      androidNotificationIcon: 'drawable/ic_stat_toomu',
-      notificationColor: const Color(0xFF7C4DFF),
-    ),
   ]);
   if (DeviceProfile.lowEnd) {
     PaintingBinding.instance.imageCache
