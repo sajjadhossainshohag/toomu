@@ -119,7 +119,7 @@ class PlayerView extends GetView<PlayerController> {
                       ),
                     ),
                     SizedBox(height: 18 * scale),
-                    _SeekBar(controller: controller),
+                    RepaintBoundary(child: _SeekBar(controller: controller)),
                     SizedBox(height: 10 * scale),
                     _Controls(controller: controller),
                     SizedBox(height: 22 * scale),

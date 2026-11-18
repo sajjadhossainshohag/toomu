@@ -95,52 +95,38 @@ class MiniPlayer extends StatelessWidget {
                           ],
                         ),
                       ),
+                      RoundIconButton(icon: Icons.skip_previous_rounded, size: 36, onTap: audio.previous),
                       RoundIconButton(
-                        icon: Icons.skip_previous_rounded,
-                        size: 36,
-                        onTap: audio.previous,
-                      ),
-                      RoundIconButton(
-                        icon: audio.playing.value
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
+                        icon: audio.playing.value ? Icons.pause_rounded : Icons.play_arrow_rounded,
                         size: 40,
                         filled: true,
                         onTap: audio.togglePlay,
                       ),
-                      RoundIconButton(
-                        icon: Icons.skip_next_rounded,
-                        size: 36,
-                        onTap: audio.next,
-                      ),
-                      RoundIconButton(
-                        icon: Icons.close_rounded,
-                        size: 32,
-                        onTap: audio.close,
-                        tooltip: 'Close',
-                      ),
+                      RoundIconButton(icon: Icons.skip_next_rounded, size: 36, onTap: audio.next),
+                      RoundIconButton(icon: Icons.close_rounded, size: 32, onTap: audio.close, tooltip: 'Close'),
                     ],
                   ),
                 ),
                 SizedBox(
                   height: 2.5 * scale,
-                  // Position ticks several times a second: only the bar redraws.
-                  child: Obx(() {
-                    final total = audio.duration.value.inMilliseconds;
-                    final progress = total <= 0 ? 0.0 : audio.position.value.inMilliseconds / total;
-                    return Align(
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: progress.clamp(0, 1).toDouble(),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: BrandColors.of(context).progressGradient,
+                  // Position ticks several times a second: only the bar rebuilds, and its own layer keeps the repaint
+                  // from spreading to the whole screen behind it.
+                  child: RepaintBoundary(
+                    child: Obx(() {
+                      final total = audio.duration.value.inMilliseconds;
+                      final progress = total <= 0 ? 0.0 : audio.position.value.inMilliseconds / total;
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: progress.clamp(0, 1).toDouble(),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(gradient: BrandColors.of(context).progressGradient),
+                            child: const SizedBox.expand(),
                           ),
-                          child: const SizedBox.expand(),
                         ),
-                      ),
-                    );
-                  }),
+                      );
+                    }),
+                  ),
                 ),
               ],
             ),
@@ -191,14 +177,14 @@ class _VideoMiniBar extends StatelessWidget {
                 height: 40 * scale,
                 child: item.id == null
                     ? (item.thumbnailUrl == null
-                        ? const ArtworkPlaceholder(size: 64, radius: 0, icon: Icons.movie_rounded)
-                        : CachedNetworkImage(
-                            imageUrl: item.thumbnailUrl!,
-                            fit: BoxFit.cover,
-                            memCacheWidth: (64 * scale * MediaQuery.devicePixelRatioOf(context)).round(),
-                            errorWidget: (_, _, _) =>
-                                const ArtworkPlaceholder(size: 64, radius: 0, icon: Icons.movie_rounded),
-                          ))
+                          ? const ArtworkPlaceholder(size: 64, radius: 0, icon: Icons.movie_rounded)
+                          : CachedNetworkImage(
+                              imageUrl: item.thumbnailUrl!,
+                              fit: BoxFit.cover,
+                              memCacheWidth: (64 * scale * MediaQuery.devicePixelRatioOf(context)).round(),
+                              errorWidget: (_, _, _) =>
+                                  const ArtworkPlaceholder(size: 64, radius: 0, icon: Icons.movie_rounded),
+                            ))
                     : FutureBuilder<Uint8List?>(
                         future: VideoThumbCache.load(item.id!),
                         builder: (_, snap) => snap.data == null
@@ -222,17 +208,23 @@ class _VideoMiniBar extends StatelessWidget {
                   Text(
                     item.isStream ? 'YouTube · playing in background' : 'Video · playing in background',
                     maxLines: 1,
-                    style: TextStyle(fontSize: 12 * scale, fontWeight: FontWeight.w500, color: ink.withValues(alpha: 0.6)),
+                    style: TextStyle(
+                      fontSize: 12 * scale,
+                      fontWeight: FontWeight.w500,
+                      color: ink.withValues(alpha: 0.6),
+                    ),
                   ),
                 ],
               ),
             ),
-            Obx(() => RoundIconButton(
-                  icon: session.playing.value ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  size: 40,
-                  filled: true,
-                  onTap: () => session.player.playOrPause(),
-                )),
+            Obx(
+              () => RoundIconButton(
+                icon: session.playing.value ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                size: 40,
+                filled: true,
+                onTap: () => session.player.playOrPause(),
+              ),
+            ),
             RoundIconButton(icon: Icons.close_rounded, size: 36, onTap: session.stop, tooltip: 'Stop'),
           ],
         ),

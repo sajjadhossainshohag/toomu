@@ -28,10 +28,7 @@ class _WatchDetailsState extends State<WatchDetails> {
   // otherwise load everything again and lose opened comments.
   late final WatchDetailsController c = Get.isRegistered<WatchDetailsController>(tag: widget.videoId)
       ? Get.find<WatchDetailsController>(tag: widget.videoId)
-      : Get.put(
-          WatchDetailsController(widget.videoId, Get.find<YoutubeController>().watchSource),
-          tag: widget.videoId,
-        );
+      : Get.put(WatchDetailsController(widget.videoId, Get.find<YoutubeController>().watchSource), tag: widget.videoId);
 
   @override
   Widget build(BuildContext context) {
@@ -179,16 +176,19 @@ class _WatchDetailsState extends State<WatchDetails> {
                 ],
               ),
             ),
-            if (c.commentsOff.value)
-              Padding(
-                padding: EdgeInsets.fromLTRB(16 * scale, 14 * scale, 16 * scale, 0),
-                child: Text(
-                  'Comments are turned off.',
-                  style: TextStyle(fontSize: 13 * scale, color: ink.withValues(alpha: 0.6)),
-                ),
-              )
-            else if (c.comments.isNotEmpty)
-              Padding(
+            // Comments arrive later and in pages (from the sheet): only this card follows them, not the whole page.
+            Obx(() {
+              if (c.commentsOff.value) {
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(16 * scale, 14 * scale, 16 * scale, 0),
+                  child: Text(
+                    'Comments are turned off.',
+                    style: TextStyle(fontSize: 13 * scale, color: ink.withValues(alpha: 0.6)),
+                  ),
+                );
+              }
+              if (c.comments.isEmpty) return const SizedBox.shrink();
+              return Padding(
                 padding: EdgeInsets.fromLTRB(16 * scale, 14 * scale, 16 * scale, 0),
                 child: Material(
                   color: ColorConstants.groupOn(dark),
@@ -233,11 +233,14 @@ class _WatchDetailsState extends State<WatchDetails> {
                     ),
                   ),
                 ),
-              ),
+              );
+            }),
             if (c.related.isNotEmpty) ...<Widget>[
               const SectionTitle('Up next'),
               for (final r in c.related)
-                VideoRow(video: r, loading: yt.watchingId.value == r.id.value, onTap: () => yt.watchInPlace(r)),
+                Obx(
+                  () => VideoRow(video: r, loading: yt.watchingId.value == r.id.value, onTap: () => yt.watchInPlace(r)),
+                ),
             ],
           ],
         );
