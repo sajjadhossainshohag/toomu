@@ -38,7 +38,16 @@ abstract class WatchSource {
   Future<Video> video(String videoId);
   Future<Channel> channel(ChannelId id);
   Future<List<Video>> related(Video video);
-  Future<({List<Comment> comments, int total})?> comments(Video video); // null: comments are turned off
+  Future<CommentsPage?> comments(Video video); // null: comments are turned off
+  Future<List<Comment>> replies(Comment comment);
+}
+
+class CommentsPage {
+  const CommentsPage(this.comments, this.total, [this.next]);
+
+  final List<Comment> comments;
+  final int total;
+  final Future<CommentsPage?> Function()? next;
 }
 
 /// YouTube search, home feed, video details and the fast stream lookup
@@ -100,13 +109,23 @@ class YoutubeProvider implements WatchSource {
   Future<List<Video>> related(Video video) async => (await _yt.videos.getRelatedVideos(video))?.toList() ?? const [];
 
   @override
-  Future<({List<Comment> comments, int total})?> comments(Video video) async {
+  Future<CommentsPage?> comments(Video video) async {
     // shortcut: youtube_explode deprecated its comments API with no replacement; the watch page hides comments
     // when this fails. Upgrade to our own InnerTube "next" call (like account_feed) when it stops working.
     // ignore: deprecated_member_use
     final list = await _yt.videos.commentsClient.getComments(video);
-    return list == null ? null : (comments: list.toList(), total: list.totalLength);
+    return list == null ? null : _commentsPage(list);
   }
+
+  CommentsPage _commentsPage(CommentsList list) => CommentsPage(list.toList(), list.totalLength, () async {
+        final more = await list.nextPage();
+        return more == null ? null : _commentsPage(more);
+      });
+
+  @override
+  Future<List<Comment>> replies(Comment comment) async =>
+      // ignore: deprecated_member_use
+      (await _yt.videos.commentsClient.getReplies(comment))?.toList() ?? const [];
 
   Future<List<String>> saveSubtitles(String videoId, String videoPath, List<String> langs) async {
     final cc = _yt.videos.closedCaptions;

@@ -58,9 +58,40 @@ class WatchDetailsController extends GetxController {
         } else {
           comments.assignAll(c.comments);
           commentCount.value = c.total;
+          _moreComments = c.next;
         }
       }),
     ]);
+  }
+
+  Future<CommentsPage?> Function()? _moreComments;
+  final loadingMoreComments = false.obs;
+  bool get hasMoreComments => _moreComments != null;
+
+  Future<void> loadMoreComments() async {
+    final next = _moreComments;
+    if (next == null || loadingMoreComments.value) return;
+    loadingMoreComments.value = true;
+    await _part('more comments', () async {
+      final page = await next();
+      if (isClosed) return;
+      if (page != null) comments.addAll(page.comments);
+      _moreComments = page?.next;
+    });
+    loadingMoreComments.value = false;
+  }
+
+  final replies = <Comment, List<Comment>>{}.obs;
+  final loadingReplies = <Comment>{}.obs;
+
+  Future<void> loadReplies(Comment comment) async {
+    if (replies.containsKey(comment) || loadingReplies.contains(comment)) return;
+    loadingReplies.add(comment);
+    await _part('replies', () async {
+      final list = await _source.replies(comment);
+      if (!isClosed) replies[comment] = list;
+    });
+    loadingReplies.remove(comment);
   }
 
   Future<void> _part(String name, Future<void> Function() load) async {

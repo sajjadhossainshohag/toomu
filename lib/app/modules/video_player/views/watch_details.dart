@@ -226,12 +226,37 @@ void showCommentsSheet(WatchDetailsController c) => Get.bottomSheet<void>(
           constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.75),
           child: AppSheet(
             title: 'Comments',
-            child: Obx(
-              () => ListView.separated(
-                itemCount: c.comments.length,
-                separatorBuilder: (_, _) => SizedBox(height: 14 * context.scale),
-                itemBuilder: (_, i) => _CommentTile(comment: c.comments[i]),
-              ),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                if (n.metrics.pixels > n.metrics.maxScrollExtent - 400) c.loadMoreComments();
+                return false;
+              },
+              child: Obx(() {
+                final more = c.loadingMoreComments.value;
+                return ListView.separated(
+                  itemCount: c.comments.length + (more ? 1 : 0),
+                  separatorBuilder: (_, _) => SizedBox(height: 14 * context.scale),
+                  itemBuilder: (_, i) {
+                    if (i >= c.comments.length) return const Center(child: CircularProgressIndicator());
+                    final comment = c.comments[i];
+                    final replies = c.replies[comment];
+                    return Column(
+                      children: <Widget>[
+                        _CommentTile(
+                          comment: comment,
+                          onReplies: replies == null ? () => c.loadReplies(comment) : null,
+                          loadingReplies: c.loadingReplies.contains(comment),
+                        ),
+                        for (final r in replies ?? const <Comment>[])
+                          Padding(
+                            padding: EdgeInsets.only(left: 44 * context.scale, top: 12 * context.scale),
+                            child: _CommentTile(comment: r),
+                          ),
+                      ],
+                    );
+                  },
+                );
+              }),
             ),
           ),
         ),
@@ -240,9 +265,11 @@ void showCommentsSheet(WatchDetailsController c) => Get.bottomSheet<void>(
     );
 
 class _CommentTile extends StatelessWidget {
-  const _CommentTile({required this.comment});
+  const _CommentTile({required this.comment, this.onReplies, this.loadingReplies = false});
 
   final Comment comment;
+  final VoidCallback? onReplies;
+  final bool loadingReplies;
 
   @override
   Widget build(BuildContext context) {
@@ -267,12 +294,17 @@ class _CommentTile extends StatelessWidget {
                   Icon(Icons.thumb_up_alt_outlined, size: 15 * scale, color: soft),
                   SizedBox(width: 5 * scale),
                   Text(comment.likeCount > 0 ? Formatters.compact(comment.likeCount) : '', style: TextStyle(fontSize: 12 * scale, color: soft)),
-                  if (comment.replyCount > 0) ...<Widget>[
-                    SizedBox(width: 16 * scale),
-                    Text(
-                      '${comment.replyCount} ${comment.replyCount == 1 ? 'reply' : 'replies'}',
-                      style: TextStyle(fontSize: 12 * scale, fontWeight: FontWeight.w700, color: BrandColors.of(context).primary),
-                    ),
+                  if (comment.replyCount > 0 && onReplies != null) ...<Widget>[
+                    SizedBox(width: 8 * scale),
+                    loadingReplies
+                        ? SizedBox.square(dimension: 16 * scale, child: const CircularProgressIndicator(strokeWidth: 2))
+                        : TextButton(
+                            onPressed: onReplies,
+                            child: Text(
+                              '${comment.replyCount} ${comment.replyCount == 1 ? 'reply' : 'replies'}',
+                              style: TextStyle(fontSize: 12 * scale, fontWeight: FontWeight.w700, color: BrandColors.of(context).primary),
+                            ),
+                          ),
                   ],
                 ],
               ),

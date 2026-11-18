@@ -32,7 +32,9 @@ class _Source implements WatchSource {
   @override
   Future<List<Video>> related(Video v) async => [_video('bbbbbbbbbbb', 'Street food tour')];
   @override
-  Future<({List<Comment> comments, int total})?> comments(Video v) async => null;
+  Future<CommentsPage?> comments(Video v) async => null;
+  @override
+  Future<List<Comment>> replies(Comment c) async => const [];
 }
 
 class _Yt extends YoutubeController {

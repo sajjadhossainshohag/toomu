@@ -28,10 +28,17 @@ class _Source implements WatchSource {
   }
 
   @override
-  Future<({List<Comment> comments, int total})?> comments(Video video) async => commentsOff
+  Future<CommentsPage?> comments(Video video) async => commentsOff
       ? null
-      : (comments: [Comment('@fan', ChannelId('UC${'c' * 22}'), 'Great video', 12, '1 day ago', 2, false, null)], total: 340);
+      : CommentsPage([_comment('@fan', 'Great video', replies: 2)], 340,
+          () async => CommentsPage([_comment('@late', 'Second page')], 340));
+
+  @override
+  Future<List<Comment>> replies(Comment comment) async => [_comment('@author', 'Thanks!')];
 }
+
+Comment _comment(String author, String text, {int replies = 0}) =>
+    Comment(author, ChannelId('UC${'c' * 22}'), text, 12, '1 day ago', replies, false, null);
 
 void main() {
   test('details, channel, comments and Up next all load', () async {
@@ -51,6 +58,26 @@ void main() {
     expect(c.related, isEmpty);
     expect(c.comments, isNotEmpty);
     expect(c.channel.value, isNotNull);
+  });
+
+  test('more comments come page by page, then stop', () async {
+    final c = WatchDetailsController('aaaaaaaaaaa', _Source());
+    await c.load();
+    expect(c.hasMoreComments, isTrue);
+    await c.loadMoreComments();
+    expect(c.comments.map((x) => x.text), ['Great video', 'Second page']);
+    expect(c.hasMoreComments, isFalse, reason: 'the second page had no next one');
+    await c.loadMoreComments();
+    expect(c.comments, hasLength(2));
+  });
+
+  test("a comment's replies load once, when asked", () async {
+    final c = WatchDetailsController('aaaaaaaaaaa', _Source());
+    await c.load();
+    final first = c.comments.first;
+    expect(c.replies[first], isNull);
+    await c.loadReplies(first);
+    expect(c.replies[first]!.single.text, 'Thanks!');
   });
 
   test('comments turned off are said so, not shown as an empty list', () async {
