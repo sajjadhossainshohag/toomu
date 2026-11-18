@@ -162,14 +162,11 @@ class _HomeFeed extends GetView<YoutubeController> {
                         );
                       }
                       final video = items[i];
-                      return Obx(
-                        () => VideoCard(
-                          video: video,
-                          onTap: () => controller.watchFromCard(video),
-                          onMore: () => controller.showVideoMenu(video),
-                          onPressStart: () => controller.prefetch(video),
-                          watchLoading: controller.watchingId.value == video.id.value,
-                        ),
+                      return VideoCard(
+                        video: video,
+                        onTap: () => controller.watchFromCard(video),
+                        onMore: () => controller.showVideoMenu(video),
+                        onPressStart: () => controller.prefetch(video),
                       );
                     },
                   ),
@@ -269,14 +266,11 @@ class _SearchResults extends GetView<YoutubeController> {
                     return const Center(child: CircularProgressIndicator());
                   }
                   final video = controller.results[i];
-                  return Obx(
-                    () => VideoCard(
-                      video: video,
-                      onTap: () => controller.watchFromCard(video),
-                      onMore: () => controller.showVideoMenu(video),
-                      onPressStart: () => controller.prefetch(video),
-                      watchLoading: controller.watchingId.value == video.id.value,
-                    ),
+                  return VideoCard(
+                    video: video,
+                    onTap: () => controller.watchFromCard(video),
+                    onMore: () => controller.showVideoMenu(video),
+                    onPressStart: () => controller.prefetch(video),
                   );
                 },
               ),

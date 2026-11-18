@@ -299,7 +299,6 @@ class YoutubeController extends GetxController {
   final videoFormats = <MediaFormat>[].obs;
   final audioFormats = <MediaFormat>[].obs;
   final streamingAudio = false.obs;
-  final openingVideo = false.obs;
 
   @override
   void onInit() {
@@ -906,40 +905,19 @@ class YoutubeController extends GetxController {
     final video = selectedVideo.value;
     if (video == null || video.id.isEmpty) return;
     _sheetUsed = true;
-    openingVideo.value = true;
     await _watch(
       video.id,
       video.title,
       info: _info,
       duration: video.duration,
-      beforeOpen: () {
-        openingVideo.value = false;
-        Get.back(); // the sheet
-      },
+      beforeOpen: () => Get.back(), // the sheet
     );
-    openingVideo.value = false;
   }
-
-  /// Video card: straight to the player, no sheet. The card shows
-  /// a spinner while the streams are looked up.
-  final watchingId = RxnString();
 
   void prefetch(Video video) => _yt.fastLinks(video.id.value, duration: video.duration).ignore();
 
-  Future<void> watchFromCard(Video video) async {
-    if (watchingId.value != null) return; // one at a time
-    watchingId.value = video.id.value;
-    await _watch(
-      video.id.value,
-      video.title,
-      duration: video.duration,
-      beforeOpen: () {
-        watchingId.value = null;
-        _rememberWatched(video);
-      },
-    );
-    watchingId.value = null;
-  }
+  Future<void> watchFromCard(Video video) =>
+      _watch(video.id.value, video.title, duration: video.duration, beforeOpen: () => _rememberWatched(video));
 
   Future<void> showVideoMenu(Video video) async {
     final pick = await showOptionSheet<String>(
@@ -1018,21 +996,13 @@ class YoutubeController extends GetxController {
     showSnack('Link copied', video.title, duration: const Duration(seconds: 2));
   }
 
-  Future<void> watchInPlace(Video video) async {
-    if (watchingId.value != null) return;
-    watchingId.value = video.id.value;
-    await _watch(
-      video.id.value,
-      video.title,
-      duration: video.duration,
-      replace: true,
-      beforeOpen: () {
-        watchingId.value = null;
-        _rememberWatched(video);
-      },
-    );
-    watchingId.value = null;
-  }
+  Future<void> watchInPlace(Video video) => _watch(
+    video.id.value,
+    video.title,
+    duration: video.duration,
+    replace: true,
+    beforeOpen: () => _rememberWatched(video),
+  );
 
   /// Opens the player as fast as possible: yt-dlp's links when it already
   /// has them; otherwise the fast lookup's (well under a second). Those
@@ -1047,28 +1017,36 @@ class YoutubeController extends GetxController {
     bool replace = false,
     required VoidCallback beforeOpen,
   }) async {
-    try {
-      final item = await resolveStream(id, title, info: info, duration: duration);
-      beforeOpen();
-      final args = VideoPlaylist([item], 0);
-      if (replace) {
-        // From the watch page's Up next: the next video takes this player's place instead of stacking a second one.
-        await Get.offNamed<void>(Routes.videoPlayer, arguments: args);
-      } else {
-        await Get.toNamed<void>(Routes.videoPlayer, arguments: args);
+    beforeOpen();
+    Future<VideoItem> resolve() async {
+      try {
+        return await resolveStream(id, title, info: info, duration: duration);
+      } catch (e) {
+        debugPrint('[YouTube] watch failed: $e');
+        showSnack(
+          'Can\'t play this video',
+          ErrorText.of(e),
+          mainButton: _wantsSignIn(e)
+              ? TextButton(
+                  onPressed: () => YoutubeSignInPage.open(),
+                  child: const Text('Sign in'),
+                )
+              : null,
+        );
+        rethrow;
       }
-    } catch (e) {
-      debugPrint('[YouTube] watch failed: $e');
-      showSnack(
-        'Can\'t play this video',
-        ErrorText.of(e),
-        mainButton: _wantsSignIn(e)
-            ? TextButton(
-                onPressed: () => YoutubeSignInPage.open(),
-                child: const Text('Sign in'),
-              )
-            : null,
-      );
+    }
+
+    final args = VideoPlaylist(
+      [VideoItem(uri: '', title: title, remoteKey: 'yt:$id', duration: duration)],
+      0,
+      resolve,
+    );
+    if (replace) {
+      // From the watch page's Up next: the next video takes this player's place instead of stacking a second one.
+      await Get.offNamed<void>(Routes.videoPlayer, arguments: args);
+    } else {
+      await Get.toNamed<void>(Routes.videoPlayer, arguments: args);
     }
   }
 

@@ -170,18 +170,4 @@ void main() {
     expect(find.text('Beta Channel'), findsWidgets, reason: 'not the first channel page again');
     await settle(tester);
   });
-
-  testWidgets('a video tapped in the Library shows that it is loading', (tester) async {
-    final yt = await open(tester);
-    yt.watched.assignAll([_video('ccccccccccc', 'Seen before')]);
-    Get.toNamed<void>(Routes.library);
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    yt.watchingId.value = 'ccccccccccc';
-    await tester.pump();
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    yt.watchingId.value = null;
-    await settle(tester);
-  });
 }

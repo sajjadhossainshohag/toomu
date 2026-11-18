@@ -107,14 +107,7 @@ class _LibraryViewState extends State<LibraryView> {
                         color: ColorConstants.error.withValues(alpha: 0.15),
                         child: const Icon(Icons.delete_outline_rounded, color: ColorConstants.error),
                       ),
-                      // Rows are built during layout, after the list's Obx ran: each row watches its own spinner.
-                      child: Obx(
-                        () => VideoRow(
-                          video: v,
-                          loading: yt.watchingId.value == v.id.value,
-                          onTap: () => yt.watchFromCard(v),
-                        ),
-                      ),
+                      child: VideoRow(video: v, onTap: () => yt.watchFromCard(v)),
                     );
                   },
                 );

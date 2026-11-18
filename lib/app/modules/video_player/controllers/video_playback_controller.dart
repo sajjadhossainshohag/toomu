@@ -26,10 +26,14 @@ import 'watch_details_controller.dart';
 
 /// What to play: a list (e.g. a folder) and where to start.
 class VideoPlaylist {
-  const VideoPlaylist(this.items, [this.index = 0]);
+  const VideoPlaylist(this.items, [this.index = 0, this.resolve]);
 
   final List<VideoItem> items;
   final int index;
+
+  // Set when items[index] is only a placeholder (title and YouTube id): the player opens at once and looks up
+  // the stream itself.
+  final Future<VideoItem> Function()? resolve;
 }
 
 /// Aspect modes cycled by the aspect button (MX-style).
@@ -124,6 +128,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     super.onInit();
     FrameProbe.watch('player open');
     final args = Get.arguments as VideoPlaylist;
+    _resolve = args.resolve;
     final rejoined = _session.attach(args, (call) => _onPlatformCall(call));
     WidgetsBinding.instance.addObserver(this);
 
@@ -322,9 +327,29 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
 
   // --------------------------------------------------------------- loading
 
+  Future<VideoItem> Function()? _resolve;
+
   Future<void> _open() async {
     resumedFrom.value = null;
     zoom.value = 1;
+    final resolve = _resolve;
+    if (resolve != null) {
+      _resolve = null;
+      final pending = current;
+      buffering.value = true;
+      // The shared player may still hold the video left playing in the mini bar.
+      await player.stop();
+      final VideoItem found;
+      try {
+        found = await resolve();
+      } catch (e) {
+        debugPrint('[Video] no stream to play: $e');
+        if (!isClosed) await exit();
+        return;
+      }
+      if (isClosed || !identical(current, pending)) return;
+      items[index.value] = found;
+    }
     final item = current;
     // Resume point decided up front so the player starts right there (no
     // load, then seek, then load again).

@@ -238,10 +238,7 @@ class _WatchDetailsState extends State<WatchDetails> {
             }),
             if (c.related.isNotEmpty) ...<Widget>[
               const SectionTitle('Up next'),
-              for (final r in c.related)
-                Obx(
-                  () => VideoRow(video: r, loading: yt.watchingId.value == r.id.value, onTap: () => yt.watchInPlace(r)),
-                ),
+              for (final r in c.related) VideoRow(video: r, onTap: () => yt.watchInPlace(r)),
             ],
           ],
         );

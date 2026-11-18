@@ -9,10 +9,9 @@ import '../../../../widgets/track_artwork.dart';
 
 /// A video as a row: thumbnail on the left, title and channel on the right (Up next, a channel's videos).
 class VideoRow extends StatelessWidget {
-  const VideoRow({required this.video, required this.onTap, this.loading = false, super.key});
+  const VideoRow({required this.video, required this.onTap, super.key});
 
   final Video video;
-  final bool loading;
   final VoidCallback onTap;
 
   @override
@@ -53,11 +52,6 @@ class VideoRow extends StatelessWidget {
                             style: TextStyle(fontSize: 10.5 * scale, fontWeight: FontWeight.w700, color: ColorConstants.white),
                           ),
                         ),
-                      ),
-                    if (loading)
-                      ColoredBox(
-                        color: ColorConstants.black.withValues(alpha: 0.45),
-                        child: const Center(child: CircularProgressIndicator(color: ColorConstants.white)),
                       ),
                   ],
                 ),

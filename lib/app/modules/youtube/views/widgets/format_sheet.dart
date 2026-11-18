@@ -45,13 +45,11 @@ class FormatSheet extends GetView<YoutubeController> {
                 children: <Widget>[
                   Expanded(
                     child: GradientPill(
-                      label: controller.openingVideo.value ? 'Loading…' : 'Watch',
+                      label: 'Watch',
                       icon: Icons.play_arrow_rounded,
                       height: 44,
                       gradient: ColorConstants.watchGradient,
-                      onTap: video == null || video.id.isEmpty || controller.openingVideo.value
-                          ? null
-                          : controller.watchVideo,
+                      onTap: video == null || video.id.isEmpty ? null : controller.watchVideo,
                     ),
                   ),
                   SizedBox(width: 10 * scale),

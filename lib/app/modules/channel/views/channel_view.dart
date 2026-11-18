@@ -186,14 +186,7 @@ class ChannelView extends GetView<ChannelController> {
                       itemCount: controller.videos.length,
                       itemBuilder: (_, i) {
                         final v = controller.videos[i];
-                        // Rows are built during layout, after the page's Obx ran: each row watches its own spinner.
-                        return Obx(
-                          () => VideoRow(
-                            video: v,
-                            loading: yt.watchingId.value == v.id.value,
-                            onTap: () => yt.watchFromCard(v),
-                          ),
-                        );
+                        return VideoRow(video: v, onTap: () => yt.watchFromCard(v));
                       },
                     ),
                   ),

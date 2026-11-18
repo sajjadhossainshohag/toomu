@@ -16,7 +16,6 @@ class VideoCard extends StatelessWidget {
     required this.onTap,
     this.onMore,
     this.onPressStart,
-    this.watchLoading = false,
     super.key,
   });
 
@@ -28,7 +27,6 @@ class VideoCard extends StatelessWidget {
   /// ⋮: Download, Share, Copy link.
   final VoidCallback? onMore;
   final VoidCallback? onPressStart;
-  final bool watchLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -81,11 +79,6 @@ class VideoCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
-                  if (watchLoading)
-                    ColoredBox(
-                      color: ColorConstants.black.withValues(alpha: 0.45),
-                      child: const Center(child: CircularProgressIndicator(color: ColorConstants.white)),
                     ),
                 ],
               ),
