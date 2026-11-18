@@ -196,7 +196,7 @@ jobs:
         run: |
           flutter build windows --release \
             --obfuscate --split-debug-info=build/symbols-windows \
-            --dart-define=TOOMU_BUILD="ci ${GITHUB_SHA::7} windows"
+            --dart-define=TOOMU_BUILD="ci ${GITHUB_SHA::7} windows $(date -u '+%m-%d %H:%M')"
           mkdir -p dist
           (cd build/windows/x64/runner/Release && 7z a -tzip -bso0 "$GITHUB_WORKSPACE/dist/toomu-windows-x64.zip" .)
           (cd build && 7z a -tzip -bso0 "$GITHUB_WORKSPACE/dist/debug-symbols-windows.zip" symbols-windows)
@@ -266,4 +266,4 @@ jobs:
           notes+=$'\n- debug-symbols-*.zip — to read crash stack traces'
           # A tag created with the workflow's token doesn't start another run.
           gh release create "$tag" dist/* --target "${GITHUB_SHA}" \
-            --repo "${GITHUB_REPOSITORY}" --title "Toomu $tag" --notes "$notes"
+            --repo "${GITHUB_REPOSITORY}" --title "Toomu $tag" --notes "$notes" --generate-notes
