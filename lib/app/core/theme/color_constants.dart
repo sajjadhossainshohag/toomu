@@ -80,6 +80,7 @@ class ColorConstants {
   static const Color siteYoutube      = Color(0xFFFF0033);
   static const Color siteYoutubeMusic = Color(0xFFE5484D);
   static const Color siteGoogle       = Color(0xFF3D63DD);
+  static const Color siteFacebook     = Color(0xFF0866FF);
 
   // ─── Gradients ──────────────────────────────────────────────────────────
 

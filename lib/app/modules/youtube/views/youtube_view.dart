@@ -14,6 +14,7 @@ import '../../../widgets/app_search_field.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/round_icon_button.dart';
 import '../../../widgets/top_fade.dart';
+import '../../browser/address.dart';
 import '../controllers/youtube_controller.dart';
 import 'widgets/home_sections.dart';
 import 'widgets/video_card.dart';
@@ -31,7 +32,7 @@ class YoutubeView extends GetView<YoutubeController> {
           title: 'Toomu',
           actions: <Widget>[
             HeaderAction(icon: Icons.video_library_outlined, tooltip: 'Library', onTap: () => Get.toNamed(Routes.library)),
-            HeaderAction(icon: Iconsax.global_copy, tooltip: 'Browser', onTap: () => Get.toNamed(Routes.browser)),
+            HeaderAction(icon: Iconsax.global_copy, tooltip: 'Browser', onTap: () => Get.toNamed(Routes.browser, arguments: newTabUrl)),
           ],
           bottom: AppSearchField(
             hint: 'Search or paste a YouTube link',

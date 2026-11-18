@@ -54,6 +54,8 @@ class BrowserSession extends GetxController {
     final arg = Get.arguments;
     if (arg is DownloadTask) {
       _openedFor = newTab(refreshFor: arg);
+    } else if (arg == newTabUrl && restored.any((c) => c.tabUrl == newTabUrl)) {
+      activate(restored.lastWhere((c) => c.tabUrl == newTabUrl));
     } else if (arg is String && arg.isNotEmpty) {
       newTab(url: arg);
     } else if (restored.isNotEmpty) {

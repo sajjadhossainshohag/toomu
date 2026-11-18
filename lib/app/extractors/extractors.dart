@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 import '../core/theme/color_constants.dart';
@@ -34,6 +35,12 @@ abstract class Extractors {
       url: 'https://music.youtube.com/',
       icon: Iconsax.music_copy,
       color: ColorConstants.siteYoutubeMusic,
+    ),
+    SiteShortcut(
+      name: 'Facebook',
+      url: 'https://m.facebook.com/',
+      icon: Icons.facebook,
+      color: ColorConstants.siteFacebook,
     ),
     SiteShortcut(
       name: 'Google',

@@ -47,5 +47,6 @@ class SiteShortcut {
     'music': Iconsax.music_copy,
     'search': Iconsax.global_search_copy,
     'globe': Iconsax.global_copy,
+    'facebook': Icons.facebook,
   };
 }

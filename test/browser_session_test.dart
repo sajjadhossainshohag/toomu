@@ -94,6 +94,27 @@ void main() {
     await Future<void>.delayed(Duration.zero);
   });
 
+  test('the Home corner button opens a new tab, not the last page; an empty tab already open is reused', () async {
+    final first = open();
+    first.newTab(url: 'https://m.youtube.com/');
+    Get.delete<BrowserSession>(force: true); // saved: a new tab and YouTube, YouTube shown
+
+    Get.routing.args = newTabUrl;
+    addTearDown(() => Get.routing.args = null);
+    final s = open();
+    expect(s.tab.tabUrl, newTabUrl);
+    expect(s.tabs, hasLength(2), reason: 'the saved empty tab is shown, no second one is added');
+    Get.delete<BrowserSession>(force: true);
+
+    final again = open();
+    again.close(again.tabs.firstWhere((t) => t.tabUrl == newTabUrl));
+    Get.delete<BrowserSession>(force: true); // saved: YouTube only
+    final third = open();
+    expect(third.tab.tabUrl, newTabUrl);
+    expect(third.tabs.map((t) => t.tabUrl), contains('https://m.youtube.com/'), reason: 'the other tabs stay');
+    await Future<void>.delayed(Duration.zero);
+  });
+
   test('closing from the page itself does not open the switcher', () async {
     final s = open();
     final b = s.newTab(url: 'https://b.com/');
