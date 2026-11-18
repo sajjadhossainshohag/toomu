@@ -77,7 +77,7 @@ class VideosView extends GetView<VideosController> {
               child: SwipeTabView(
                 index: controller.tab,
                 count: VideosController.tabs.length,
-                itemBuilder: (_, i) => i == 0 ? _Folders() : _AllVideos(),
+                itemBuilder: (_, i) => i == 0 ? _AllVideos() : _Folders(),
               ),
             );
           }),
