@@ -159,8 +159,10 @@ void main() {
     });
 
     test('FFmpeg and Deno follow in the background, unpacked from their zips', () async {
-      await bridge().init();
-      await extrasInstalled();
+      final y = bridge();
+      await y.init();
+      // Not just until the files appear: the unpack folder is deleted after they are moved in.
+      await y.backgroundWork;
       expect(File('$tools/ffmpeg/ffmpeg.exe').readAsStringSync(), 'ffmpeg');
       expect(File('$tools/ffmpeg/ffprobe.exe').readAsStringSync(), 'ffprobe');
       expect(File('$tools/deno.exe').readAsStringSync(), 'deno');

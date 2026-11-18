@@ -176,8 +176,12 @@ void main() {
       }
       token.cancel('pause');
       await expectLater(run, throwsA(anything));
+      // The client lets a cancelled connection linger unread; on Linux the server's socket buffers are already
+      // full by now, so its sends would wait for that until the test times out. It hangs up instead.
+      await origin.server.close(force: true);
       origin.release();
       await origin.idle();
+      await origin.start();
     }
 
     void expectWholeFile() {
