@@ -10,7 +10,6 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../core/utils/device_profile.dart';
-import '../core/utils/host_os.dart';
 import '../core/utils/subtitles.dart';
 import '../data/models/video_item.dart';
 import '../data/models/youtube_stream.dart';
@@ -133,9 +132,9 @@ class VideoSessionService extends GetxService {
     _player = Player(
       configuration: PlayerConfiguration(
         title: 'Toomu',
-        // Windows' libmpv is built without mpv's on-screen controller: media_kit's osc=no there only logs
-        // "property not found". osd-level is then set in _configure instead.
-        osc: HostOs.isWindows,
+        // media_kit's libmpv (Android and Windows) is built without mpv's on-screen controller: its osc=no only
+        // logs "property not found" on every video. osd-level is set in _configure instead.
+        osc: true,
         logLevel: MPVLogLevel.warn,
         // Used for read-ahead and again for the seek-back cache.
         bufferSize: DeviceProfile.lowEnd ? 16 << 20 : 32 << 20,

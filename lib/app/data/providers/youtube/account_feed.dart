@@ -50,8 +50,8 @@ class AccountFeed {
   final HttpClient _client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
 
   static const _origin = 'https://www.youtube.com';
-  static const _clientVersion = '2.20260708.00.00';
-  static const _agent =
+  static const webClientVersion = '2.20260708.00.00';
+  static const webAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
 
   /// Home: recommendations plus the account's categories. Null when YouTube
@@ -74,7 +74,7 @@ class AccountFeed {
     headersFor(cookies).forEach(req.headers.set);
     req.add(utf8.encode(jsonEncode({
       'context': {
-        'client': {'clientName': 'WEB', 'clientVersion': _clientVersion, 'hl': 'en'},
+        'client': {'clientName': 'WEB', 'clientVersion': webClientVersion, 'hl': 'en'},
       },
       ...body,
     })));
@@ -109,14 +109,14 @@ class AccountFeed {
     ].join(' ');
     return {
       'Content-Type': 'application/json',
-      'User-Agent': _agent,
+      'User-Agent': webAgent,
       'Origin': _origin,
       'X-Origin': _origin,
       'Cookie': cookies.entries.map((e) => '${e.key}=${e.value}').join('; '),
       if (auth.isNotEmpty) 'Authorization': auth,
       'X-Goog-AuthUser': '0',
       'X-Youtube-Client-Name': '1',
-      'X-Youtube-Client-Version': _clientVersion,
+      'X-Youtube-Client-Version': webClientVersion,
       'X-Youtube-Bootstrap-Logged-In': 'true',
     };
   }
@@ -185,6 +185,14 @@ class AccountFeed {
     }
     return null;
   }
+
+  static Video? videoOf(Map item) => item['videoRenderer'] is Map
+      ? _fromVideoRenderer(item['videoRenderer'] as Map)
+      : item['lockupViewModel'] is Map
+          ? _fromLockup(item['lockupViewModel'] as Map)
+          : null;
+
+  static String? text(Object? t) => _text(t);
 
   static String? _text(Object? t) {
     if (t is! Map) return null;
@@ -321,7 +329,6 @@ class AccountFeed {
   }
 
   /// "1.2M views", "2.5B", "12,345 views", "No views" → count.
-  @visibleForTesting
   static int parseViews(String? text) {
     final m = RegExp(r'([\d.,]+)\s*([KMB])?', caseSensitive: false).firstMatch(text ?? '');
     if (m == null) return 0;

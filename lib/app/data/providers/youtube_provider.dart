@@ -8,6 +8,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../../core/utils/subtitles.dart';
 import '../models/youtube_stream.dart';
 import '../models/yt_info.dart';
+import 'youtube/watch_next.dart';
 
 /// A page of videos in the home feed: search results, or the signed-in
 /// account's feed.
@@ -134,27 +135,45 @@ class YoutubeProvider implements WatchSource, ChannelSource {
     return more == null ? null : _videosPage(more);
   });
 
+  final _watchNext = WatchNext();
+
+  // Up next and the comments come in one answer, asked for together by the watch page: fetched once.
+  final _nextPages = <String, Future<WatchNextPage>>{};
+  final _repliesTokens = Expando<String>();
+
+  Future<WatchNextPage> _next(String videoId) {
+    if (_nextPages.length >= 10 && !_nextPages.containsKey(videoId)) _nextPages.remove(_nextPages.keys.first);
+    final page = _nextPages.putIfAbsent(videoId, () => _watchNext.next(videoId));
+    page.then((_) {}, onError: (Object _) => _nextPages.remove(videoId)); // a failure is retried next time
+    return page;
+  }
+
   @override
-  Future<List<Video>> related(Video video) async => (await _yt.videos.getRelatedVideos(video))?.toList() ?? const [];
+  Future<List<Video>> related(Video video) async => (await _next(video.id.value)).related;
 
   @override
   Future<CommentsPage?> comments(Video video) async {
-    // shortcut: youtube_explode deprecated its comments API with no replacement; the watch page hides comments
-    // when this fails. Upgrade to our own InnerTube "next" call (like account_feed) when it stops working.
-    // ignore: deprecated_member_use
-    final list = await _yt.videos.commentsClient.getComments(video);
-    return list == null ? null : _commentsPage(list);
+    final token = (await _next(video.id.value)).commentsToken;
+    return token == null ? null : _commentsPage(await _watchNext.comments(token));
   }
 
-  CommentsPage _commentsPage(CommentsList list) => CommentsPage(list.toList(), list.totalLength, () async {
-    final more = await list.nextPage();
-    return more == null ? null : _commentsPage(more);
-  });
+  CommentsPage _commentsPage(WatchNextComments page) {
+    for (final c in page.comments) {
+      _repliesTokens[c] = page.repliesToken(c);
+    }
+    final next = page.nextToken;
+    return CommentsPage(
+      page.comments,
+      page.total,
+      next == null ? null : () async => _commentsPage(await _watchNext.comments(next)),
+    );
+  }
 
   @override
-  Future<List<Comment>> replies(Comment comment) async =>
-      // ignore: deprecated_member_use
-      (await _yt.videos.commentsClient.getReplies(comment))?.toList() ?? const [];
+  Future<List<Comment>> replies(Comment comment) async {
+    final token = _repliesTokens[comment];
+    return token == null ? const [] : (await _watchNext.comments(token)).comments;
+  }
 
   // Up next back and forth, or reopening from History, finds the list here instead of asking YouTube again.
   static final _captionLists = <String, ({DateTime at, Future<List<ClosedCaptionTrackInfo>> tracks})>{};
