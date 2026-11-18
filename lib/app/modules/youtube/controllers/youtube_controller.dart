@@ -981,7 +981,13 @@ class YoutubeController extends GetxController {
 
   static bool _subtitlesDirCleared = false;
 
-  Future<List<({String path, String lang, String title})>> youtubeSubtitles(String videoId) async {
+  Future<List<ClosedCaptionTrackInfo>> captionTracks(String videoId) =>
+      _yt.captionTracks(videoId, Subtitles.wanted(PlatformDispatcher.instance.locale));
+
+  Future<String?> captionFile(String videoId, ClosedCaptionTrackInfo track) async =>
+      _yt.captionFile(videoId, track, (await _subtitlesDir()).path);
+
+  Future<Directory> _subtitlesDir() async {
     final dir = Directory('${(await getTemporaryDirectory()).path}/yt-subs');
     // Once per app run, before anything in it can be playing: one file per watched video and language otherwise
     // piles up forever (Windows never clears its temp folder).
@@ -994,7 +1000,7 @@ class YoutubeController extends GetxController {
       }
     }
     await dir.create(recursive: true);
-    return _yt.watchSubtitles(videoId, dir.path, Subtitles.wanted(PlatformDispatcher.instance.locale));
+    return dir;
   }
 
   Future<void> openShorts(List<Video> videos, int index) async {

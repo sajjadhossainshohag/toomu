@@ -3,7 +3,6 @@ import 'dart:ui' show Locale;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:toomu/app/core/utils/subtitles.dart';
-import 'package:toomu/app/modules/video_player/controllers/video_playback_controller.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 ClosedCaptionTrackInfo track(String code, {bool auto = false, ClosedCaptionFormat format = ClosedCaptionFormat.srv3}) =>
@@ -66,21 +65,16 @@ void main() {
   });
 
   group('YouTube subtitles in the player', () {
-    const subs = [
-      (path: '/t/a.en.srt', lang: 'en', title: 'English'),
-      (path: '/t/a.bn.srt', lang: 'bn', title: 'Bengali (auto-generated)'),
-    ];
-
-    test('added but off until picked, like YouTube', () {
-      expect(VideoPlaybackController.subAddCommands(subs), [
-        ['sub-add', '/t/a.en.srt', 'auto', 'English', 'en'],
-        ['sub-add', '/t/a.bn.srt', 'auto', 'Bengali (auto-generated)', 'bn'],
-      ]);
+    test('titles say which ones YouTube made automatically', () {
+      expect(Subtitles.titleOf(track('en')), 'en');
+      expect(Subtitles.titleOf(track('bn', auto: true)), 'bn (auto-generated)');
     });
 
-    test('subtitles that were on stay on after a quality switch', () {
-      final commands = VideoPlaybackController.subAddCommands(subs, keep: 'Bengali (auto-generated)');
-      expect(commands.map((c) => c[2]), ['auto', 'select']);
+    test('subtitles that were on are found again after a quality switch, automatic ones too', () {
+      final tracks = [track('en'), track('bn', auto: true)];
+      expect(Subtitles.keptTrack(tracks, 'bn (auto-generated)'), same(tracks[1]));
+      expect(Subtitles.keptTrack(tracks, 'en'), same(tracks[0]));
+      expect(Subtitles.keptTrack(tracks, 'Something else'), isNull, reason: 'a track from a local file: none to restore');
     });
   });
 

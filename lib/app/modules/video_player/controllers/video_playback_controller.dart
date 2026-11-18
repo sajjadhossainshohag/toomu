@@ -20,6 +20,8 @@ import '../../../services/video_session_service.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/app_snackbar.dart';
 import '../../youtube/controllers/youtube_controller.dart';
+import '../../../core/utils/subtitles.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' show ClosedCaptionTrackInfo;
 import 'watch_details_controller.dart';
 
 /// What to play: a list (e.g. a folder) and where to start.
@@ -156,9 +158,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
         // A stream that "ends" well before its length was cut off by the
         // server: reconnect at that point instead of moving on.
         final total = current.duration ?? duration.value;
-        if (current.isStream &&
-            total > Duration.zero &&
-            player.state.position < total - const Duration(seconds: 10)) {
+        if (current.isStream && total > Duration.zero && player.state.position < total - const Duration(seconds: 10)) {
           _streamFailed(force: true);
           return;
         }
@@ -267,8 +267,10 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   void toggleBackgroundPlay() {
     final on = !backgroundPlay.value;
     _settings.setVideoBackgroundPlay(on);
-    _flash(on ? Icons.headphones_rounded : Icons.headset_off_rounded,
-        on ? 'Background play on' : 'Background play off');
+    _flash(
+      on ? Icons.headphones_rounded : Icons.headset_off_rounded,
+      on ? 'Background play on' : 'Background play off',
+    );
     _syncPlatform();
     showControls();
   }
@@ -356,10 +358,15 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     _lastError = null;
     Timer(const Duration(seconds: 6), () {
       if (isClosed || !identical(current, item) || player.state.duration > Duration.zero) return;
-      debugPrint('[Video] file not loaded after 6 s: ${item.path ?? item.uri} '
-          '(playing=${player.state.playing}, buffering=${player.state.buffering}, error=$_lastError)');
-      showSnack("Can't play this video", _lastError ?? 'The player could not open this file.',
-          duration: const Duration(seconds: 6));
+      debugPrint(
+        '[Video] file not loaded after 6 s: ${item.path ?? item.uri} '
+        '(playing=${player.state.playing}, buffering=${player.state.buffering}, error=$_lastError)',
+      );
+      showSnack(
+        "Can't play this video",
+        _lastError ?? 'The player could not open this file.',
+        duration: const Duration(seconds: 6),
+      );
     });
   }
 
@@ -369,8 +376,12 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     player.stream.position
         .firstWhere((p) => p > from)
         .timeout(const Duration(seconds: 30))
-        .then((_) => debugPrint('[Video] stream playing after ${sw.elapsedMilliseconds} ms'
-            '${current.provisional ? ' (fast links)' : ''}'))
+        .then(
+          (_) => debugPrint(
+            '[Video] stream playing after ${sw.elapsedMilliseconds} ms'
+            '${current.provisional ? ' (fast links)' : ''}',
+          ),
+        )
         .catchError((Object _) => debugPrint('[Video] stream not playing after 30 s'));
   }
 
@@ -400,15 +411,15 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       }
       final next = await _session.replacementFor(failed);
       if (isClosed || next == null || !identical(current, failed)) return;
-      debugPrint('[Video] stream failed; switching to '
-          '${failed.provisional ? 'yt-dlp links' : (next.quality ?? 'the combined stream')}');
+      debugPrint(
+        '[Video] stream failed; switching to '
+        '${failed.provisional ? 'yt-dlp links' : (next.quality ?? 'the combined stream')}',
+      );
       await _switchStream(next, play: true);
     } finally {
       _switching = false;
     }
   }
-
-
 
   void startOver() {
     resumedFrom.value = null;
@@ -511,8 +522,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
 
   void toggleLock() {
     locked.value = !locked.value;
-    _flash(locked.value ? Icons.lock_rounded : Icons.lock_open_rounded,
-        locked.value ? 'Locked' : 'Unlocked');
+    _flash(locked.value ? Icons.lock_rounded : Icons.lock_open_rounded, locked.value ? 'Locked' : 'Unlocked');
     showControls();
   }
 
@@ -532,9 +542,11 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   bool get _viewIsLandscape => screenSize.width > screenSize.height;
 
   void rotate() {
-    SystemChrome.setPreferredOrientations(_viewIsLandscape
-        ? [DeviceOrientation.portraitUp]
-        : [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    SystemChrome.setPreferredOrientations(
+      _viewIsLandscape
+          ? [DeviceOrientation.portraitUp]
+          : [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
+    );
     showControls();
   }
 
@@ -632,87 +644,121 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     _scheduleHide();
   }
 
-  final _youtubeSubtitles = <String, Future<List<({String path, String lang, String title})>>>{};
+  // YouTube captions for the Subtitles menu: the list when the video opens, a track only when it is picked.
+  final _captions = <String, List<ClosedCaptionTrackInfo>>{};
+  final _captionsPending = <String, Future<void>>{};
 
   Future<void> _openWithSubtitles(VideoItem item, Future<void> Function() open) async {
     final id = item.youtubeId;
     if (id == null || player.platform is! NativePlayer || !Get.isRegistered<YoutubeController>()) return open();
+    if (!_captions.containsKey(id) && !_captionsPending.containsKey(id)) {
+      _captionsPending[id] = Get.find<YoutubeController>()
+          .captionTracks(id)
+          .then((list) {
+            if (!isClosed) _captions[id] = list;
+          }, onError: (Object e) => debugPrint('[Video] YouTube subtitles for $id: $e'))
+          .whenComplete(() => _captionsPending.remove(id));
+    }
     // The track shown now comes back on in the new stream (a quality switch or a replaced stream).
     final keep = player.state.track.subtitle.title;
     final opening = ++_subtitlesOpen;
     // mpv attaches subtitles to a loaded file only, and says nothing when there is none yet: so the wait for this
     // file's duration starts before it is opened (a new file, even the same video in another quality, goes from no
     // duration to its length).
-    final loaded = player.stream.duration.firstWhere((d) => d > Duration.zero).timeout(const Duration(minutes: 5));
+    final loaded = keep == null
+        ? null
+        : player.stream.duration.firstWhere((d) => d > Duration.zero).timeout(const Duration(minutes: 5));
     try {
       await open();
     } catch (_) {
-      loaded.ignore();
+      loaded?.ignore();
       rethrow;
     }
-    unawaited(_addYoutubeSubtitles(id, loaded, opening, keep));
+    if (loaded != null) unawaited(_restoreCaption(id, keep!, loaded, opening));
   }
 
-  // Only the newest open adds tracks: an older one finishing late would add them a second time.
+  // Only the newest open adds the track back: an older one finishing late would add it a second time.
   int _subtitlesOpen = 0;
-  final _subtitlesLoading = <String>{};
 
-  Future<void> _addYoutubeSubtitles(String id, Future<Duration> loaded, int opening, String? keep) async {
-    final mpv = player.platform as NativePlayer;
-    _subtitlesLoading.add(id);
+  Future<void> _restoreCaption(String id, String keep, Future<Duration> loaded, int opening) async {
     try {
-      final List<({String path, String lang, String title})> subs;
-      try {
-        subs = await _youtubeSubtitles.putIfAbsent(id, () => Get.find<YoutubeController>().youtubeSubtitles(id));
-      } catch (e) {
-        _youtubeSubtitles.remove(id);
-        loaded.ignore();
-        debugPrint('[Video] YouTube subtitles for $id: $e');
-        return;
-      }
-      try {
-        await loaded;
-      } on TimeoutException {
-        debugPrint('[Video] YouTube subtitles for $id: the video never started');
-        return;
-      }
-      if (isClosed || opening != _subtitlesOpen || current.youtubeId != id) return;
-      for (final command in subAddCommands(subs, keep: keep)) {
-        await mpv.command(command);
-      }
+      final track = Subtitles.keptTrack(await _captionsOf(id), keep);
+      if (track == null) return;
+      final path = await Get.find<YoutubeController>().captionFile(id, track);
+      await loaded;
+      if (path == null || isClosed || opening != _subtitlesOpen || current.youtubeId != id) return;
+      await (player.platform as NativePlayer).command(['sub-add', path, 'select', keep, track.language.code]);
+    } on TimeoutException {
+      debugPrint('[Video] YouTube subtitles for $id: the video never started');
+    } catch (e) {
+      debugPrint('[Video] YouTube subtitles for $id: $e');
     } finally {
-      _subtitlesLoading.remove(id);
+      loaded.ignore();
     }
   }
 
-  @visibleForTesting
-  static List<List<String>> subAddCommands(List<({String path, String lang, String title})> subs, {String? keep}) => [
-        // "auto": listed under Subtitles but off until picked, like YouTube's own player; "select": the one that was
-        // on before the stream changed.
-        for (final s in subs) ['sub-add', s.path, keep != null && s.title == keep ? 'select' : 'auto', s.title, s.lang],
-      ];
+  Future<List<ClosedCaptionTrackInfo>> _captionsOf(String id) async {
+    await _captionsPending[id];
+    return _captions[id] ?? const [];
+  }
 
   Future<void> pickSubtitle() async {
     _hideTimer?.cancel();
     final tracks = player.state.tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
-    final picked = await showOptionSheet<SubtitleTrack>(
+    final id = current.youtubeId;
+    final shown = {for (final t in tracks) t.title};
+    final captions = [
+      for (final c in _captions[id] ?? const <ClosedCaptionTrackInfo>[])
+        if (!shown.contains(Subtitles.titleOf(c))) c,
+    ];
+    final picked = await showOptionSheet<Object>(
       title: 'Subtitles',
       selected: player.state.track.subtitle,
       options: [
         SheetOption(value: SubtitleTrack.no(), label: 'Off'),
         for (final t in tracks) SheetOption(value: t, label: _trackLabel(t.title, t.language, t.id)),
+        for (final c in captions) SheetOption(value: c, label: Subtitles.titleOf(c)),
       ],
     );
-    if (picked != null) await player.setSubtitleTrack(picked);
-    if (tracks.isEmpty && picked == null) {
-      final loading = _subtitlesLoading.contains(current.youtubeId);
+    if (picked is SubtitleTrack) {
+      await player.setSubtitleTrack(picked);
+    } else if (picked is ClosedCaptionTrackInfo && id != null) {
+      await _addCaption(id, picked);
+    } else if (picked == null && tracks.isEmpty && captions.isEmpty) {
       showSnack(
         'Subtitles',
-        loading ? 'Still loading this video\'s subtitles. Try again in a moment.' : 'This video has no subtitles.',
+        _captionsPending.containsKey(id)
+            ? 'Still loading this video\'s subtitles. Try again in a moment.'
+            : 'This video has no subtitles.',
         duration: const Duration(seconds: 2),
       );
     }
     _scheduleHide();
+  }
+
+  Future<void> _addCaption(String id, ClosedCaptionTrackInfo track) async {
+    String? path;
+    try {
+      path = await Get.find<YoutubeController>().captionFile(id, track);
+    } catch (e) {
+      debugPrint('[Video] YouTube subtitles for $id: $e');
+    }
+    if (isClosed || current.youtubeId != id) return;
+    if (path == null) {
+      showSnack(
+        'Subtitles',
+        'These subtitles could not be loaded. Try again in a moment.',
+        duration: const Duration(seconds: 2),
+      );
+      return;
+    }
+    await (player.platform as NativePlayer).command([
+      'sub-add',
+      path,
+      'select',
+      Subtitles.titleOf(track),
+      track.language.code,
+    ]);
   }
 
   static String _trackLabel(String? title, String? language, String id) =>
@@ -756,9 +802,11 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
         previewSeek(target);
         final diff = target - _startPosition;
         final sign = diff.isNegative ? '−' : '+';
-        _show(diff.isNegative ? Icons.fast_rewind_rounded : Icons.fast_forward_rounded,
-            '$sign${Formatters.duration(diff.abs())}\n'
-            '${Formatters.duration(target)} / ${Formatters.duration(duration.value)}');
+        _show(
+          diff.isNegative ? Icons.fast_rewind_rounded : Icons.fast_forward_rounded,
+          '$sign${Formatters.duration(diff.abs())}\n'
+          '${Formatters.duration(target)} / ${Formatters.duration(duration.value)}',
+        );
       case _Drag.brightness:
         final v = (_startBrightness - delta.dy / (viewSize.height * 0.8)).clamp(0.0, 1.0);
         ScreenBrightness.instance.setApplicationScreenBrightness(v);
