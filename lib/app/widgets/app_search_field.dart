@@ -16,6 +16,7 @@ class AppSearchField extends StatefulWidget {
     this.onSubmitted,
     this.trailing,
     this.autofocus = false,
+    this.onFocusChange,
     super.key,
   });
 
@@ -30,6 +31,7 @@ class AppSearchField extends StatefulWidget {
   /// Extra action shown when the field is empty (e.g. "paste").
   final Widget? trailing;
   final bool autofocus;
+  final ValueChanged<bool>? onFocusChange;
 
   @override
   State<AppSearchField> createState() => _AppSearchFieldState();
@@ -45,6 +47,7 @@ class _AppSearchFieldState extends State<AppSearchField> {
     super.initState();
     _text.addListener(_refresh);
     _focus.addListener(_refresh);
+    _focus.addListener(() => widget.onFocusChange?.call(_focus.hasFocus));
   }
 
   @override

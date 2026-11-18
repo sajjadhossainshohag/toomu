@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:get/get.dart';
@@ -6,361 +5,55 @@ import 'package:get/get.dart';
 import '../../../../core/theme/brand_colors.dart';
 import '../../../../core/theme/color_constants.dart';
 import '../../../../core/theme/design_metrics.dart';
-import '../../../../data/models/download_task.dart';
 import '../../../../routes/app_pages.dart';
 import '../../../../services/download_service.dart';
 import '../../../../services/remote_config_service.dart';
-import '../../../../widgets/app_group.dart';
 import '../../../../widgets/segmented_tabs.dart';
-import '../../../../widgets/track_artwork.dart';
 import '../../../downloads/controllers/downloads_controller.dart';
 import '../../../home/controllers/home_controller.dart';
 import '../../../home/home_tabs.dart';
 import '../../controllers/youtube_controller.dart';
 
-/// Three shortcut tiles: Downloads, Music, Paste link.
-class QuickAccessRow extends StatelessWidget {
-  const QuickAccessRow({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final double scale = context.scale;
-    final home = Get.find<HomeController>();
-    final yt = Get.find<YoutubeController>();
-    final service = DownloadService.to;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16 * scale, 16 * scale, 16 * scale, 0),
-      child: Obx(() {
-        final active = service.tasks.where((t) => t.isActive).length;
-        final saved = service.completed.length;
-        return Row(
-          children: <Widget>[
-            Expanded(
-              child: _QuickTile(
-                icon: Iconsax.document_download_copy,
-                tint: ColorConstants.tileDownloads,
-                label: 'Downloads',
-                subtitle: active > 0 ? '$active in progress' : '$saved saved',
-                badge: active > 0 ? '$active' : null,
-                onTap: () => home.openTab(HomeTabs.downloads),
-              ),
-            ),
-            SizedBox(width: 10 * scale),
-            Expanded(
-              child: _QuickTile(
-                icon: Iconsax.music_copy,
-                tint: ColorConstants.tileAudio,
-                label: 'Music',
-                subtitle: 'Play offline',
-                onTap: () => home.openTab(HomeTabs.music),
-              ),
-            ),
-            SizedBox(width: 10 * scale),
-            Expanded(
-              child: _QuickTile(
-                icon: Iconsax.clipboard_import_copy,
-                tint: ColorConstants.tileShare,
-                label: 'Paste link',
-                subtitle: 'From clipboard',
-                onTap: yt.pasteFromClipboard,
-              ),
-            ),
-          ],
-        );
-      }),
-    );
-  }
-}
-
-class _QuickTile extends StatelessWidget {
-  const _QuickTile({
-    required this.icon,
-    required this.tint,
-    required this.label,
-    required this.subtitle,
-    required this.onTap,
-    this.badge,
-  });
-
-  final IconData icon;
-  final Color tint;
-  final String label;
-  final String subtitle;
-  final VoidCallback onTap;
-  final String? badge;
-
-  @override
-  Widget build(BuildContext context) {
-    final double scale = context.scale;
-    final bool dark = context.isDark;
-    final Color ink = ColorConstants.textOn(dark);
-    return Material(
-      color: ColorConstants.groupOn(dark),
-      borderRadius: BorderRadius.circular(16 * scale),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16 * scale),
-        child: Padding(
-          padding: EdgeInsets.all(12 * scale),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Stack(
-                clipBehavior: Clip.none,
-                children: <Widget>[
-                  GlyphTile(icon: icon, tint: tint),
-                  if (badge != null)
-                    Positioned(
-                      right: -5 * scale,
-                      top: -5 * scale,
-                      child: Container(
-                        constraints: BoxConstraints(minWidth: 18 * scale),
-                        padding: EdgeInsets.symmetric(horizontal: 4 * scale, vertical: 1 * scale),
-                        decoration: BoxDecoration(
-                          color: ColorConstants.error,
-                          borderRadius: BorderRadius.circular(9 * scale),
-                          border: Border.all(color: ColorConstants.groupOn(dark).withValues(alpha: 1), width: 1.5 * scale),
-                        ),
-                        child: Text(
-                          badge!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 10 * scale,
-                            fontWeight: FontWeight.w800,
-                            color: ColorConstants.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              SizedBox(height: 10 * scale),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13 * scale, fontWeight: FontWeight.w700, color: ink),
-              ),
-              SizedBox(height: 1 * scale),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11.5 * scale,
-                  fontWeight: FontWeight.w500,
-                  color: ink.withValues(alpha: 0.55),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Snaptube-style site grid: opens each site in the in-app browser, where
-/// supported pages get a Download button.
-class SitesRow extends StatelessWidget {
-  const SitesRow({super.key});
+/// Round site shortcuts; each opens in the in-app browser.
+class SiteIconsRow extends StatelessWidget {
+  const SiteIconsRow({super.key});
 
   @override
   Widget build(BuildContext context) {
     final double scale = context.scale;
     final Color ink = ColorConstants.textOn(context.isDark);
-    final sites = RemoteConfigService.to.sites;
-
-    Widget tile({required IconData icon, required Color color, required String label, required VoidCallback onTap}) =>
-        GestureDetector(
-          onTap: onTap,
-          child: SizedBox(
-            width: 68 * scale,
-            child: Column(
-              children: <Widget>[
-                Container(
-                  width: 52 * scale,
-                  height: 52 * scale,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(18 * scale),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.35),
-                        blurRadius: 12 * scale,
-                        offset: Offset(0, 4 * scale),
+    return Obx(
+      () => SizedBox(
+        height: 84 * scale,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(8 * scale, 14 * scale, 8 * scale, 0),
+          scrollDirection: Axis.horizontal,
+          children: <Widget>[
+            for (final s in RemoteConfigService.to.sites)
+              InkResponse(
+                onTap: () => Get.toNamed(Routes.browser, arguments: s.url),
+                radius: 34 * scale,
+                child: SizedBox(
+                  width: 72 * scale,
+                  child: Column(
+                    children: <Widget>[
+                      Container(
+                        width: 46 * scale,
+                        height: 46 * scale,
+                        decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
+                        child: Icon(s.icon, size: 22 * scale, color: ColorConstants.white),
+                      ),
+                      SizedBox(height: 5 * scale),
+                      Text(
+                        s.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.5 * scale, fontWeight: FontWeight.w600, color: ink.withValues(alpha: 0.8)),
                       ),
                     ],
                   ),
-                  child: Icon(icon, size: 26 * scale, color: ColorConstants.white),
-                ),
-                SizedBox(height: 6 * scale),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5 * scale, fontWeight: FontWeight.w600, color: ink.withValues(alpha: 0.8)),
-                ),
-              ],
-            ),
-          ),
-        );
-
-    return Obx(() => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            const SectionTitle('Sites'),
-            SizedBox(
-              height: 80 * scale,
-              child: ListView(
-                padding: EdgeInsets.symmetric(horizontal: 12 * scale),
-                scrollDirection: Axis.horizontal,
-                children: <Widget>[
-                  for (final s in sites)
-                    tile(
-                      icon: s.icon,
-                      color: s.color,
-                      label: s.name,
-                      onTap: () => Get.toNamed(Routes.browser, arguments: s.url),
-                    ),
-                  tile(
-                    icon: Iconsax.global_copy,
-                    color: ColorConstants.tileFolder,
-                    label: 'Browser',
-                    // Your tabs from last time, or a new-tab page (Chrome).
-                    onTap: () => Get.toNamed(Routes.browser),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ));
-  }
-}
-
-/// Horizontal strip of the latest finished downloads.
-class RecentDownloadsStrip extends StatelessWidget {
-  const RecentDownloadsStrip({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final double scale = context.scale;
-    final service = DownloadService.to;
-
-    return Obx(() {
-      final items = service.completed.take(10).toList();
-      if (items.isEmpty) return const SizedBox.shrink();
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          SectionTitle(
-            'Recent downloads',
-            trailing: _TextAction(
-              label: 'See all',
-              onTap: () {
-                Get.find<DownloadsController>().tab.value = 1;
-                Get.find<HomeController>().openTab(HomeTabs.downloads);
-              },
-            ),
-          ),
-          SizedBox(
-            height: 132 * scale,
-            child: ListView.separated(
-              padding: EdgeInsets.symmetric(horizontal: 16 * scale),
-              scrollDirection: Axis.horizontal,
-              itemCount: items.length,
-              separatorBuilder: (_, _) => SizedBox(width: 12 * scale),
-              itemBuilder: (_, i) => _RecentCard(task: items[i]),
-            ),
-          ),
-        ],
-      );
-    });
-  }
-}
-
-class _RecentCard extends StatelessWidget {
-  const _RecentCard({required this.task});
-
-  final DownloadTask task;
-
-  @override
-  Widget build(BuildContext context) {
-    final double scale = context.scale;
-    final Color ink = ColorConstants.textOn(context.isDark);
-    final bool audio = task.kind == DownloadKind.audio;
-    final IconData icon = audio ? Iconsax.music : Iconsax.play;
-
-    return GestureDetector(
-      onTap: () => Get.find<DownloadsController>().open(task),
-      child: SizedBox(
-        width: 148 * scale,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12 * scale),
-              child: SizedBox(
-                width: 148 * scale,
-                height: 83 * scale,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    task.thumbnailUrl.isEmpty
-                        ? ArtworkPlaceholder(size: 148, radius: 0, icon: icon)
-                        : CachedNetworkImage(
-                            imageUrl: task.thumbnailUrl,
-                            fit: BoxFit.cover,
-                            memCacheWidth: (148 * scale * MediaQuery.devicePixelRatioOf(context)).round(),
-                            errorWidget: (_, _, _) => ArtworkPlaceholder(size: 148, radius: 0, icon: icon),
-                          ),
-                    Center(
-                      child: Container(
-                        width: 32 * scale,
-                        height: 32 * scale,
-                        decoration: BoxDecoration(
-                          color: ColorConstants.black.withValues(alpha: 0.45),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(icon, size: 20 * scale, color: ColorConstants.white),
-                      ),
-                    ),
-                    Positioned(
-                      right: 6 * scale,
-                      bottom: 6 * scale,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 6 * scale, vertical: 2 * scale),
-                        decoration: BoxDecoration(
-                          color: ColorConstants.black.withValues(alpha: 0.65),
-                          borderRadius: BorderRadius.circular(6 * scale),
-                        ),
-                        child: Text(
-                          audio ? task.extension.toUpperCase() : task.qualityLabel,
-                          style: TextStyle(
-                            fontSize: 9.5 * scale,
-                            fontWeight: FontWeight.w800,
-                            color: ColorConstants.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
-            ),
-            SizedBox(height: 6 * scale),
-            Text(
-              task.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12 * scale,
-                height: 1.3,
-                fontWeight: FontWeight.w700,
-                color: ink,
-              ),
-            ),
           ],
         ),
       ),
@@ -368,67 +61,156 @@ class _RecentCard extends StatelessWidget {
   }
 }
 
-/// Horizontal chips of recent searches.
-class RecentSearchesRow extends StatelessWidget {
-  const RecentSearchesRow({super.key});
+/// Slim progress bar, only while something downloads.
+class ActiveDownloadsBar extends StatelessWidget {
+  const ActiveDownloadsBar({super.key});
 
   @override
   Widget build(BuildContext context) {
     final double scale = context.scale;
     final bool dark = context.isDark;
     final Color ink = ColorConstants.textOn(dark);
-    final yt = Get.find<YoutubeController>();
-
+    final BrandColors brand = BrandColors.of(context);
+    final BorderRadius radius = BorderRadius.circular(16 * scale);
     return Obx(() {
-      if (yt.history.isEmpty) return const SizedBox.shrink();
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          SectionTitle(
-            'Recent searches',
-            trailing: _TextAction(label: 'Clear', onTap: yt.clearHistory),
-          ),
-          SizedBox(
-            height: 34 * scale,
-            child: ListView.separated(
-              padding: EdgeInsets.symmetric(horizontal: 16 * scale),
-              scrollDirection: Axis.horizontal,
-              itemCount: yt.history.length,
-              separatorBuilder: (_, _) => SizedBox(width: 8 * scale),
-              itemBuilder: (_, i) {
-                final q = yt.history[i];
-                return GestureDetector(
-                  onTap: () => yt.useHistory(q),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12 * scale),
-                    decoration: BoxDecoration(
-                      color: ColorConstants.groupOn(dark),
-                      borderRadius: BorderRadius.circular(12 * scale),
-                      border: Border.all(color: ink.withValues(alpha: 0.06)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+      final running = DownloadService.to.tasks.where((t) => t.isActive).toList();
+      if (running.isEmpty) return const SizedBox.shrink();
+      final total = running.fold<int>(0, (s, t) => s + t.totalBytes.value);
+      final got = running.fold<int>(0, (s, t) => s + t.receivedBytes.value);
+      final double? progress = total > 0 ? (got / total).clamp(0.0, 1.0) : null;
+      return Padding(
+        padding: EdgeInsets.fromLTRB(16 * scale, 12 * scale, 16 * scale, 0),
+        child: Material(
+          color: ColorConstants.groupOn(dark),
+          borderRadius: radius,
+          child: InkWell(
+            borderRadius: radius,
+            onTap: () {
+              Get.find<DownloadsController>().tab.value = 0;
+              Get.find<HomeController>().openTab(HomeTabs.downloads);
+            },
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 10 * scale),
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    width: 30 * scale,
+                    height: 30 * scale,
+                    decoration: BoxDecoration(gradient: brand.pillGradient, shape: BoxShape.circle),
+                    child: Icon(Icons.download_rounded, size: 16 * scale, color: ColorConstants.white),
+                  ),
+                  SizedBox(width: 12 * scale),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Icon(Iconsax.clock_copy, size: 15 * scale, color: ink.withValues(alpha: 0.5)),
-                        SizedBox(width: 6 * scale),
                         Text(
-                          q,
-                          style: TextStyle(
-                            fontSize: 12.5 * scale,
-                            fontWeight: FontWeight.w600,
-                            color: ink.withValues(alpha: 0.8),
+                          [
+                            '${running.length} downloading',
+                            if (progress != null) '${(progress * 100).round()}%',
+                          ].join(' · '),
+                          style: TextStyle(fontSize: 13 * scale, fontWeight: FontWeight.w700, color: ink),
+                        ),
+                        SizedBox(height: 6 * scale),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(2 * scale),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 4 * scale,
+                            backgroundColor: ink.withValues(alpha: 0.08),
+                            color: brand.primary,
                           ),
                         ),
                       ],
                     ),
                   ),
-                );
-              },
+                  SizedBox(width: 12 * scale),
+                  _TextAction(label: 'View', onTap: () => Get.find<HomeController>().openTab(HomeTabs.downloads)),
+                ],
+              ),
             ),
           ),
-        ],
+        ),
       );
     });
+  }
+}
+
+/// Shown under the search box while it is focused and empty.
+class RecentSearchesList extends StatelessWidget {
+  const RecentSearchesList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final double scale = context.scale;
+    final bool dark = context.isDark;
+    final Color ink = ColorConstants.textOn(dark);
+    final yt = Get.find<YoutubeController>();
+    // Part of the search field: a tap here would otherwise unfocus it first, and the list would be gone before
+    // the tap lands.
+    return TextFieldTapRegion(
+      child: Obx(
+        () => ListView(
+          padding: EdgeInsets.fromLTRB(16 * scale, 10 * scale, 16 * scale, 24 * scale),
+          children: <Widget>[
+            Container(
+              padding: EdgeInsets.symmetric(vertical: 6 * scale),
+              decoration: BoxDecoration(color: ColorConstants.groupOn(dark), borderRadius: BorderRadius.circular(18 * scale)),
+              child: Column(
+                children: <Widget>[
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(16 * scale, 8 * scale, 16 * scale, 4 * scale),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            'Recent searches',
+                            style: TextStyle(fontSize: 13 * scale, fontWeight: FontWeight.w700, color: ink.withValues(alpha: 0.6)),
+                          ),
+                        ),
+                        _TextAction(label: 'Clear', onTap: yt.clearHistory),
+                      ],
+                    ),
+                  ),
+                  for (final q in yt.history)
+                    InkWell(
+                      onTap: () {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        yt.useHistory(q);
+                      },
+                      child: Padding(
+                        padding: EdgeInsets.only(left: 16 * scale, right: 4 * scale),
+                        child: Row(
+                          children: <Widget>[
+                            Icon(Iconsax.clock_copy, size: 20 * scale, color: ink.withValues(alpha: 0.55)),
+                            SizedBox(width: 14 * scale),
+                            Expanded(
+                              child: Text(
+                                q,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 15 * scale, color: ink),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Edit "$q"',
+                              onPressed: () => yt.searchText.value = TextEditingValue(
+                                text: q,
+                                selection: TextSelection.collapsed(offset: q.length),
+                              ),
+                              icon: Icon(Icons.north_west_rounded, size: 18 * scale, color: ink.withValues(alpha: 0.45)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

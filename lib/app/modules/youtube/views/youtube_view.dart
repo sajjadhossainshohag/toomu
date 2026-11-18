@@ -18,7 +18,7 @@ import '../controllers/youtube_controller.dart';
 import 'widgets/home_sections.dart';
 import 'widgets/video_card.dart';
 
-/// Home: search/paste bar, shortcuts, recent downloads and a category feed.
+/// Home: search/paste bar, site shortcuts, download progress and a category feed.
 /// Typing a query switches to search results; clearing returns to the feed.
 class YoutubeView extends GetView<YoutubeController> {
   const YoutubeView({super.key});
@@ -39,10 +39,41 @@ class YoutubeView extends GetView<YoutubeController> {
             onChanged: (v) {
               if (v.isEmpty) controller.clearResults();
             },
+            onFocusChange: (f) => controller.searchFocused.value = f,
+            trailing: IconButton(
+              tooltip: 'Paste link',
+              onPressed: controller.pasteFromClipboard,
+              icon: Icon(Iconsax.clipboard_import_copy, color: BrandColors.of(context).primary),
+            ),
           ),
         ),
         Expanded(
-          child: TopFade(child: Obx(() => controller.searching.value ? const _SearchResults() : const _HomeFeed())),
+          child: TopFade(
+            child: Stack(
+              children: <Widget>[
+                Positioned.fill(
+                  child: Obx(() => controller.searching.value ? const _SearchResults() : const _HomeFeed()),
+                ),
+                // Over the feed, not instead of it: the feed keeps its scroll position. Positioned even when
+                // empty: an unpositioned child would size the Stack to nothing.
+                Positioned.fill(
+                  child: Obx(
+                    () => controller.searchFocused.value && controller.history.isNotEmpty
+                        ? ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: controller.searchText,
+                            builder: (context, text, _) => text.text.isEmpty
+                                ? ColoredBox(
+                                    color: ColorConstants.pageOn(context.isDark),
+                                    child: const RecentSearchesList(),
+                                  )
+                                : const SizedBox.shrink(),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -76,10 +107,8 @@ class _HomeFeed extends GetView<YoutubeController> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: <Widget>[
-              const SliverToBoxAdapter(child: QuickAccessRow()),
-              const SliverToBoxAdapter(child: SitesRow()),
-              const SliverToBoxAdapter(child: RecentDownloadsStrip()),
-              const SliverToBoxAdapter(child: RecentSearchesRow()),
+              const SliverToBoxAdapter(child: SiteIconsRow()),
+              const SliverToBoxAdapter(child: ActiveDownloadsBar()),
               SliverToBoxAdapter(child: SizedBox(height: 8 * scale)),
               SliverPersistentHeader(pinned: true, delegate: FeedChipsHeader(scale: scale)),
               // Signed in but shown the general feed: why, and a way back.

@@ -85,6 +85,7 @@ class YoutubeController extends GetxController {
 
   // ---- Search mode (user typed a query) ---------------------------------
   final searching = false.obs;
+  final searchFocused = false.obs;
   final searchQuery = ''.obs;
   final results = <Video>[].obs;
   final loading = false.obs;
