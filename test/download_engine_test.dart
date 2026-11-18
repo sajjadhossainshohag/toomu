@@ -170,9 +170,16 @@ void main() {
     Future<void> pauseMidway() async {
       origin.stallAfter = 16 * _mb;
       final token = CancelToken();
-      final run = fetch(token: token);
+      var got = 0;
+      final run = fetch(token: token, onBytes: (b) => got = b);
       while (origin.served < 16 * _mb) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      // On Linux most of what was sent can still sit in socket buffers: let the client take it in first, or the
+      // pause can come before a single byte was saved.
+      for (var last = -1; got != last;) {
+        last = got;
+        await Future<void>.delayed(const Duration(milliseconds: 200));
       }
       token.cancel('pause');
       await expectLater(run, throwsA(anything));
