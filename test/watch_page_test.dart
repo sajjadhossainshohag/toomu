@@ -25,21 +25,30 @@ Video _video(String id, String title) => Video(VideoId(id), title, 'Cabin Builde
     '2 days ago', null, 'About it', const Duration(minutes: 18), ThumbnailSet(id), null, const Engagement(123456, 4500, null), false);
 
 class _Source implements WatchSource {
+  var videoLoads = 0;
+
   @override
-  Future<Video> video(String id) async => _video(id, 'Building a tiny house');
+  Future<Video> video(String id) async {
+    videoLoads++;
+    return _video(id, 'Building a tiny house');
+  }
   @override
   Future<Channel> channel(ChannelId id) async => Channel(id, 'Cabin Builders', '', '', 1200000);
   @override
   Future<List<Video>> related(Video v) async => [_video('bbbbbbbbbbb', 'Street food tour')];
   @override
-  Future<CommentsPage?> comments(Video v) async => null;
+  Future<CommentsPage?> comments(Video v) async =>
+      CommentsPage([Comment('@fan', ChannelId('UC${'c' * 22}'), 'Great video', 3, '1 day ago', 2, false, null)], 1);
   @override
-  Future<List<Comment>> replies(Comment c) async => const [];
+  Future<List<Comment>> replies(Comment c) async =>
+      [Comment('@author', ChannelId('UC${'b' * 22}'), 'Thanks!', 0, '12 hours ago', 0, false, null)];
 }
+
+var _source = _Source();
 
 class _Yt extends YoutubeController {
   @override
-  WatchSource get watchSource => _Source();
+  WatchSource get watchSource => _source;
 }
 
 class _Home extends HomeController {
@@ -66,6 +75,7 @@ void main() {
   tearDownAll(() => deleteTempStorageDir(dir));
 
   Future<List<Object?>> open(WidgetTester tester, Size screen) async {
+    _source = _Source();
     await tester.runAsync(() async {
       Get.put(StorageService(await tempBox('watch_${n++}', dir)));
       for (final tag in [StorageService.downloadsBox, StorageService.logsBox, StorageService.positionsBox]) {
@@ -94,7 +104,7 @@ void main() {
       ..devicePixelRatio = 1
       ..physicalSize = screen;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(const MaterialApp(home: VideoPlayerView()));
+    await tester.pumpWidget(const GetMaterialApp(home: VideoPlayerView()));
     await tester.pump();
     return asked;
   }
@@ -120,6 +130,33 @@ void main() {
     await open(tester, const Size(844, 390));
     expect(find.byType(WatchDetails), findsNothing);
     expect(find.byIcon(Icons.lock_open_rounded), findsOneWidget, reason: 'the full controls, with lock and aspect');
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('turning the phone sideways and back keeps the watch page, without loading it again', (tester) async {
+    await open(tester, const Size(390, 844));
+    await tester.pump();
+    expect(_source.videoLoads, 1);
+    tester.view.physicalSize = const Size(844, 390);
+    await tester.pump();
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Building a tiny house'), findsOneWidget);
+    expect(_source.videoLoads, 1, reason: 'full screen and back is the most common gesture here');
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets("a comment's replies show as soon as they arrive", (tester) async {
+    await open(tester, const Size(390, 844));
+    await tester.pump();
+    await tester.tap(find.textContaining('Comments'));
+    await tester.pump(); // the sheet starts sliding in
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('2 replies'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Thanks!'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
   });
 }

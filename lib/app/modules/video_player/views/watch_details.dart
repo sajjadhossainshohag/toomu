@@ -24,16 +24,14 @@ class WatchDetails extends StatefulWidget {
 }
 
 class _WatchDetailsState extends State<WatchDetails> {
-  late final WatchDetailsController c = Get.put(
-    WatchDetailsController(widget.videoId, Get.find<YoutubeController>().watchSource),
-    tag: widget.videoId,
-  );
-
-  @override
-  void dispose() {
-    Get.delete<WatchDetailsController>(tag: widget.videoId);
-    super.dispose();
-  }
+  // Lives as long as the player (it deletes it on close), not this panel: turning to full screen and back would
+  // otherwise load everything again and lose opened comments.
+  late final WatchDetailsController c = Get.isRegistered<WatchDetailsController>(tag: widget.videoId)
+      ? Get.find<WatchDetailsController>(tag: widget.videoId)
+      : Get.put(
+          WatchDetailsController(widget.videoId, Get.find<YoutubeController>().watchSource),
+          tag: widget.videoId,
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -267,21 +265,24 @@ void showCommentsSheet(WatchDetailsController c) => Get.bottomSheet<void>(
               itemBuilder: (_, i) {
                 if (i >= c.comments.length) return const Center(child: CircularProgressIndicator());
                 final comment = c.comments[i];
-                final replies = c.replies[comment];
-                return Column(
-                  children: <Widget>[
-                    _CommentTile(
-                      comment: comment,
-                      onReplies: replies == null ? () => c.loadReplies(comment) : null,
-                      loadingReplies: c.loadingReplies.contains(comment),
-                    ),
-                    for (final r in replies ?? const <Comment>[])
-                      Padding(
-                        padding: EdgeInsets.only(left: 44 * context.scale, top: 12 * context.scale),
-                        child: _CommentTile(comment: r),
+                // Rows are built during layout, after the list's Obx ran: each row watches its own replies.
+                return Obx(() {
+                  final replies = c.replies[comment];
+                  return Column(
+                    children: <Widget>[
+                      _CommentTile(
+                        comment: comment,
+                        onReplies: replies == null ? () => c.loadReplies(comment) : null,
+                        loadingReplies: c.loadingReplies.contains(comment),
                       ),
-                  ],
-                );
+                      for (final r in replies ?? const <Comment>[])
+                        Padding(
+                          padding: EdgeInsets.only(left: 44 * context.scale, top: 12 * context.scale),
+                          child: _CommentTile(comment: r),
+                        ),
+                    ],
+                  );
+                });
               },
             );
           }),

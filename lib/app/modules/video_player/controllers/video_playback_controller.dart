@@ -20,6 +20,7 @@ import '../../../services/video_session_service.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/app_snackbar.dart';
 import '../../youtube/controllers/youtube_controller.dart';
+import 'watch_details_controller.dart';
 
 /// What to play: a list (e.g. a folder) and where to start.
 class VideoPlaylist {
@@ -189,6 +190,10 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   @override
   void onClose() {
     _savePosition();
+    for (final item in items) {
+      final id = item.youtubeId;
+      if (id != null) Get.delete<WatchDetailsController>(tag: id);
+    }
     for (final s in _subs) {
       s.cancel();
     }
