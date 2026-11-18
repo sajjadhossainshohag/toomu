@@ -114,6 +114,8 @@ def main():
 
     for folder, px in {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}.items():
         teardrop.resize((px, px), Image.LANCZOS).save(RES / f"mipmap-{folder}/ic_launcher.png")
+        # Android 7-11 launch screen; 12+ shows the launcher icon instead.
+        teardrop.resize((px * 7 // 3, px * 7 // 3), Image.LANCZOS).save(RES / f"mipmap-{folder}/splash_logo.png")
 
     # Windows: taskbar, title bar and Explorer pick the size they need.
     teardrop.save(WIN_ICO, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
