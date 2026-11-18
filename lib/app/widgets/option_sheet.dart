@@ -19,7 +19,8 @@ class SheetOption<T> {
   final IconData? icon;
 }
 
-/// Bottom sheet with a title and radio-style options.
+/// Bottom sheet with a title and options. Without [selected] it is a menu of actions (plain rows); with it,
+/// a choice whose current value is checked.
 Future<T?> showOptionSheet<T>({
   required String title,
   required List<SheetOption<T>> options,
@@ -142,94 +143,61 @@ class _OptionRow<T> extends StatelessWidget {
     final BrandColors brand = BrandColors.of(context);
     final Color ink = ColorConstants.textOn(dark);
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12 * scale),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          vertical: 12 * scale,
-          horizontal: 4 * scale,
-        ),
-        child: Row(
-          children: <Widget>[
-            if (option.icon != null) ...<Widget>[
-              Icon(
-                option.icon,
-                size: 22 * scale,
-                color: ink.withValues(alpha: 0.7),
-              ),
-              SizedBox(width: 14 * scale),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    option.label,
-                    style: TextStyle(
-                      fontSize: 15 * scale,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0,
-                      color: ink,
-                    ),
-                  ),
-                  if (option.subtitle != null)
+    final Color color = selected ? brand.accent : ink;
+    return Semantics(
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12 * scale),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            vertical: 13 * scale,
+            horizontal: 4 * scale,
+          ),
+          child: Row(
+            children: <Widget>[
+              if (option.icon != null) ...<Widget>[
+                Icon(
+                  option.icon,
+                  size: 24 * scale,
+                  color: selected ? color : ink.withValues(alpha: 0.85),
+                ),
+                SizedBox(width: 18 * scale),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
                     Text(
-                      option.subtitle!,
+                      option.label,
                       style: TextStyle(
-                        fontSize: 12 * scale,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 15 * scale,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                         letterSpacing: 0,
-                        color: ink.withValues(alpha: 0.55),
+                        color: color,
                       ),
                     ),
-                ],
+                    if (option.subtitle != null)
+                      Text(
+                        option.subtitle!,
+                        style: TextStyle(
+                          fontSize: 12 * scale,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0,
+                          color: ink.withValues(alpha: 0.55),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            SelectionRadio(selected: selected, brand: brand),
-          ],
+              if (selected)
+                Icon(Icons.check_rounded, size: 22 * scale, color: color),
+            ],
+          ),
         ),
       ),
-    );
-  }
-}
-
-class SelectionRadio extends StatelessWidget {
-  const SelectionRadio({
-    required this.selected,
-    required this.brand,
-    super.key,
-  });
-
-  final bool selected;
-  final BrandColors brand;
-
-  @override
-  Widget build(BuildContext context) {
-    final double scale = context.scale;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      width: 22 * scale,
-      height: 22 * scale,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: selected ? brand.pillGradient : null,
-        border: selected
-            ? null
-            : Border.all(
-                color: ColorConstants.textOn(
-                  context.isDark,
-                ).withValues(alpha: 0.25),
-                width: 1.5 * scale,
-              ),
-      ),
-      child: selected
-          ? Icon(
-              Icons.check_rounded,
-              size: 14 * scale,
-              color: ColorConstants.white,
-            )
-          : null,
     );
   }
 }
