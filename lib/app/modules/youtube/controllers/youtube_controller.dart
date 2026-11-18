@@ -805,7 +805,7 @@ class YoutubeController extends GetxController {
           for (final f in MediaFormat.listOptions())
             SheetOption(
               value: f,
-              label: f.label,
+              label: f.name,
               subtitle: f.detail,
               icon: f.kind == DownloadKind.audio ? Icons.music_note_rounded : Icons.movie_rounded,
             ),
@@ -840,10 +840,13 @@ class YoutubeController extends GetxController {
     }
   }
 
+  int get lastVideoQuality => _storage.read<int>(AppConstants.kDownloadQuality) ?? 1080;
+
   Future<void> download(MediaFormat format) async {
     final video = selectedVideo.value;
     if (video == null) return;
     _sheetUsed = true;
+    if (format.kind == DownloadKind.video) unawaited(_storage.write(AppConstants.kDownloadQuality, format.height));
     await DownloadService.to.enqueue(video: video, format: format);
     Get.back();
     showSnack(

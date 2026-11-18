@@ -318,7 +318,7 @@ class _PageResultTile extends StatelessWidget {
         for (final f in formats)
           SheetOption(
             value: f,
-            label: f.label,
+            label: f.kind == DownloadKind.video && f.name != f.label ? '${f.name} ${f.label}' : f.name,
             subtitle: [f.detail, if (f.sizeBytes > 0) '~${Formatters.bytes(f.sizeBytes)}'].join(' • '),
             icon: f.kind == DownloadKind.audio ? Icons.music_note_rounded : Icons.movie_rounded,
           ),

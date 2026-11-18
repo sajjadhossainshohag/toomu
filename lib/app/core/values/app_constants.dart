@@ -54,4 +54,5 @@ abstract class AppConstants {
 
   /// Quality last picked in the player for YouTube streams (720, 1080…).
   static const kStreamQuality = 'stream_quality';
+  static const kDownloadQuality = 'download_quality';
 }

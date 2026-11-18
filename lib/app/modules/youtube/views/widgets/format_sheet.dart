@@ -107,18 +107,31 @@ class FormatSheet extends GetView<YoutubeController> {
                     ),
                   ),
               ]
-              else ...<Widget>[
-                if (controller.videoFormats.isNotEmpty) ...<Widget>[
-                  const SectionTitle('Video', padded: false),
-                  for (final f in controller.videoFormats)
-                    _FormatTile(format: f, onTap: () => controller.download(f)),
-                ],
-                if (controller.audioFormats.isNotEmpty) ...<Widget>[
-                  const SectionTitle('Audio only', padded: false),
-                  for (final f in controller.audioFormats)
-                    _FormatTile(format: f, onTap: () => controller.download(f)),
-                ],
-              ],
+              else ...() {
+                final video = MediaFormat.firstFour(controller.videoFormats);
+                final picked = MediaFormat.recommended(video.first, controller.lastVideoQuality);
+                return <Widget>[
+                  if (video.first.isNotEmpty) ...<Widget>[
+                    const SectionTitle('Video', padded: false),
+                    _CardGrid(
+                      cards: [
+                        for (final f in video.first)
+                          _QualityCard(format: f, highlighted: f == picked, onTap: () => controller.download(f)),
+                      ],
+                    ),
+                  ],
+                  if (video.more.isNotEmpty) _MoreQualities(formats: video.more, onPick: controller.download),
+                  if (controller.audioFormats.isNotEmpty) ...<Widget>[
+                    const SectionTitle('Audio only', padded: false),
+                    _CardGrid(
+                      cards: [
+                        for (final f in controller.audioFormats)
+                          _QualityCard(format: f, onTap: () => controller.download(f)),
+                      ],
+                    ),
+                  ],
+                ];
+              }(),
             ],
           );
         }),
@@ -231,43 +244,36 @@ class _FormatTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Text(
-                            format.label,
-                            style: TextStyle(
-                              fontSize: 14 * scale,
-                              fontWeight: FontWeight.w700,
-                              color: ink,
-                            ),
-                          ),
-                          if (format.isHd) ...<Widget>[
-                            SizedBox(width: 6 * scale),
-                            _QualityBadge(height: format.height),
-                          ],
-                        ],
+                      Text(
+                        format.name,
+                        style: TextStyle(
+                          fontSize: 14 * scale,
+                          fontWeight: FontWeight.w700,
+                          color: ink,
+                        ),
                       ),
                       Text(
-                        format.detail,
+                        audio ? format.detail : '${format.label} · ${format.detail}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12 * scale,
                           fontWeight: FontWeight.w500,
-                          color: ink.withValues(alpha: 0.55),
+                          color: format.mayNotPlay ? ColorConstants.error : ink.withValues(alpha: 0.55),
                         ),
                       ),
                     ],
                   ),
                 ),
-                Text(
-                  Formatters.bytes(format.sizeBytes),
-                  style: TextStyle(
-                    fontSize: 13 * scale,
-                    fontWeight: FontWeight.w600,
-                    color: ink.withValues(alpha: 0.7),
+                if (format.sizeBytes > 0)
+                  Text(
+                    '~${Formatters.bytes(format.sizeBytes)}',
+                    style: TextStyle(
+                      fontSize: 13 * scale,
+                      fontWeight: FontWeight.w600,
+                      color: ink.withValues(alpha: 0.7),
+                    ),
                   ),
-                ),
                 SizedBox(width: 10 * scale),
                 Container(
                   width: 32 * scale,
@@ -285,35 +291,142 @@ class _FormatTile extends StatelessWidget {
   }
 }
 
-/// Gradient "HD" / "2K" / "4K" chip.
-class _QualityBadge extends StatelessWidget {
-  const _QualityBadge({required this.height});
+class _CardGrid extends StatelessWidget {
+  const _CardGrid({required this.cards});
 
-  final int height;
+  final List<Widget> cards;
+
+  @override
+  Widget build(BuildContext context) {
+    final double gap = 10 * context.scale;
+    return Column(
+      children: <Widget>[
+        for (var i = 0; i < cards.length; i += 2)
+          Padding(
+            padding: EdgeInsets.only(bottom: gap),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Expanded(child: cards[i]),
+                  SizedBox(width: gap),
+                  Expanded(child: i + 1 < cards.length ? cards[i + 1] : const SizedBox.shrink()),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _QualityCard extends StatelessWidget {
+  const _QualityCard({required this.format, required this.onTap, this.highlighted = false});
+
+  final MediaFormat format;
+  final VoidCallback onTap;
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
     final double scale = context.scale;
-    final String text = height >= 2160
-        ? '4K'
-        : height >= 1440
-            ? '2K'
-            : height >= 1080
-                ? 'FHD'
-                : 'HD';
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 6 * scale, vertical: 1.5 * scale),
-      decoration: BoxDecoration(
-        gradient: BrandColors.of(context).pillGradient,
-        borderRadius: BorderRadius.circular(6 * scale),
+    final bool dark = context.isDark;
+    final bool video = format.kind == DownloadKind.video;
+    final Color fg = highlighted ? ColorConstants.white : ColorConstants.textOn(dark);
+    final BorderRadius radius = BorderRadius.circular(16 * scale);
+    final String sub = [if (video) format.label, if (format.sizeBytes > 0) '~${Formatters.bytes(format.sizeBytes)}'].join(' · ');
+    return Material(
+      color: highlighted ? ColorConstants.transparent : ColorConstants.groupOn(dark),
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: highlighted ? BorderSide.none : BorderSide(color: ColorConstants.textOn(dark).withValues(alpha: 0.12)),
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 10 * scale,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.3,
-          color: ColorConstants.white,
+      child: Ink(
+        decoration: highlighted ? BoxDecoration(gradient: BrandColors.of(context).pillGradient, borderRadius: radius) : null,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(14 * scale, 12 * scale, 10 * scale, 12 * scale),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        format.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 15.5 * scale, fontWeight: FontWeight.w800, color: fg),
+                      ),
+                    ),
+                    Icon(Icons.download_rounded, size: 20 * scale, color: fg.withValues(alpha: highlighted ? 1 : 0.55)),
+                  ],
+                ),
+                if (sub.isNotEmpty)
+                  Text(sub, style: TextStyle(fontSize: 12.5 * scale, fontWeight: FontWeight.w600, color: fg.withValues(alpha: 0.75))),
+                SizedBox(height: 4 * scale),
+                Text(
+                  format.detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5 * scale,
+                    fontWeight: FontWeight.w500,
+                    color: format.mayNotPlay && !highlighted ? ColorConstants.error : fg.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MoreQualities extends StatefulWidget {
+  const _MoreQualities({required this.formats, required this.onPick});
+
+  final List<MediaFormat> formats;
+  final void Function(MediaFormat) onPick;
+
+  @override
+  State<_MoreQualities> createState() => _MoreQualitiesState();
+}
+
+class _MoreQualitiesState extends State<_MoreQualities> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final double scale = context.scale;
+    final Color ink = ColorConstants.textOn(context.isDark);
+    if (_open) {
+      return Column(
+        children: <Widget>[
+          for (final f in widget.formats) _FormatTile(format: f, onTap: () => widget.onPick(f)),
+        ],
+      );
+    }
+    final names = [for (final f in widget.formats) f.height > 1080 ? f.name : f.label].join(', ');
+    return InkWell(
+      onTap: () => setState(() => _open = true),
+      borderRadius: BorderRadius.circular(12 * scale),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 4 * scale, vertical: 10 * scale),
+        child: Row(
+          children: <Widget>[
+            Icon(Icons.expand_more_rounded, color: ink.withValues(alpha: 0.6)),
+            SizedBox(width: 8 * scale),
+            Expanded(
+              child: Text(
+                'More ($names)',
+                style: TextStyle(fontSize: 13.5 * scale, fontWeight: FontWeight.w600, color: ink.withValues(alpha: 0.75)),
+              ),
+            ),
+          ],
         ),
       ),
     );

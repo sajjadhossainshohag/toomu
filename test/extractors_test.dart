@@ -43,18 +43,53 @@ void main() {
   group('MediaFormat', () {
     test('one video option per height, best first, saved as MP4', () {
       final v = MediaFormat.videoOptions(_info());
-      expect(v.map((f) => f.label), ['2160p', '1080p', '360p']);
+      expect(v.map((f) => f.label), ['2160p', '1080p', '360p'], reason: 'the p-number stays: it goes into file names');
       expect(v.every((f) => f.extension == 'mp4'), isTrue);
-      expect(v[1].detail, contains('H.264'));
-      expect(v[0].detail, contains('VP9'));
       expect(v[1].selector, startsWith('bv*[height<=1080]'));
     });
 
-    test('audio options: three MP3 bitrates + original M4A', () {
+    test('qualities have plain names and hints, no codec jargon', () {
+      final v = MediaFormat.videoOptions(_info());
+      expect(v.map((f) => f.name), ['4K Ultra HD', 'Full HD', 'Low']);
+      expect(v.map((f) => f.detail).join(), isNot(matches(RegExp('H.264|VP9|AV1|MP4'))));
+      expect(v[2].detail, 'Saves more data');
+    });
+
+    test('a quality with no H.264 stream warns it may not play on older phones', () {
+      final v = MediaFormat.videoOptions(_info());
+      expect(v[0].mayNotPlay, isTrue, reason: '2160p is VP9 only');
+      expect(v[0].detail, 'May not play on older phones');
+      expect(v[1].mayNotPlay, isFalse);
+    });
+
+    test('audio: MP3 that plays everywhere and the original M4A; no MP3 320 (the source is ~130 kbps)', () {
       final a = MediaFormat.audioOptions(_info());
-      expect(a.map((f) => f.convert).take(3), ['mp3:320', 'mp3:192', 'mp3:128']);
-      expect(a.last.extension, 'm4a');
-      expect(a.first.sizeBytes, 200 * 320 * 1000 ~/ 8);
+      expect(a.map((f) => f.convert), ['mp3:192', null]);
+      expect(a.map((f) => f.name), ['MP3', 'Original audio']);
+      expect(a.first.sizeBytes, 200 * 192 * 1000 ~/ 8);
+      expect(a.last.detail, 'Best sound, smallest file (M4A)');
+    });
+
+    test('the recommended quality: the last one picked, else Full HD, else the best below it', () {
+      final v = MediaFormat.videoOptions(_info()); // 2160p, 1080p, 360p
+      expect(MediaFormat.recommended(v, 1080)?.label, '1080p');
+      expect(MediaFormat.recommended(v, 2160)?.label, '2160p');
+      expect(MediaFormat.recommended(v, 720)?.label, '360p');
+      expect(MediaFormat.recommended([v.first], 1080)?.label, '2160p', reason: 'only a bigger one: still offered');
+      expect(MediaFormat.recommended(const [], 1080), isNull);
+    });
+
+    test('four qualities up front, 1080p to 360p; 4K, 2K and the tiny ones under "More"', () {
+      List<MediaFormat> of(List<int> qs) => [
+            for (final q in qs) MediaFormat(kind: DownloadKind.video, label: '${q}p', extension: 'mp4', sizeBytes: 0, detail: '', selector: '', height: q),
+          ];
+      final all = MediaFormat.firstFour(of([2160, 1440, 1080, 720, 480, 360, 240, 144]));
+      expect(all.first.map((f) => f.height), [1080, 720, 480, 360]);
+      expect(all.more.map((f) => f.height), [2160, 1440, 240, 144]);
+
+      final few = MediaFormat.firstFour(of([2160, 1440, 1080, 360, 144]));
+      expect(few.first.map((f) => f.height), [2160, 1440, 1080, 360], reason: 'the nearest others fill the four');
+      expect(few.more.map((f) => f.height), [144]);
     });
   });
 
