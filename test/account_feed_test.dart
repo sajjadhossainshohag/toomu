@@ -76,6 +76,17 @@ void main() {
     expect(h['X-Youtube-Bootstrap-Logged-In'], 'true');
   });
 
+  test("YouTube answering as signed out means it didn't accept the sign-in, not an empty home", () {
+    expect(
+      () => AccountFeed.parse(feed, {
+        'responseContext': {'mainAppWebResponseContext': {'loggedOut': true}},
+        'contents': {'feedNudgeRenderer': {'title': {'runs': [{'text': 'Try searching to get started'}]}}},
+      }),
+      throwsA(isA<SignInExpired>()),
+      reason: 'the user was told their watch history is off and shown unrelated videos',
+    );
+  });
+
   test('home page: videos (both formats), chips and the next-page token', () {
     final json = {
       'header': {

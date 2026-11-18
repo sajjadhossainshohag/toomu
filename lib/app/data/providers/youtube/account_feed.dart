@@ -177,6 +177,8 @@ class AccountFeed {
   /// Home, the category chips. Shorts, playlists, mixes and ads are skipped.
   @visibleForTesting
   static AccountFeedPage parse(AccountFeed feed, Object? json, {bool withChips = false}) {
+    // Cookies YouTube doesn't accept still get a 200: a signed-out page with no videos.
+    if (json case {'responseContext': {'mainAppWebResponseContext': {'loggedOut': true}}}) throw SignInExpired();
     final videos = <Video>[];
     final seen = <String>{};
     String? next;

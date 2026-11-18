@@ -466,8 +466,8 @@ class YoutubeController extends GetxController {
       _feedCache[index] = (items: feed.toList(), page: page);
       // Next launch opens on this mix, not the one before.
       if (index == 0) unawaited(_feedStore.save(_feedStoreKey, fresh));
-      // Account Home and Subscriptions (tabs 0 and 1) have no topic of their own.
-      unawaited(_loadShorts(index, queries.firstOrNull ?? (index < 2 ? 'trending' : category!.label)));
+      final topic = load == null ? queries.firstOrNull : _accountShortsTopic(index, fresh);
+      if (topic != null) unawaited(_loadShorts(index, topic));
     } catch (e) {
       debugPrint('[YouTube] feed failed: $e');
       if (index == feedIndex.value) feedError.value = ErrorText.of(e);
@@ -514,6 +514,17 @@ class YoutubeController extends GetxController {
   final shorts = <Video>[].obs;
   final _shortsCache = <int, List<Video>>{};
   static const _shortMax = Duration(minutes: 3);
+
+  // A video title finds almost no Shorts; YouTube's own topic chips for the account do. Some chips aren't topics.
+  static const _notTopics = {'Mixes', 'Live', 'Recently uploaded', 'Watched', 'New to you'};
+
+  String? _accountShortsTopic(int index, List<Video> fresh) {
+    if (index == 1) return fresh.firstOrNull?.author; // Subscriptions: a channel the user follows
+    final own = categories.elementAtOrNull(index)?.label;
+    if (index >= 2 && !_notTopics.contains(own)) return own;
+    final topics = [for (final c in categories.skip(2)) if (!_notTopics.contains(c.label)) c.label];
+    return topics.isEmpty ? null : topics[_random.nextInt(topics.length)];
+  }
 
   // A search: YouTube has no public Shorts feed to read.
   Future<void> _loadShorts(int index, String topic) async {

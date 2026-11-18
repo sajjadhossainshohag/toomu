@@ -81,6 +81,9 @@ class _FakeAccount extends AccountFeed {
     homeCalls++;
     return onHome(this);
   }
+
+  @override
+  Future<AccountFeedPage> subscriptions() async => AccountFeedPage(this, [_video('subsVid0001', 'From a channel')], null);
 }
 
 void main() {
@@ -350,5 +353,34 @@ void main() {
     yt.selectCategory(0);
     expect(yt.shorts, isEmpty, reason: "another tab doesn't show Music's Shorts");
   });
-}
 
+  test("a signed-in Home's Shorts come from YouTube's topics for the account, not what's trending", () async {
+    YoutubeAccountService.to.signedIn.value = true;
+    final asked = <String>[];
+    final account = _FakeAccount(
+      (feed) async => AccountFeedPage(
+        feed,
+        [_video('myHomeVid01', 'This is The Most Mouth Watering Street food of Dhaka!')],
+        null,
+        chips: const [AccountChip('Recently uploaded', 'NEW'), AccountChip('Cricket', 'CRICKET')],
+      ),
+    );
+    final yt = Get.put(YoutubeController(
+      random: Random(1),
+      search: (q) async {
+        asked.add(q);
+        return _Page(const []);
+      },
+      account: account,
+    ));
+    await yt.loadFeed();
+    await Future<void>.delayed(Duration.zero);
+    expect(asked, ['Cricket #shorts'], reason: 'a whole video title as the search found no Shorts on YouTube');
+
+    asked.clear();
+    yt.feedIndex.value = 1;
+    await yt.loadFeed();
+    await Future<void>.delayed(Duration.zero);
+    expect(asked, ['Author #shorts'], reason: 'Subscriptions: Shorts from a channel the user follows');
+  });
+}
