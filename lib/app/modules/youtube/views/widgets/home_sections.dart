@@ -34,7 +34,9 @@ class SiteIconsRow extends StatelessWidget {
           children: <Widget>[
             for (final s in RemoteConfigService.to.sites)
               InkResponse(
-                onTap: () => Get.toNamed(Routes.browser, arguments: s.url),
+                onTap: () => Uri.tryParse(s.url)?.host.contains('youtube.') ?? false
+                    ? Get.find<HomeController>().openTab(HomeTabs.youtube)
+                    : Get.toNamed(Routes.browser, arguments: s.url),
                 radius: 34 * scale,
                 child: SizedBox(
                   width: 72 * scale,

@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-import 'package:toomu/app/data/models/download_task.dart';
 import 'package:toomu/app/modules/downloads/controllers/downloads_controller.dart';
 import 'package:toomu/app/modules/home/controllers/home_controller.dart';
 import 'package:toomu/app/data/providers/youtube_provider.dart';
@@ -116,7 +115,7 @@ void main() {
     for (final gone in ['Recent downloads', 'Recent searches', 'Sites', 'Browser', 'Play offline']) {
       expect(find.text(gone), findsNothing, reason: '"$gone" left Home');
     }
-    expect(find.text('YouTube'), findsOneWidget, reason: 'site shortcuts stay, as round icons');
+    expect(find.text('YouTube'), findsOneWidget, reason: 'the tab is YouTube; site shortcuts moved to Home');
     expect(tester.getRect(find.text('Building a tiny house in 30 days')).bottom, lessThan(844));
     await settle(tester);
   });
@@ -192,24 +191,6 @@ void main() {
     await tester.tap(find.text('Building a tiny house in 30 days'));
     await tester.pump();
     expect(yt.opened, ['aaaaaaaaaaa'], reason: 'the card opens the video, not the download sheet');
-    await settle(tester);
-  });
-
-  testWidgets('the downloads bar shows only while something downloads', (tester) async {
-    await open(tester);
-    expect(find.textContaining('downloading'), findsNothing);
-
-    final task = DownloadTask(id: '1', title: 'Clip', kind: DownloadKind.video, extension: 'mp4', filePath: '/x/1.mp4', createdAt: DateTime(2026))
-      ..status.value = DownloadStatus.running
-      ..totalBytes.value = 200
-      ..receivedBytes.value = 90;
-    DownloadService.to.tasks.add(task);
-    await tester.pump();
-    expect(find.text('1 downloading · 45%'), findsOneWidget);
-
-    task.status.value = DownloadStatus.completed;
-    await tester.pump();
-    expect(find.textContaining('downloading'), findsNothing);
     await settle(tester);
   });
 

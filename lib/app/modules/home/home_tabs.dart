@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
+import '../../services/download_service.dart';
 import '../../widgets/app_bottom_nav.dart';
 import '../downloads/views/downloads_view.dart';
 import '../music/views/music_view.dart';
-import '../settings/views/settings_view.dart';
 import '../videos/views/videos_view.dart';
 import '../youtube/views/youtube_view.dart';
+import 'views/home_hub_view.dart';
 
 /// Feature registry for the main shell.
 ///
@@ -15,27 +16,37 @@ import '../youtube/views/youtube_view.dart';
 ///   2. register its controller in [HomeBinding]
 ///   3. add a [HomeTab] below.
 class HomeTab {
-  const HomeTab({required this.id, required this.nav, required this.builder});
+  const HomeTab({required this.id, required this.nav, required this.builder, this.badge});
 
   final String id;
   final AppNavItem nav;
   final WidgetBuilder builder;
+  final int Function()? badge;
 }
 
 abstract class HomeTabs {
+  static const home = 'home';
   static const youtube = 'youtube';
   static const downloads = 'downloads';
   static const videos = 'videos';
   static const music = 'music';
-  static const settings = 'settings';
 
   static final List<HomeTab> all = <HomeTab>[
     HomeTab(
-      id: youtube,
+      id: home,
       nav: const AppNavItem(
         label: 'Home',
         icon: Iconsax.home_2_copy,
         activeIcon: Iconsax.home_2,
+      ),
+      builder: (_) => const HomeHubView(),
+    ),
+    HomeTab(
+      id: youtube,
+      nav: const AppNavItem(
+        label: 'YouTube',
+        icon: Iconsax.youtube_copy,
+        activeIcon: Iconsax.youtube,
       ),
       builder: (_) => const YoutubeView(),
     ),
@@ -47,6 +58,7 @@ abstract class HomeTabs {
         activeIcon: Iconsax.document_download,
       ),
       builder: (_) => const DownloadsView(),
+      badge: () => DownloadService.to.tasks.where((t) => t.isActive).length,
     ),
     HomeTab(
       id: videos,
@@ -65,15 +77,6 @@ abstract class HomeTabs {
         activeIcon: Iconsax.music,
       ),
       builder: (_) => const MusicView(),
-    ),
-    HomeTab(
-      id: settings,
-      nav: const AppNavItem(
-        label: 'Settings',
-        icon: Iconsax.setting_2_copy,
-        activeIcon: Iconsax.setting_2,
-      ),
-      builder: (_) => const SettingsView(),
     ),
   ];
 

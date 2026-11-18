@@ -18,7 +18,9 @@ import '../../player/views/widgets/sleep_timer_sheet.dart';
 import '../controllers/settings_controller.dart';
 
 class SettingsView extends GetView<SettingsController> {
-  const SettingsView({super.key});
+  const SettingsView({this.onBack, super.key});
+
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +32,7 @@ class SettingsView extends GetView<SettingsController> {
         Obx(
           () => AppHeader(
             title: 'Settings',
+            onBack: onBack,
             actions: <Widget>[
               if (controller.account.signedIn.value && !controller.account.expired.value)
                 HeaderAction(

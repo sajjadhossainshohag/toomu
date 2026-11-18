@@ -13,6 +13,7 @@ import '../../../data/providers/local_music_provider.dart';
 import '../../../data/providers/local_video_provider.dart';
 import '../../../routes/app_pages.dart';
 import '../../browser/controllers/browser_session.dart';
+import '../../settings/views/settings_view.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
 import '../../../extractors/direct_file_extractor.dart';
 import '../../../services/floating_button_service.dart';
@@ -32,6 +33,8 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
   /// Pages switch from the nav bar only (swiping switches a page's inner tabs).
   final pageController = PageController();
+
+  final hubSearch = TextEditingController();
 
   String? _lastClipboardLink;
   DateTime _lastIntentAt = DateTime.fromMillisecondsSinceEpoch(0);
@@ -57,6 +60,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   @override
   void onClose() {
     pageController.dispose();
+    hubSearch.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _intents.setMethodCallHandler(null);
     super.onClose();
@@ -106,6 +110,31 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   void openTab(String id) => selectTab(HomeTabs.indexOf(id));
+
+  void openSettings() => Get.to<void>(() => Scaffold(body: SettingsView(onBack: () => Get.back<void>())));
+
+  Future<void> openFromHome(String input) async {
+    final text = input.trim();
+    if (text.isEmpty || await openLinkFrom(text)) return;
+    final url = RegExp(r'https?://\S+').firstMatch(text)?.group(0);
+    if (url != null) {
+      await Get.toNamed<void>(Routes.browser, arguments: url);
+      return;
+    }
+    openTab(HomeTabs.youtube);
+    final yt = Get.find<YoutubeController>()..searchText.text = text;
+    await yt.submit(text);
+  }
+
+  Future<void> pasteFromHome() async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '';
+    if (text.isEmpty) {
+      showSnack('Clipboard is empty', 'Copy a link first.', duration: const Duration(seconds: 2));
+      return;
+    }
+    hubSearch.text = text;
+    await openFromHome(text);
+  }
 
   // ------------------------------------------------------- share & bubble
 

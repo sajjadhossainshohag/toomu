@@ -14,7 +14,6 @@ import '../../../widgets/app_search_field.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/round_icon_button.dart';
 import '../../../widgets/top_fade.dart';
-import '../../browser/address.dart';
 import '../controllers/youtube_controller.dart';
 import 'widgets/home_sections.dart';
 import 'widgets/shorts_shelf.dart';
@@ -30,13 +29,12 @@ class YoutubeView extends GetView<YoutubeController> {
     return Column(
       children: <Widget>[
         AppHeader(
-          title: 'Toomu',
+          title: 'YouTube',
           actions: <Widget>[
             HeaderAction(icon: Icons.video_library_outlined, tooltip: 'Library', onTap: () => Get.toNamed(Routes.library)),
-            HeaderAction(icon: Iconsax.global_copy, tooltip: 'Browser', onTap: () => Get.toNamed(Routes.browser, arguments: newTabUrl)),
           ],
           bottom: AppSearchField(
-            hint: 'Search or paste a YouTube link',
+            hint: 'Search YouTube or paste a link',
             controller: controller.searchText,
             onSubmitted: controller.submit,
             onChanged: (v) {
@@ -121,8 +119,6 @@ class _HomeFeed extends GetView<YoutubeController> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: <Widget>[
-              const SliverToBoxAdapter(child: SiteIconsRow()),
-              const SliverToBoxAdapter(child: ActiveDownloadsBar()),
               SliverToBoxAdapter(child: SizedBox(height: 8 * scale)),
               SliverPersistentHeader(pinned: true, delegate: FeedChipsHeader(scale: scale)),
               // Signed in but shown the general feed: why, and a way back.

@@ -22,12 +22,14 @@ class AppBottomNav extends StatelessWidget {
     required this.items,
     required this.index,
     required this.onTap,
+    this.badges = const <int>[],
     super.key,
   });
 
   final List<AppNavItem> items;
   final int index;
   final ValueChanged<int> onTap;
+  final List<int> badges;
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +62,7 @@ class AppBottomNav extends StatelessWidget {
                 child: _NavSlot(
                   item: items[i],
                   active: i == index,
+                  badge: i < badges.length ? badges[i] : 0,
                   onTap: () => onTap(i),
                 ),
               ),
@@ -71,10 +74,11 @@ class AppBottomNav extends StatelessWidget {
 }
 
 class _NavSlot extends StatelessWidget {
-  const _NavSlot({required this.item, required this.active, required this.onTap});
+  const _NavSlot({required this.item, required this.active, required this.badge, required this.onTap});
 
   final AppNavItem item;
   final bool active;
+  final int badge;
   final VoidCallback onTap;
 
   static const _motion = Duration(milliseconds: 260);
@@ -90,7 +94,7 @@ class _NavSlot extends StatelessWidget {
     return Semantics(
       button: true,
       selected: active,
-      label: item.label,
+      label: badge > 0 ? '${item.label}, $badge' : item.label,
       child: InkResponse(
         onTap: onTap,
         radius: 32 * scale,
@@ -99,35 +103,59 @@ class _NavSlot extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            AnimatedContainer(
-              duration: _motion,
-              curve: Curves.easeOutCubic,
-              width: (active ? 52 : 36) * scale,
-              height: 30 * scale,
-              decoration: BoxDecoration(
-                gradient: active ? brand.pillGradient : null,
-                borderRadius: BorderRadius.circular(15 * scale),
-                boxShadow: active
-                    ? <BoxShadow>[
-                        BoxShadow(
-                          color: brand.primary.withValues(alpha: 0.35),
-                          blurRadius: 10 * scale,
-                          offset: Offset(0, 3 * scale),
-                        ),
-                      ]
-                    : null,
-              ),
-              alignment: Alignment.center,
-              child: AnimatedSwitcher(
-                duration: _motion,
-                transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
-                child: Icon(
-                  active ? item.activeIcon : item.icon,
-                  key: ValueKey<bool>(active),
-                  size: 21 * scale,
-                  color: active ? ColorConstants.white : ink.withValues(alpha: 0.55),
+            Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                AnimatedContainer(
+                  duration: _motion,
+                  curve: Curves.easeOutCubic,
+                  width: (active ? 52 : 36) * scale,
+                  height: 30 * scale,
+                  decoration: BoxDecoration(
+                    gradient: active ? brand.pillGradient : null,
+                    borderRadius: BorderRadius.circular(15 * scale),
+                    boxShadow: active
+                        ? <BoxShadow>[
+                            BoxShadow(
+                              color: brand.primary.withValues(alpha: 0.35),
+                              blurRadius: 10 * scale,
+                              offset: Offset(0, 3 * scale),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  alignment: Alignment.center,
+                  child: AnimatedSwitcher(
+                    duration: _motion,
+                    transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+                    child: Icon(
+                      active ? item.activeIcon : item.icon,
+                      key: ValueKey<bool>(active),
+                      size: 21 * scale,
+                      color: active ? ColorConstants.white : ink.withValues(alpha: 0.55),
+                    ),
+                  ),
                 ),
-              ),
+                if (badge > 0)
+                  Positioned(
+                    top: -4 * scale,
+                    right: -6 * scale,
+                    child: Container(
+                      constraints: BoxConstraints(minWidth: 17 * scale),
+                      padding: EdgeInsets.symmetric(horizontal: 4 * scale, vertical: 1 * scale),
+                      decoration: BoxDecoration(
+                        color: ColorConstants.premium,
+                        borderRadius: BorderRadius.circular(9 * scale),
+                        border: Border.all(color: ColorConstants.surfaceOn(dark), width: 2 * scale),
+                      ),
+                      child: Text(
+                        '$badge',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 10 * scale, fontWeight: FontWeight.w800, color: ColorConstants.white),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             SizedBox(height: 4 * scale),
             // One line, never wraps; shrinks a little on very narrow phones.

@@ -1,3 +1,5 @@
+import 'package:get/get.dart';
+
 import '../../services/storage_service.dart';
 
 /// Remembers where each video was left off (MX-style resume), keyed by
@@ -9,6 +11,8 @@ class VideoResumeRepository {
 
   static const storageKey = 'video_positions';
   static const _max = 300;
+
+  final changed = 0.obs;
 
   /// Positions closer than this to either end aren't worth resuming.
   static const margin = Duration(seconds: 10);
@@ -39,5 +43,6 @@ class VideoResumeRepository {
       all.remove(all.keys.first);
     }
     await _storage.write(storageKey, all);
+    changed.value++;
   }
 }

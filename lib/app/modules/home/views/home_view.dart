@@ -30,6 +30,7 @@ class HomeView extends GetView<HomeController> {
               items: HomeTabs.all.map((t) => t.nav).toList(),
               index: controller.tabIndex.value,
               onTap: controller.selectTab,
+              badges: [for (final t in HomeTabs.all) t.badge?.call() ?? 0],
             ),
           ),
         ],
