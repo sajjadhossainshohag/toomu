@@ -1,3 +1,8 @@
+// Tests the Windows build's installer on a Linux/macOS test machine (CI): the fake yt-dlp is a shell script
+// and the zips are made with zip/unzip, which a Windows machine doesn't have.
+@TestOn('!windows')
+library;
+
 import 'dart:async';
 import 'dart:io';
 
