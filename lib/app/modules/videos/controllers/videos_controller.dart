@@ -27,7 +27,7 @@ class VideoFolder {
 class VideosController extends GetxController {
   final _provider = LocalVideoProvider();
 
-  static const tabs = <String>['All videos', 'Folders'];
+  static const tabs = <String>['Videos', 'Folders'];
 
   final tab = 0.obs;
   final loading = false.obs;
