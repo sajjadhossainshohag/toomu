@@ -8,6 +8,61 @@ import 'package:toomu/app/services/youtube_account_service.dart';
 void main() {
   final feed = AccountFeed(() async => const {});
 
+  test('Watch later: a playlist\'s items, with views and age from their one info line', () {
+    final page = AccountFeed.parse(feed, {
+      'contents': [
+        {
+          'playlistVideoRenderer': {
+            'videoId': 'abcdefghijk',
+            'title': {'runs': [{'text': 'Saved for later'}]},
+            'shortBylineText': {
+              'runs': [
+                {
+                  'text': 'Some Channel',
+                  'navigationEndpoint': {'browseEndpoint': {'browseId': 'UC${'c' * 22}'}},
+                }
+              ]
+            },
+            'lengthText': {'simpleText': '12:34'},
+            'videoInfo': {
+              'runs': [{'text': '1.2M views'}, {'text': ' • '}, {'text': '3 years ago'}]
+            },
+          }
+        },
+      ],
+    });
+    final v = page.videos.single;
+    expect(v.id.value, 'abcdefghijk');
+    expect(v.title, 'Saved for later');
+    expect(v.author, 'Some Channel');
+    expect(v.channelId.value, 'UC${'c' * 22}');
+    expect(v.duration, const Duration(minutes: 12, seconds: 34));
+    expect(v.engagement.viewCount, 1200000);
+    expect(v.uploadDateRaw, '3 years ago');
+  });
+
+  test('Watch later changes: YouTube\'s edit_playlist actions on the WL playlist', () {
+    expect(AccountFeed.editWatchLaterBody('abcdefghijk', add: true), {
+      'playlistId': 'WL',
+      'actions': [{'action': 'ACTION_ADD_VIDEO', 'addedVideoId': 'abcdefghijk'}],
+    });
+    expect(AccountFeed.editWatchLaterBody('abcdefghijk', add: false), {
+      'playlistId': 'WL',
+      'actions': [{'action': 'ACTION_REMOVE_VIDEO_BY_VIDEO_ID', 'removedVideoId': 'abcdefghijk'}],
+    });
+  });
+
+  test('watched report: the player\'s playback-stats link with ver=2 and a playback nonce', () {
+    final url = AccountFeed.watchedUrl({
+      'playbackTracking': {
+        'videostatsPlaybackUrl': {'baseUrl': 'https://s.youtube.com/api/stats/playback?docid=abcdefghijk&ei=E'},
+      },
+    }, 'NONCE');
+    expect(url!.host, 's.youtube.com');
+    expect(url.queryParameters, {'docid': 'abcdefghijk', 'ei': 'E', 'ver': '2', 'cpn': 'NONCE'});
+    expect(AccountFeed.watchedUrl({'playabilityStatus': {}}, 'NONCE'), isNull);
+  });
+
   test('signed-in headers carry the SAPISIDHASH authorisations', () {
     final at = DateTime.fromMillisecondsSinceEpoch(1700000000000);
     final h = AccountFeed.headersFor(

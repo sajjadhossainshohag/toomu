@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -67,10 +68,60 @@ class AccountFeed {
 
   Future<AccountFeedPage> continuation(String token) => _browse({'continuation': token});
 
+  Future<AccountFeedPage> history() => _browse({'browseId': 'FEhistory'});
+
+  Future<AccountFeedPage> watchLater() => _browse({'browseId': 'VLWL'});
+
+  Future<void> editWatchLater(String videoId, {required bool add}) =>
+      _post('browse/edit_playlist', editWatchLaterBody(videoId, add: add));
+
+  // YouTube's history only has what was reported as played: the same report youtube.com (and yt-dlp's
+  // --mark-watched) sends, the player's "videostats playback" URL with a fresh client playback nonce.
+  Future<void> markWatched(String videoId) async {
+    final player = jsonDecode(await _post('player', {'videoId': videoId}));
+    final url = watchedUrl(player, _nonce());
+    if (url == null) throw StateError('YouTube gave no playback report link.');
+    final cookies = await _cookies();
+    final req = await _client.getUrl(url);
+    headersFor(cookies).forEach(req.headers.set);
+    final res = await req.close().timeout(const Duration(seconds: 15));
+    await res.drain<void>();
+    if (res.statusCode >= 300) throw HttpException('YouTube answered ${res.statusCode}');
+  }
+
+  static String _nonce() {
+    const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    final r = Random.secure();
+    return String.fromCharCodes(List.generate(16, (_) => abc.codeUnitAt(r.nextInt(abc.length))));
+  }
+
+  static Map<String, Object> editWatchLaterBody(String videoId, {required bool add}) => {
+    'playlistId': 'WL',
+    'actions': [
+      add
+          ? {'action': 'ACTION_ADD_VIDEO', 'addedVideoId': videoId}
+          : {'action': 'ACTION_REMOVE_VIDEO_BY_VIDEO_ID', 'removedVideoId': videoId},
+    ],
+  };
+
+  static Uri? watchedUrl(Object? player, String nonce) {
+    final base = (((player is Map ? player['playbackTracking'] : null) as Map?)?['videostatsPlaybackUrl']
+        as Map?)?['baseUrl'];
+    if (base is! String) return null;
+    final uri = Uri.parse(base);
+    return uri.replace(queryParameters: {...uri.queryParameters, 'ver': '2', 'cpn': nonce});
+  }
+
   Future<AccountFeedPage> _browse(Map<String, Object> body, {bool withChips = false}) async {
+    final text = await _post('browse', body);
+    // A page is up to ~1 MB of JSON: decoding it here would stall scrolling.
+    return parse(this, await Isolate.run(() => jsonDecode(text)), withChips: withChips);
+  }
+
+  Future<String> _post(String endpoint, Map<String, Object> body) async {
     final cookies = await _cookies();
     if (cookies.isEmpty) throw StateError('Not signed in to YouTube.');
-    final req = await _client.postUrl(Uri.parse('$_origin/youtubei/v1/browse?prettyPrint=false'));
+    final req = await _client.postUrl(Uri.parse('$_origin/youtubei/v1/$endpoint?prettyPrint=false'));
     headersFor(cookies).forEach(req.headers.set);
     req.add(utf8.encode(jsonEncode({
       'context': {
@@ -91,8 +142,7 @@ class AccountFeed {
       throw SignInExpired();
     }
     if (res.statusCode != 200) throw HttpException('YouTube answered ${res.statusCode}');
-    // A page is up to ~1 MB of JSON: decoding it here would stall scrolling.
-    return parse(this, await Isolate.run(() => jsonDecode(text)), withChips: withChips);
+    return text;
   }
 
   /// Headers of a signed-in request from youtube.com (as yt-dlp builds them).
@@ -140,16 +190,14 @@ class AccountFeed {
         return;
       }
       if (j is! Map) return;
-      final video = j['videoRenderer'] is Map
-          ? _fromVideoRenderer(j['videoRenderer'] as Map)
-          : j['lockupViewModel'] is Map
-              ? _fromLockup(j['lockupViewModel'] as Map)
-              : null;
+      final video = videoOf(j);
       if (video != null) {
         if (seen.add(video.id.value)) videos.add(video);
         return;
       }
-      if (j['videoRenderer'] is Map || j['lockupViewModel'] is Map) return; // skipped kind
+      if (j['videoRenderer'] is Map || j['playlistVideoRenderer'] is Map || j['lockupViewModel'] is Map) {
+        return; // skipped kind
+      }
       final cont = j['continuationItemRenderer'];
       if (cont is Map) {
         next = _token(cont['continuationEndpoint']) ?? next;
@@ -186,11 +234,13 @@ class AccountFeed {
     return null;
   }
 
-  static Video? videoOf(Map item) => item['videoRenderer'] is Map
-      ? _fromVideoRenderer(item['videoRenderer'] as Map)
-      : item['lockupViewModel'] is Map
-          ? _fromLockup(item['lockupViewModel'] as Map)
-          : null;
+  static Video? videoOf(Map item) => switch (item) {
+    {'videoRenderer': final Map v} => _fromVideoRenderer(v),
+    // A playlist's items (Watch later).
+    {'playlistVideoRenderer': final Map v} => _fromVideoRenderer(v),
+    {'lockupViewModel': final Map l} => _fromLockup(l),
+    _ => null,
+  };
 
   static String? text(Object? t) => _text(t);
 
@@ -210,14 +260,19 @@ class AccountFeed {
     final channel = ((((owner?['runs'] as List?)?.firstOrNull as Map?)?['navigationEndpoint'] as Map?)?['browseEndpoint']
         as Map?)?['browseId'];
     final length = _text(v['lengthText']);
+    // Playlist items: "1.2M views", " • ", "3 years ago" in one line.
+    final info = [
+      for (final r in ((v['videoInfo'] as Map?)?['runs'] as List?) ?? const [])
+        if ((r as Map)['text'] case final String s when s.trim() != '•' && s.trim().isNotEmpty) s.trim(),
+    ];
     return _video(
       id: id,
       title: _text(v['title']) ?? '',
       author: _text(owner) ?? '',
       channelId: channel is String ? channel : null,
       duration: length,
-      views: _text(v['viewCountText']),
-      age: _text(v['publishedTimeText']),
+      views: _text(v['viewCountText']) ?? info.firstOrNull,
+      age: _text(v['publishedTimeText']) ?? (info.length > 1 ? info[1] : null),
     );
   }
 

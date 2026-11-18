@@ -312,20 +312,47 @@ class YoutubeController extends GetxController {
       _searchFallback = false;
       feedNotice.value = null;
       unawaited(_resetFeed());
+      unawaited(loadLibrary());
     });
     history.assignAll(
       (_storage.read<List>(AppConstants.kSearchHistory) ?? const [])
           .cast<String>(),
     );
-    watched.assignAll(SavedVideos.read(_storage.read<List>(AppConstants.kWatchHistory)));
-    watchLater.assignAll(SavedVideos.read(_storage.read<List>(AppConstants.kWatchLater)));
+    unawaited(loadLibrary());
   }
 
   final watched = <Video>[].obs;
   final watchLater = <Video>[].obs;
+  final libraryLoading = false.obs;
+
+  bool get onAccount => YoutubeAccountService.to.signedIn.value;
+
+  // Signed in: the account's own History and Watch later, from YouTube. Signed out: the lists kept on the phone.
+  Future<void> loadLibrary() async {
+    if (!onAccount) {
+      watched.assignAll(SavedVideos.read(_storage.read<List>(AppConstants.kWatchHistory)));
+      watchLater.assignAll(SavedVideos.read(_storage.read<List>(AppConstants.kWatchLater)));
+      return;
+    }
+    libraryLoading.value = true;
+    try {
+      final (seen, later) = await (_account.history(), _account.watchLater()).wait;
+      if (!onAccount) return;
+      watched.assignAll(seen.videos);
+      watchLater.assignAll(later.videos);
+    } catch (e) {
+      debugPrint('[YouTube] library: $e');
+    } finally {
+      libraryLoading.value = false;
+    }
+  }
 
   void _rememberWatched(Video video) {
     watched.assignAll(SavedVideos.add(watched, video));
+    if (onAccount) {
+      _account.markWatched(video.id.value).catchError((Object e) => debugPrint('[YouTube] not added to history: $e'));
+      return;
+    }
     unawaited(_storage.write(AppConstants.kWatchHistory, SavedVideos.write(watched)));
   }
 
@@ -342,12 +369,19 @@ class YoutubeController extends GetxController {
   bool isSaved(Video video) => watchLater.any((v) => v.id == video.id);
 
   void toggleWatchLater(Video video) {
-    if (isSaved(video)) {
-      watchLater.removeWhere((v) => v.id == video.id);
-      showSnack('Removed from Watch later', video.title, duration: const Duration(seconds: 2));
-    } else {
-      watchLater.assignAll(SavedVideos.add(watchLater, video));
-      showSnack('Saved to Watch later', video.title, duration: const Duration(seconds: 2));
+    final add = !isSaved(video);
+    void apply(bool add) =>
+        add ? watchLater.assignAll(SavedVideos.add(watchLater, video)) : watchLater.removeWhere((v) => v.id == video.id);
+    apply(add);
+    showSnack(add ? 'Saved to Watch later' : 'Removed from Watch later', video.title,
+        duration: const Duration(seconds: 2));
+    if (onAccount) {
+      _account.editWatchLater(video.id.value, add: add).catchError((Object e) {
+        debugPrint('[YouTube] Watch later: $e');
+        apply(!add);
+        showSnack("Couldn't update Watch later", ErrorText.of(e));
+      });
+      return;
     }
     unawaited(_storage.write(AppConstants.kWatchLater, SavedVideos.write(watchLater)));
   }

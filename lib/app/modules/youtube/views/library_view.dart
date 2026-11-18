@@ -9,7 +9,7 @@ import '../../../widgets/segmented_tabs.dart';
 import '../controllers/youtube_controller.dart';
 import 'widgets/video_row.dart';
 
-/// What you watched and what you saved for later, kept on the phone.
+/// What you watched and what you saved for later: your YouTube account's lists when signed in, else the phone's.
 class LibraryView extends StatefulWidget {
   const LibraryView({super.key});
 
@@ -19,6 +19,12 @@ class LibraryView extends StatefulWidget {
 
 class _LibraryViewState extends State<LibraryView> {
   var _later = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Get.find<YoutubeController>().loadLibrary();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +53,8 @@ class _LibraryViewState extends State<LibraryView> {
                       style: TextStyle(fontSize: 20 * scale, fontWeight: FontWeight.w800, color: ink),
                     ),
                   ),
-                  if (!_later)
+                  // Signed in, clearing would wipe the YouTube account's history: that stays on youtube.com.
+                  if (!_later && !yt.onAccount)
                     Obx(
                       () => TextButton(
                         onPressed: yt.watched.isEmpty
@@ -79,6 +86,7 @@ class _LibraryViewState extends State<LibraryView> {
               child: Obx(() {
                 final List<Video> list = _later ? yt.watchLater : yt.watched;
                 if (list.isEmpty) {
+                  if (yt.libraryLoading.value) return const Center(child: CircularProgressIndicator());
                   return Center(
                     child: Padding(
                       padding: EdgeInsets.all(32 * scale),
@@ -92,11 +100,15 @@ class _LibraryViewState extends State<LibraryView> {
                     ),
                   );
                 }
-                return ListView.builder(
+                final removable = _later || !yt.onAccount;
+                return RefreshIndicator(
+                  onRefresh: yt.loadLibrary,
+                  child: ListView.builder(
                   padding: EdgeInsets.only(bottom: 16 * scale),
                   itemCount: list.length,
                   itemBuilder: (_, i) {
                     final v = list[i];
+                    if (!removable) return VideoRow(video: v, onTap: () => yt.watchFromCard(v));
                     return Dismissible(
                       key: ValueKey('${_later ? 'later' : 'seen'}:${v.id.value}'),
                       direction: DismissDirection.endToStart,
@@ -110,6 +122,7 @@ class _LibraryViewState extends State<LibraryView> {
                       child: VideoRow(video: v, onTap: () => yt.watchFromCard(v)),
                     );
                   },
+                  ),
                 );
               }),
             ),
