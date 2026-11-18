@@ -1,8 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../../../core/theme/brand_colors.dart';
@@ -10,7 +8,6 @@ import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../widgets/app_group.dart';
-import '../../../widgets/app_snackbar.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/track_artwork.dart';
 import '../../youtube/controllers/youtube_controller.dart';
@@ -149,15 +146,12 @@ class _WatchDetailsState extends State<WatchDetails> {
                   _Pill(
                     icon: Icons.share_rounded,
                     label: 'Share',
-                    onTap: () => SharePlus.instance.share(ShareParams(text: 'https://youtu.be/${v.id.value}', subject: v.title)),
+                    onTap: () => yt.shareVideo(v),
                   ),
                   _Pill(
                     icon: Icons.link_rounded,
                     label: 'Copy link',
-                    onTap: () async {
-                      await Clipboard.setData(ClipboardData(text: 'https://youtu.be/${v.id.value}'));
-                      showSnack('Link copied', v.title, duration: const Duration(seconds: 2));
-                    },
+                    onTap: () => yt.copyLink(v),
                   ),
                 ],
               ),

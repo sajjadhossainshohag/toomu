@@ -17,6 +17,13 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import 'support/temp_storage.dart';
 
+class _Yt extends YoutubeController {
+  final watched = <String>[];
+
+  @override
+  Future<void> watchFromCard(Video video) async => watched.add(video.id.value);
+}
+
 class _Home extends HomeController {
   @override
   // ignore: must_call_super
@@ -33,7 +40,7 @@ void main() {
   setUpAll(() async => dir = await useTempStorageDir());
   tearDownAll(() => deleteTempStorageDir(dir));
 
-  Future<YoutubeController> open(WidgetTester tester) async {
+  Future<_Yt> open(WidgetTester tester) async {
     await tester.runAsync(() async {
       Get.put(StorageService(await tempBox('home_${n++}', dir)));
       for (final tag in [StorageService.downloadsBox, StorageService.logsBox, StorageService.positionsBox]) {
@@ -46,14 +53,14 @@ void main() {
     });
     Get.put<HomeController>(_Home());
     Get.put(DownloadsController());
-    final yt = Get.put(YoutubeController());
+    final yt = Get.put<YoutubeController>(_Yt()) as _Yt;
     addTearDown(Get.reset);
     yt.history.assignAll(['lofi beats', 'news today']);
     tester.view
       ..devicePixelRatio = 1
       ..physicalSize = const Size(390, 844);
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SafeArea(child: YoutubeView()))));
+    await tester.pumpWidget(const GetMaterialApp(home: Scaffold(body: SafeArea(child: YoutubeView()))));
     // After the controller's own first load has started (it never finishes offline).
     yt.feedLoading.value = false;
     yt.feed.assignAll([_video('aaaaaaaaaaa', 'Building a tiny house in 30 days')]);
@@ -91,6 +98,24 @@ void main() {
     await tester.pump();
     expect(yt.searchText.text, 'lofi beats', reason: 'the tap reached the list before the field lost focus');
     expect(find.text('Recent searches'), findsNothing);
+    await settle(tester);
+  });
+
+  testWidgets('tapping a video card watches it; ⋮ has Download, Share and Copy link', (tester) async {
+    final yt = await open(tester);
+    expect(find.byTooltip('Download'), findsNothing, reason: 'the card has one ⋮ instead of its own buttons');
+
+    await tester.tap(find.byTooltip('More'));
+    await tester.pumpAndSettle();
+    for (final action in ['Download', 'Share', 'Copy link']) {
+      expect(find.text(action), findsOneWidget);
+    }
+    await tester.tapAt(const Offset(10, 10)); // closes the menu
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Building a tiny house in 30 days'));
+    await tester.pump();
+    expect(yt.watched, ['aaaaaaaaaaa'], reason: 'the card opens the video, not the download sheet');
     await settle(tester);
   });
 

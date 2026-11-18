@@ -8,14 +8,13 @@ import '../../../../core/theme/color_constants.dart';
 import '../../../../core/theme/design_metrics.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../widgets/press_start.dart';
-import '../../../../widgets/round_icon_button.dart';
 import '../../../../widgets/track_artwork.dart';
 
 class VideoCard extends StatelessWidget {
   const VideoCard({
     required this.video,
     required this.onTap,
-    this.onWatch,
+    this.onMore,
     this.onPressStart,
     this.watchLoading = false,
     super.key,
@@ -23,11 +22,11 @@ class VideoCard extends StatelessWidget {
 
   final Video video;
 
-  /// Card / ⬇ button: the download sheet.
+  /// The card: watch it (no ads).
   final VoidCallback onTap;
 
-  /// ▶ button: watch in the app's player (no ads).
-  final VoidCallback? onWatch;
+  /// ⋮: Download, Share, Copy link.
+  final VoidCallback? onMore;
   final VoidCallback? onPressStart;
   final bool watchLoading;
 
@@ -83,6 +82,11 @@ class VideoCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  if (watchLoading)
+                    ColoredBox(
+                      color: ColorConstants.black.withValues(alpha: 0.45),
+                      child: const Center(child: CircularProgressIndicator(color: ColorConstants.white)),
+                    ),
                 ],
               ),
             ),
@@ -124,34 +128,12 @@ class VideoCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  SizedBox(width: 8 * scale),
-                  if (onWatch != null) ...<Widget>[
-                    watchLoading
-                        ? SizedBox(
-                            width: 42 * scale,
-                            height: 42 * scale,
-                            child: Padding(
-                              padding: EdgeInsets.all(11 * scale),
-                              child: const CircularProgressIndicator(strokeWidth: 2.5),
-                            ),
-                          )
-                        : RoundIconButton(
-                            icon: Icons.play_arrow_rounded,
-                            size: 42,
-                            filled: true,
-                            gradient: ColorConstants.watchGradient,
-                            onTap: onWatch,
-                            tooltip: 'Watch',
-                          ),
-                    SizedBox(width: 8 * scale),
-                  ],
-                  RoundIconButton(
-                    icon: Icons.download_rounded,
-                    size: 42,
-                    filled: true,
-                    onTap: onTap,
-                    tooltip: 'Download',
-                  ),
+                  if (onMore != null)
+                    IconButton(
+                      tooltip: 'More',
+                      onPressed: onMore,
+                      icon: Icon(Icons.more_vert_rounded, color: ink.withValues(alpha: 0.7)),
+                    ),
                 ],
               ),
             ),

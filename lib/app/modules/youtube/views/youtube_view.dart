@@ -163,8 +163,8 @@ class _HomeFeed extends GetView<YoutubeController> {
                       return Obx(
                         () => VideoCard(
                           video: video,
-                          onTap: () => controller.openVideo(video.id.value, known: video),
-                          onWatch: () => controller.watchFromCard(video),
+                          onTap: () => controller.watchFromCard(video),
+                          onMore: () => controller.showVideoMenu(video),
                           onPressStart: () => controller.prefetch(video),
                           watchLoading: controller.watchingId.value == video.id.value,
                         ),
@@ -270,8 +270,8 @@ class _SearchResults extends GetView<YoutubeController> {
                   return Obx(
                     () => VideoCard(
                       video: video,
-                      onTap: () => controller.openVideo(video.id.value, known: video),
-                      onWatch: () => controller.watchFromCard(video),
+                      onTap: () => controller.watchFromCard(video),
+                      onMore: () => controller.showVideoMenu(video),
                       onPressStart: () => controller.prefetch(video),
                       watchLoading: controller.watchingId.value == video.id.value,
                     ),

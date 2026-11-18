@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../../../core/utils/error_text.dart';
@@ -894,6 +895,35 @@ class YoutubeController extends GetxController {
       beforeOpen: () => watchingId.value = null,
     );
     watchingId.value = null;
+  }
+
+  Future<void> showVideoMenu(Video video) async {
+    final pick = await showOptionSheet<String>(
+      title: video.title,
+      options: const <SheetOption<String>>[
+        SheetOption(value: 'download', label: 'Download', icon: Icons.download_rounded),
+        SheetOption(value: 'share', label: 'Share', icon: Icons.share_rounded),
+        SheetOption(value: 'copy', label: 'Copy link', icon: Icons.link_rounded),
+      ],
+    );
+    switch (pick) {
+      case 'download':
+        await openVideo(video.id.value, known: video);
+      case 'share':
+        await shareVideo(video);
+      case 'copy':
+        await copyLink(video);
+    }
+  }
+
+  static String linkOf(Video video) => 'https://youtu.be/${video.id.value}';
+
+  Future<void> shareVideo(Video video) =>
+      SharePlus.instance.share(ShareParams(text: linkOf(video), subject: video.title));
+
+  Future<void> copyLink(Video video) async {
+    await Clipboard.setData(ClipboardData(text: linkOf(video)));
+    showSnack('Link copied', video.title, duration: const Duration(seconds: 2));
   }
 
   Future<void> watchInPlace(Video video) async {
