@@ -26,6 +26,12 @@ example.com/path
     expect(hosts, {'ads.example.com', 'bet.example.net', 'plain.example.io'});
   });
 
+  test('closing the browser frees the blocklist', () {
+    Blocklist.hosts = {'bet.example'};
+    Blocklist.forget();
+    expect(Blocklist.contains('bet.example'), isFalse);
+  });
+
   test('a listed host blocks its subdomains', () {
     Blocklist.hosts = {'bet.example'};
     expect(Blocklist.contains('bet.example'), isTrue);

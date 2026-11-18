@@ -53,8 +53,9 @@ class VideoCard extends StatelessWidget {
                   CachedNetworkImage(
                     imageUrl: video.thumbnails.highResUrl,
                     fit: BoxFit.cover,
-                    // The 1280 px original decoded at full size took ~3.5 MB of RAM per card.
-                    memCacheWidth: math.min(1280, (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round()),
+                    // Decoded at most 720 px wide (~1.2 MB per card), the size YouTube serves its feed in; the
+                    // 1280 px original at screen width took 2.6–3.5 MB.
+                    memCacheWidth: math.min(720,(MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round()),
                     placeholder: (_, _) =>
                         const ArtworkPlaceholder(size: 375, radius: 0, icon: Icons.smart_display_rounded),
                     errorWidget: (_, _, _) =>

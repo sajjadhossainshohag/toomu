@@ -116,14 +116,25 @@ class AdFilters {
   static FilterEngine? engine;
   static Future<void>? _loading;
 
+  static int _generation = 0;
+
   static Future<void> load() => _loading ??= _load();
 
+  static void forget() {
+    _generation++;
+    engine = null;
+    _loading = null;
+  }
+
   static Future<void> _load() async {
+    final generation = _generation;
     try {
       final file = await cachedList(url, 'easylist.txt');
       if (file == null) return;
       final sw = Stopwatch()..start();
-      engine = await _parse(file.path);
+      final parsed = await _parse(file.path);
+      if (generation != _generation) return;
+      engine = parsed;
       debugPrint(
         '[AdFilters] ${engine!.networkFilterCount} URL filters, '
         '${engine!.genericSelectorCount} hiding rules in ${sw.elapsedMilliseconds} ms',

@@ -65,7 +65,7 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
                       context: context,
                       removeTop: true,
                       removeBottom: true,
-                      child: player,
+                      child: KeyedSubtree(key: controller.videoBox, child: player),
                     ),
                   ),
                   Expanded(

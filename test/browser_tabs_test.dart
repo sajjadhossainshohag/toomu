@@ -60,6 +60,20 @@ void main() {
       expect(s.isLive('b'), isTrue);
       expect(s.isLive('a'), isFalse);
     });
+
+    test('the phone short of memory: only the shown tab keeps its page, the others reload when shown', () {
+      final s = TabSession()
+        ..open('a')
+        ..open('b')
+        ..open('c')
+        ..activate('b');
+      expect(s.dropBackground(), unorderedEquals(['a', 'c']));
+      expect(s.isLive('b'), isTrue);
+      expect(s.isLive('a'), isFalse);
+      expect(s.ids, ['a', 'b', 'c'], reason: 'the tabs themselves stay');
+      s.activate('a');
+      expect(s.isLive('a'), isTrue);
+    });
   });
 
   group('closing', () {

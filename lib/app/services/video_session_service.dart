@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -17,6 +18,7 @@ import '../data/providers/local_video_provider.dart';
 import '../data/repositories/video_resume_repository.dart';
 import '../routes/app_pages.dart';
 import '../modules/video_player/controllers/video_playback_controller.dart';
+import '../modules/video_player/controllers/watch_details_controller.dart';
 import 'diagnostics_service.dart';
 import 'settings_service.dart';
 import 'stream_proxy.dart';
@@ -52,6 +54,7 @@ class VideoSessionService extends GetxService {
 
   /// Shrunk into the corner of the app (YouTube's minimize): still playing, picture on.
   final minimized = false.obs;
+  Rect? minimizeFrom;
 
   VideoItem? get current => items.isEmpty ? null : items[index.value];
 
@@ -59,8 +62,19 @@ class VideoSessionService extends GetxService {
   void Function(MethodCall call)? _screen;
 
   final List<StreamSubscription<dynamic>> _subs = [];
+  Timer? _releaseTimer;
+  AppLifecycleListener? _lifecycle;
 
   VideoSessionService init() {
+    // Hidden a while with nothing playing: mpv's memory goes back. Not at once (a quick app switch would pay
+    // for a new player) and never on screen (media_kit destroys a disposed mpv on the UI thread, a stall).
+    _lifecycle = AppLifecycleListener(
+      onHide: () {
+        _releaseTimer?.cancel();
+        _releaseTimer = Timer(const Duration(minutes: 1), _releasePlayer);
+      },
+      onShow: () => _releaseTimer?.cancel(),
+    );
     // Buttons from the PiP window / background notification land here even
     // when no player screen is open.
     _platform.setMethodCallHandler((call) async {
@@ -119,6 +133,7 @@ class VideoSessionService extends GetxService {
     }
 
     if (_active) _savePosition();
+    _releaseDetails(args.items);
     items.assignAll(args.items);
     index.value = args.index.clamp(0, args.items.length - 1);
     _ensurePlayer();
@@ -129,6 +144,26 @@ class VideoSessionService extends GetxService {
     player.setAudioTrack(AudioTrack.auto());
     player.setSubtitleTrack(SubtitleTrack.auto());
     return false;
+  }
+
+  @override
+  void onClose() {
+    _releaseTimer?.cancel();
+    _lifecycle?.dispose();
+    super.onClose();
+  }
+
+  void _releasePlayer() {
+    final p = _player;
+    if (p == null || _active || _screen != null) return;
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _subs.clear();
+    _player = null;
+    _video = null;
+    unawaited(p.dispose());
+    debugPrint('[Video] player released (app in the background)');
   }
 
   void _ensurePlayer() {
@@ -143,7 +178,7 @@ class VideoSessionService extends GetxService {
         // logs "property not found" on every video. osd-level is set in _configure instead.
         osc: true,
         logLevel: MPVLogLevel.warn,
-        // Used for read-ahead and again for the seek-back cache.
+        // Read-ahead; media_kit also uses it for the seek-back cache, which _configure makes smaller.
         bufferSize: DeviceProfile.lowEnd ? 16 << 20 : 32 << 20,
       ),
     );
@@ -211,11 +246,25 @@ class VideoSessionService extends GetxService {
   /// Ends the session (mini bar ✕, notification Close, music starting…).
   Future<void> stop() async {
     _savePosition();
+    _releaseDetails();
     inBackground.value = false;
     minimized.value = false;
     _endSession();
     await _stopMedia();
   }
+
+  void _releaseDetails([Iterable<VideoItem> keep = const []]) {
+    final kept = {for (final k in keep) k.youtubeId};
+    for (final item in items) {
+      final id = item.youtubeId;
+      if (id != null && !kept.contains(id) && Get.isRegistered<WatchDetailsController>(tag: id)) {
+        Get.delete<WatchDetailsController>(tag: id);
+      }
+    }
+  }
+
+  @visibleForTesting
+  set debugActive(bool on) => _active = on;
 
   bool _videoOff = false;
 
@@ -285,6 +334,9 @@ class VideoSessionService extends GetxService {
     // Read ahead into the memory buffer only. On disk, read-ahead has
     // no size limit: more mobile data and more work for the phone.
     set('cache-on-disk', 'no');
+    // Already-played video kept for seeking back: enough for a −10 s double-tap at 1080p, not a second full
+    // buffer. Further back is fetched again.
+    set('demuxer-max-back-bytes', '${DeviceProfile.lowEnd ? 6 << 20 : 12 << 20}');
     // Sidecar subtitles are added explicitly in openItem; mpv's own search would add them twice.
     set('sub-auto', 'no');
     set('osd-level', '0');

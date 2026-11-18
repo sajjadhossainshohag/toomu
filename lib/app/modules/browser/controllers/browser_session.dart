@@ -9,6 +9,7 @@ import '../../../services/browser_store.dart';
 import '../../../widgets/app_snackbar.dart';
 import '../ad_blocker.dart';
 import '../address.dart';
+import '../redirect_guard.dart';
 import '../tab_session.dart';
 import 'browser_controller.dart';
 
@@ -73,6 +74,8 @@ class BrowserSession extends GetxController {
       _forget(c, now: true);
     }
     forgetAdHidingJs();
+    AdFilters.forget();
+    Blocklist.forget();
     super.onClose();
   }
 
@@ -147,17 +150,22 @@ class BrowserSession extends GetxController {
         }),
       );
     }
-    final dropped = _order.activate(c.id);
-    for (final id in dropped) {
-      live.remove(id);
-      tabs.firstWhereOrNull((t) => t.id == id)?.dropPage();
-    }
+    _drop(_order.activate(c.id));
     live.add(c.id);
     active.value = c;
     unawaited(c.setForeground(true));
     showingSwitcher.value = false;
     _save();
   }
+
+  void _drop(List<String> ids) {
+    for (final id in ids) {
+      live.remove(id);
+      tabs.firstWhereOrNull((t) => t.id == id)?.dropPage();
+    }
+  }
+
+  void dropBackgroundPages() => _drop(_order.dropBackground());
 
   /// Closes tab [c]. Closing the last one leaves the switcher empty, like
   /// Chrome: "+" opens a tab, back leaves the browser. The switcher stays

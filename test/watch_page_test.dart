@@ -9,6 +9,7 @@ import 'package:toomu/app/data/models/video_item.dart';
 import 'package:toomu/app/data/providers/youtube_provider.dart';
 import 'package:toomu/app/modules/home/controllers/home_controller.dart';
 import 'package:toomu/app/modules/video_player/controllers/video_playback_controller.dart';
+import 'package:toomu/app/modules/video_player/controllers/watch_details_controller.dart';
 import 'package:toomu/app/modules/video_player/views/video_player_view.dart';
 import 'package:toomu/app/modules/video_player/views/watch_details.dart';
 import 'package:toomu/app/modules/youtube/controllers/youtube_controller.dart';
@@ -256,6 +257,25 @@ void main() {
     await tester.pump();
     expect(find.text('Building a tiny house'), findsOneWidget);
     expect(_source.videoLoads, 1, reason: 'full screen and back is the most common gesture here');
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('maximizing the minimized video does not load its details, Up next and comments again', (tester) async {
+    await open(tester, const Size(390, 844));
+    await tester.pump();
+    expect(_source.videoLoads, 1);
+    final session = VideoSessionService.to..debugActive = true;
+    await tester.pumpWidget(const SizedBox());
+    await session.detach(keepPlaying: true, minimize: true);
+    await tester.pumpWidget(const MaterialApp(home: VideoPlayerView()));
+    await tester.pump();
+    expect(find.text('Building a tiny house'), findsOneWidget);
+    expect(_source.videoLoads, 1, reason: 'each maximize loading it again got YouTube to rate-limit the app');
+
+    session.debugActive = false;
+    await session.stop();
+    expect(Get.isRegistered<WatchDetailsController>(tag: 'aaaaaaaaaaa'), isFalse,
+        reason: 'closing the video frees its watch page');
     await tester.pump(const Duration(seconds: 5));
   });
 

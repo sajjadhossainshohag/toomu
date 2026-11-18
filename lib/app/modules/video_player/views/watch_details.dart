@@ -24,8 +24,8 @@ class WatchDetails extends StatefulWidget {
 }
 
 class _WatchDetailsState extends State<WatchDetails> {
-  // Lives as long as the player (it deletes it on close), not this panel: turning to full screen and back would
-  // otherwise load everything again and lose opened comments.
+  // Lives as long as the video session (VideoSessionService frees it), not this panel: full screen and back, or
+  // minimize and back, would otherwise load everything again (YouTube rate-limits that) and lose opened comments.
   late final WatchDetailsController c = Get.isRegistered<WatchDetailsController>(tag: widget.videoId)
       ? Get.find<WatchDetailsController>(tag: widget.videoId)
       : Get.put(WatchDetailsController(widget.videoId, Get.find<YoutubeController>().watchSource), tag: widget.videoId);

@@ -12,6 +12,7 @@ import '../../../data/models/video_item.dart';
 import '../../../data/providers/local_music_provider.dart';
 import '../../../data/providers/local_video_provider.dart';
 import '../../../routes/app_pages.dart';
+import '../../browser/controllers/browser_session.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
 import '../../../extractors/direct_file_extractor.dart';
 import '../../../services/floating_button_service.dart';
@@ -72,6 +73,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     ArtworkCache.clear();
     VideoThumbCache.clear();
     if (Get.isRegistered<YoutubeController>()) Get.find<YoutubeController>().trimFeedCache();
+    if (Get.isRegistered<BrowserSession>()) BrowserSession.to.dropBackgroundPages();
   }
 
   /// Nav bar tap / programmatic switch: jump straight there (no scrolling

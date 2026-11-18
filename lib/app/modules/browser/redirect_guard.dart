@@ -65,7 +65,15 @@ class Blocklist {
   static Set<String> _hosts = const {};
   static Future<void>? _loading;
 
+  static int _generation = 0;
+
   static Future<void> load() => _loading ??= _load();
+
+  static void forget() {
+    _generation++;
+    _hosts = const {};
+    _loading = null;
+  }
 
   static bool contains(String host) {
     var h = host.toLowerCase();
@@ -78,11 +86,14 @@ class Blocklist {
   }
 
   static Future<void> _load() async {
+    final generation = _generation;
     try {
       final file = await cachedList(url, 'blocklist.txt');
       if (file == null) return;
       final path = file.path;
-      _hosts = await Isolate.run(() => parse(File(path).readAsStringSync()));
+      final hosts = await Isolate.run(() => parse(File(path).readAsStringSync()));
+      if (generation != _generation) return;
+      _hosts = hosts;
       debugPrint('[Blocklist] ${_hosts.length} hosts');
     } catch (e) {
       debugPrint('[Blocklist] $e');

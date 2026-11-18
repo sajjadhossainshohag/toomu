@@ -22,7 +22,6 @@ import '../../../widgets/app_snackbar.dart';
 import '../../youtube/controllers/youtube_controller.dart';
 import '../../../core/utils/subtitles.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' show ClosedCaptionTrackInfo;
-import 'watch_details_controller.dart';
 
 /// What to play: a list (e.g. a folder) and where to start.
 class VideoPlaylist {
@@ -143,8 +142,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     VolumeController.instance.showSystemUI = false;
 
     // Music and video shouldn't play at once.
-    final music = AudioPlayerService.to.player;
-    if (music.playing) music.pause();
+    unawaited(AudioPlayerService.to.pause());
 
     _subs.addAll([
       player.stream.playing.listen((v) {
@@ -205,10 +203,6 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   @override
   void onClose() {
     _savePosition();
-    for (final item in items) {
-      final id = item.youtubeId;
-      if (id != null) Get.delete<WatchDetailsController>(tag: id);
-    }
     for (final s in _subs) {
       s.cancel();
     }
@@ -623,8 +617,12 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       return;
     }
     _minimizing = true;
+    final box = videoBox.currentContext?.findRenderObject() as RenderBox?;
+    _session.minimizeFrom = box != null && box.hasSize ? box.localToGlobal(Offset.zero) & box.size : null;
     Get.back();
   }
+
+  final videoBox = GlobalKey();
 
   Future<void> exit() async {
     if (exiting.value) return;

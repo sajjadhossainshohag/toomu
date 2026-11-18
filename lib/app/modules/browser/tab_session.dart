@@ -75,6 +75,12 @@ class TabSession {
     return next;
   }
 
+  List<String> dropBackground() {
+    final dropped = [for (final id in _live) if (id != _active) id];
+    _live.removeWhere(dropped.contains);
+    return dropped;
+  }
+
   void closeAll() {
     _ids.clear();
     _live.clear();
