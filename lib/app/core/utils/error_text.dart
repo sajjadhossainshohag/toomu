@@ -9,17 +9,28 @@ import '../../data/providers/ytdlp/ytdlp_bridge.dart';
 
 /// Turns exceptions into short messages a user can act on.
 abstract class ErrorText {
+  static const signInExpired = 'Your YouTube sign-in has expired. Sign in again with the button at the top of Settings.';
+
+  // The engine's name stays out of the app, and its "please report this issue on GitHub" advice is for its own
+  // developers, not ours.
+  static String _plain(String m, {int max = 160}) {
+    final report = m.indexOf('; please report this issue');
+    var t = (report >= 0 ? m.substring(0, report) : m)
+        .replaceAll(RegExp(r'\s*(?:for |from |in )?https?://\S+'), '')
+        .replaceAll(RegExp('yt-dlp', caseSensitive: false), 'the downloader');
+    if (t.startsWith('the ')) t = 'T${t.substring(1)}';
+    return t.length > max ? '${t.substring(0, max)}…' : t;
+  }
+
   static String _ytdlp(String m) {
     final local = localFileProblem(m);
     if (local != null) return local;
     final l = m.toLowerCase();
-    if (l.contains('cookies are no longer valid')) {
-      return 'Your YouTube sign-in has expired. Sign in again in Settings → YouTube account.';
-    }
+    if (l.contains('cookies are no longer valid')) return signInExpired;
     // Whole phrases: a bare 'age' also matches "page", "storage", "image".
     if (l.contains('age-restricted') || l.contains('age restricted') || l.contains('confirm your age') ||
         l.contains('inappropriate for some users')) {
-      return 'This video is age-restricted. Sign in to YouTube (Settings → YouTube account) to watch or download it.';
+      return 'This video is age-restricted. Sign in to YouTube (the button at the top of Settings) to watch or download it.';
     }
     // "Sign in to confirm you're not a bot" — not every "sign in to
     // confirm…" (that's also how YouTube asks for your age).
@@ -34,7 +45,7 @@ abstract class ErrorText {
     }
     if (l.contains('private video')) return 'This video is private.';
     if (l.contains('unable to download') && l.contains('network')) return 'Network error. Check your connection.';
-    return m.length > 160 ? '${m.substring(0, 160)}…' : m;
+    return _plain(m);
   }
 
   static String of(Object e) {
@@ -68,9 +79,8 @@ abstract class ErrorText {
     if (e is FileSystemException) {
       return 'Could not save the file: ${e.osError?.message ?? e.message}';
     }
-    if (e is PlatformException) return e.message ?? e.code;
-    if (e is StateError) return e.message;
-    final text = e.toString();
-    return text.length > 140 ? '${text.substring(0, 140)}…' : text;
+    if (e is PlatformException) return _plain(e.message ?? e.code);
+    if (e is StateError) return _plain(e.message);
+    return _plain(e.toString(), max: 140);
   }
 }

@@ -141,7 +141,7 @@ class _MediaSheetState extends State<_MediaSheet> {
                           ),
                           SizedBox(width: 10 * scale),
                           Text(
-                            'Reading the page with yt-dlp…',
+                            'Searching the page…',
                             style: TextStyle(fontSize: 13 * scale, color: ink.withValues(alpha: 0.7)),
                           ),
                         ],
@@ -157,7 +157,7 @@ class _MediaSheetState extends State<_MediaSheet> {
                           TextButton.icon(
                             onPressed: c.searchPage,
                             icon: const Icon(Icons.travel_explore_rounded),
-                            label: Text(error == null ? 'Search the page with yt-dlp' : 'Try again'),
+                            label: Text(error == null ? 'Search the page more deeply' : 'Try again'),
                           ),
                         ],
                       ),
@@ -368,7 +368,7 @@ class _PageResultTile extends StatelessWidget {
                   ),
                   SizedBox(height: 3 * scale),
                   Text(
-                    ['Found by yt-dlp', if (info.duration != null) Formatters.duration(info.duration)].join(' • '),
+                    ['Found by deep search', if (info.duration != null) Formatters.duration(info.duration)].join(' • '),
                     style: TextStyle(fontSize: 12 * scale, color: ink.withValues(alpha: 0.6)),
                   ),
                 ],

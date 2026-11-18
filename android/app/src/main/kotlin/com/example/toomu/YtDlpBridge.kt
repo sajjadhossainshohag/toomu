@@ -137,7 +137,7 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
             // The library throws when yt-dlp exits with an error; hand it back
             // as a normal failed result so Dart can retry (other client,
             // built-in downloader) and log the details.
-            mapOf("exitCode" to 1, "out" to "", "err" to (e.message ?: "yt-dlp failed"))
+            mapOf("exitCode" to 1, "out" to "", "err" to (e.message ?: "The downloader failed"))
         }
     }
 
@@ -250,7 +250,7 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
             val version = runVersion()
             if (version == null) {
                 if (backup.exists()) files.durableCopy(backup, target)
-                throw IOException("New yt-dlp $tag did not start; kept the previous version")
+                throw IOException("The new engine version $tag did not start; kept the previous one")
             }
             backup.delete()
             prefs.edit().putString("tag", tag).putString("version", version).apply()

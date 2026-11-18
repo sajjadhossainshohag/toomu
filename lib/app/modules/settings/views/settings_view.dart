@@ -167,17 +167,6 @@ class SettingsView extends GetView<SettingsController> {
                         onTap: controller.explainShare,
                       ),
                       ],
-                      AppRow(
-                        icon: Iconsax.profile_circle_copy,
-                        tint: ColorConstants.siteYoutube,
-                        label: 'YouTube account',
-                        value: controller.account.signedIn.value
-                            ? 'Signed in'
-                            : controller.account.expired.value
-                                ? 'Expired'
-                                : 'Sign in',
-                        onTap: controller.youtubeAccount,
-                      ),
                     ],
                   ),
                   SizedBox(height: 18 * scale),
@@ -188,17 +177,10 @@ class SettingsView extends GetView<SettingsController> {
                       AppRow(
                         icon: Icons.system_update_alt_rounded,
                         tint: ColorConstants.tileDownloads,
-                        label: controller.ytdlp.updating.value ? 'Updating…' : 'yt-dlp engine',
+                        label: controller.ytdlp.updating.value ? 'Updating…' : 'Downloader Engine',
                         value: controller.ytdlp.version.value ??
                             (controller.ytdlp.ready.value ? '?' : 'Starting…'),
                         onTap: controller.updateDownloader,
-                      ),
-                      AppRow(
-                        icon: Icons.tune_rounded,
-                        tint: ColorConstants.tileTheme,
-                        label: 'Update channel',
-                        value: controller.ytdlp.channel.value == 'nightly' ? 'Nightly' : 'Stable',
-                        onTap: controller.pickUpdateChannel,
                       ),
                       ],
                       AppRow(
@@ -276,7 +258,7 @@ class SettingsView extends GetView<SettingsController> {
                         icon: Icons.info_rounded,
                         tint: ColorConstants.tileAbout,
                         label: 'About',
-                        value: 'v1.0.0',
+                        value: Platform.isAndroid ? null : UpdateService.versionLabel,
                         onTap: controller.about,
                       ),
                     ],

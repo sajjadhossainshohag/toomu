@@ -1130,7 +1130,7 @@ class DownloadService extends GetxService {
           (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
         );
     if (found.isEmpty) {
-      throw StateError('yt-dlp finished but the file is missing');
+      throw StateError('The download finished but the file is missing');
     }
     task.filePath = found.first.path;
   }

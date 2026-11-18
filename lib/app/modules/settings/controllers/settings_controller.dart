@@ -11,6 +11,7 @@ import '../../../core/values/app_constants.dart';
 import '../../../services/download_service.dart';
 import '../../../services/floating_button_service.dart';
 import '../../../services/settings_service.dart';
+import '../../../services/update_service.dart';
 import '../../../services/youtube_account_service.dart';
 import '../../../services/ytdlp_service.dart';
 import '../../../widgets/app_dialog.dart';
@@ -139,30 +140,25 @@ class SettingsController extends GetxController {
     showSnack('Downloader', status, duration: const Duration(seconds: 3));
   }
 
-  Future<void> pickUpdateChannel() async {
-    final picked = await showOptionSheet<String>(
-      title: 'Downloader updates',
-      selected: ytdlp.channel.value,
-      options: const <SheetOption<String>>[
-        SheetOption(value: 'stable', label: 'Stable', subtitle: 'Recommended'),
-        SheetOption(value: 'nightly', label: 'Nightly', subtitle: 'Newest YouTube fixes first, less tested'),
-      ],
-    );
-    if (picked == null || picked == ytdlp.channel.value) return;
-    ytdlp.setChannel(picked);
-    await updateDownloader();
-  }
-
   void openDiagnostics() => Get.bottomSheet(const DiagnosticsSheet(), isScrollControlled: true);
 
   void openEqualizer() => Get.bottomSheet(const EqualizerSheet(), isScrollControlled: true);
 
   void shareApp() => SharePlus.instance.share(
-        ShareParams(text: 'Download videos & music and play them offline with ${AppConstants.appName}.'),
+        ShareParams(
+          text: 'Download videos & music and play them offline with ${AppConstants.appName}.\n\n'
+              'Get the latest version: ${AppConstants.latestDownload(windows: HostOs.isWindows)}',
+        ),
       );
 
   void about() => showNoticeDialog(
         title: AppConstants.appName,
-        message: 'Version 1.0.0\nYouTube downloader and music player.',
+        message: 'Version ${UpdateService.versionLabel}\n\n'
+            '${AppConstants.appName} downloads videos and music from YouTube, TikTok and almost any website, '
+            'and plays them offline.\n\n'
+            '• Watch YouTube without ads, with background play and picture-in-picture\n'
+            '• The built-in browser finds the videos on any page you open\n'
+            '• Fast downloads over several connections that pick up again after you lose signal\n'
+            '• A music player with playlists, an equalizer and a sleep timer',
       );
 }

@@ -210,7 +210,7 @@ class WindowsYtDlp {
     if (tmp.lengthSync() < minBinaryBytes) {
       final size = tmp.lengthSync();
       await tmp.delete();
-      throw ToolInstallException('Downloaded yt-dlp.exe too small ($size bytes)');
+      throw ToolInstallException('The downloaded engine is too small ($size bytes)');
     }
     final target = File(_ytdlp);
     final backup = File('$_ytdlp.old');
@@ -221,7 +221,7 @@ class WindowsYtDlp {
     if (v == null) {
       await target.delete();
       if (backup.existsSync()) await backup.rename(target.path);
-      throw ToolInstallException('New yt-dlp $tag did not start; kept the previous version');
+      throw ToolInstallException('The new engine version $tag did not start; kept the previous one');
     }
     if (backup.existsSync()) await backup.delete().catchError((Object _) => backup);
     _writeState({..._readState(), 'tag': tag, 'version': v});

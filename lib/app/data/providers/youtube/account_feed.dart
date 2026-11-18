@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
+import '../../../core/utils/error_text.dart';
 import '../youtube_provider.dart';
 
 /// One of the signed-in account's home categories (YouTube's chip bar:
@@ -333,5 +334,5 @@ class AccountFeed {
 /// YouTube refused the saved sign-in (401/403): it expired or was signed
 /// out elsewhere.
 class SignInExpired extends StateError {
-  SignInExpired() : super('Your YouTube sign-in has expired. Sign in again in Settings → YouTube account.');
+  SignInExpired() : super(ErrorText.signInExpired);
 }

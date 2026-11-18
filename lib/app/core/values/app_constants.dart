@@ -17,6 +17,10 @@ abstract class AppConstants {
 
   static const githubRepo = 'sajjadhossainshohag/toomu';
 
+  // GitHub redirects /releases/latest/download/<file> to that file in the newest release.
+  static String latestDownload({required bool windows}) =>
+      'https://github.com/$githubRepo/releases/latest/download/${windows ? 'toomu-windows-x64.zip' : 'toomu-arm64-v8a.apk'}';
+
   /// Ad filters (Adblock Plus syntax), the main list AdBlock uses.
   static const easylistUrl = 'https://easylist.to/easylist/easylist.txt';
   static const blocklistUrl = 'https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling/hosts';
@@ -36,7 +40,6 @@ abstract class AppConstants {
 
   /// Searches the last "For you" feed mixed; the next one picks others.
   static const kFeedTopics = 'home_feed_topics';
-  static const kYtdlpChannel = 'ytdlp_channel';
   static const kBubbleEnabled = 'floating_button_enabled';
   static const kVideoBackgroundPlay = 'video_background_play';
   static const kVideoAutoPip = 'video_auto_pip';

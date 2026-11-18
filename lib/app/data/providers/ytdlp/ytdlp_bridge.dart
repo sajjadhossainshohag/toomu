@@ -45,7 +45,7 @@ class YtDlpException implements Exception {
 
   static String _lastError(String err) {
     final lines = err.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
-    final error = lines.lastWhere((l) => l.startsWith('ERROR:'), orElse: () => lines.isEmpty ? 'yt-dlp failed' : lines.last);
+    final error = lines.lastWhere((l) => l.startsWith('ERROR:'), orElse: () => lines.isEmpty ? 'The downloader failed' : lines.last);
     return error.replaceFirst(RegExp(r'^ERROR:\s*(\[[^\]]+\]\s*)?([\w-]{11}:\s*)?'), '');
   }
 

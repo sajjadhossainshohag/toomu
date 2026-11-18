@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../core/utils/error_text.dart';
 import '../core/values/app_constants.dart';
 import '../data/models/yt_collection.dart';
 import '../data/models/yt_info.dart';
@@ -51,8 +52,6 @@ class YtDlpService extends GetxService {
   }
 
   YtDlpService init() {
-    channel.value =
-        _storage.read<String>(AppConstants.kYtdlpChannel) ?? 'stable';
     unawaited(_start());
     return this;
   }
@@ -118,15 +117,10 @@ class YtDlpService extends GetxService {
           : 'Already up to date (${version.value})';
     } catch (e) {
       debugPrint('[yt-dlp] update failed: $e');
-      return 'Update failed: $e';
+      return 'Update failed: ${ErrorText.of(e)}';
     } finally {
       updating.value = false;
     }
-  }
-
-  void setChannel(String value) {
-    channel.value = value;
-    _storage.write(AppConstants.kYtdlpChannel, value);
   }
 
   /// Options shared by every run.

@@ -21,6 +21,11 @@ class UpdateService extends GetxService {
   static UpdateService get to => Get.find();
 
   static const currentTag = String.fromEnvironment('TOOMU_TAG');
+
+  // Windows CI builds have no release tag, only a build label.
+  static String get versionLabel => currentTag.isNotEmpty
+      ? currentTag
+      : const String.fromEnvironment('TOOMU_BUILD', defaultValue: 'Development build');
   static const _channel = MethodChannel('toomu/update');
 
   final checking = false.obs;

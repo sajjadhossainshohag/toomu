@@ -30,7 +30,7 @@ class DiagnosticsSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Obx(() => Text(
-                  'yt-dlp ${YtDlpService.to.version.value ?? '(starting…)'} • ${log.lines.length} lines',
+                  'Downloader Engine ${YtDlpService.to.version.value ?? '(starting…)'} • ${log.lines.length} lines',
                   style: TextStyle(
                     fontSize: 12 * scale,
                     fontWeight: FontWeight.w600,

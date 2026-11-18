@@ -34,6 +34,6 @@ void main() {
     expect(YtDlpService.isSessionExpired(err), isTrue);
     expect(ErrorText.of(YtDlpException(err)), contains('sign-in has expired'));
     expect(ErrorText.of(YtDlpException('ERROR: [youtube] abc: Sign in to confirm your age.')),
-        contains('Settings → YouTube account'));
+        contains('the button at the top of Settings'));
   });
 }
