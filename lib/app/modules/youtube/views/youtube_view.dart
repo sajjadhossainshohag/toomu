@@ -40,6 +40,7 @@ class YoutubeView extends GetView<YoutubeController> {
             onSubmitted: controller.submit,
             onChanged: (v) {
               if (v.isEmpty) controller.clearResults();
+              controller.typed(v);
             },
             onFocusChange: (f) => controller.searchFocused.value = f,
             trailing: IconButton(
@@ -60,15 +61,25 @@ class YoutubeView extends GetView<YoutubeController> {
                 // empty: an unpositioned child would size the Stack to nothing.
                 Positioned.fill(
                   child: Obx(
-                    () => controller.searchFocused.value && controller.history.isNotEmpty
+                    () => controller.searchFocused.value
                         ? ValueListenableBuilder<TextEditingValue>(
                             valueListenable: controller.searchText,
                             builder: (context, text, _) => text.text.isEmpty
-                                ? ColoredBox(
-                                    color: ColorConstants.pageOn(context.isDark),
-                                    child: const RecentSearchesList(),
+                                ? Obx(
+                                    () => controller.history.isEmpty
+                                        ? const SizedBox.shrink()
+                                        : ColoredBox(
+                                            color: ColorConstants.pageOn(context.isDark),
+                                            child: const RecentSearchesList(),
+                                          ),
                                   )
-                                : const SizedBox.shrink(),
+                                // Typing a search, not looking at its results: suggestions, like YouTube.
+                                : text.text.trim() == controller.searchQuery.value
+                                ? const SizedBox.shrink()
+                                : ColoredBox(
+                                    color: ColorConstants.pageOn(context.isDark),
+                                    child: SearchSuggestionsList(typed: text.text),
+                                  ),
                           )
                         : const SizedBox.shrink(),
                   ),

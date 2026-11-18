@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:get/get.dart';
@@ -13,6 +15,7 @@ import '../../../downloads/controllers/downloads_controller.dart';
 import '../../../home/controllers/home_controller.dart';
 import '../../../home/home_tabs.dart';
 import '../../controllers/youtube_controller.dart';
+import 'video_row.dart';
 
 /// Round site shortcuts; each opens in the in-app browser.
 class SiteIconsRow extends StatelessWidget {
@@ -172,39 +175,124 @@ class RecentSearchesList extends StatelessWidget {
                       ],
                     ),
                   ),
-                  for (final q in yt.history)
-                    InkWell(
-                      onTap: () {
-                        FocusManager.instance.primaryFocus?.unfocus();
-                        yt.useHistory(q);
-                      },
-                      child: Padding(
-                        padding: EdgeInsets.only(left: 16 * scale, right: 4 * scale),
-                        child: Row(
-                          children: <Widget>[
-                            Icon(Iconsax.clock_copy, size: 20 * scale, color: ink.withValues(alpha: 0.55)),
-                            SizedBox(width: 14 * scale),
-                            Expanded(
-                              child: Text(
-                                q,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 15 * scale, color: ink),
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'Edit "$q"',
-                              onPressed: () => yt.searchText.value = TextEditingValue(
-                                text: q,
-                                selection: TextSelection.collapsed(offset: q.length),
-                              ),
-                              icon: Icon(Icons.north_west_rounded, size: 18 * scale, color: ink.withValues(alpha: 0.45)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  for (final q in yt.history) _QueryRow(query: q, icon: Iconsax.clock_copy),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown under the search box while typing, like YouTube's: matching recent searches, YouTube's suggested
+/// searches, then a few videos for what was typed.
+class SearchSuggestionsList extends StatelessWidget {
+  const SearchSuggestionsList({required this.typed, super.key});
+
+  final String typed;
+
+  @override
+  Widget build(BuildContext context) {
+    final double scale = context.scale;
+    final bool dark = context.isDark;
+    final Color ink = ColorConstants.textOn(dark);
+    final yt = Get.find<YoutubeController>();
+    return TextFieldTapRegion(
+      child: Obx(() {
+        final q = typed.trim().toLowerCase();
+        final recent = yt.history.where((h) => h.toLowerCase().contains(q)).take(3).toList();
+        final seen = {for (final r in recent) r.toLowerCase()};
+        final suggested = yt.suggestions.where((s) => seen.add(s.toLowerCase())).take(8).toList();
+        final videos = yt.suggestedVideos.toList();
+        return ListView(
+          padding: EdgeInsets.fromLTRB(16 * scale, 10 * scale, 16 * scale, 24 * scale),
+          children: <Widget>[
+            if (recent.isNotEmpty || suggested.isNotEmpty)
+              Container(
+                padding: EdgeInsets.symmetric(vertical: 6 * scale),
+                decoration: BoxDecoration(color: ColorConstants.groupOn(dark), borderRadius: BorderRadius.circular(18 * scale)),
+                child: Column(
+                  children: <Widget>[
+                    for (final r in recent) _QueryRow(query: r, icon: Iconsax.clock_copy, typed: typed),
+                    for (final s in suggested) _QueryRow(query: s, icon: Iconsax.search_normal_1_copy, typed: typed),
+                  ],
+                ),
+              ),
+            if (videos.isNotEmpty) ...<Widget>[
+              Padding(
+                padding: EdgeInsets.fromLTRB(4 * scale, 18 * scale, 4 * scale, 4 * scale),
+                child: Text(
+                  'Videos',
+                  style: TextStyle(fontSize: 13 * scale, fontWeight: FontWeight.w700, color: ink.withValues(alpha: 0.6)),
+                ),
+              ),
+              for (final v in videos)
+                VideoRow(
+                  video: v,
+                  onTap: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    yt.watchFromCard(v);
+                  },
+                ),
+            ],
+          ],
+        );
+      }),
+    );
+  }
+}
+
+/// A search to run: tap searches it, ↖ puts it in the box to keep typing. The part not typed yet is bold.
+class _QueryRow extends StatelessWidget {
+  const _QueryRow({required this.query, required this.icon, this.typed = ''});
+
+  final String query;
+  final IconData icon;
+  final String typed;
+
+  @override
+  Widget build(BuildContext context) {
+    final double scale = context.scale;
+    final Color ink = ColorConstants.textOn(context.isDark);
+    final yt = Get.find<YoutubeController>();
+    final style = TextStyle(fontSize: 15 * scale, color: ink);
+    final t = typed.trimLeft();
+    final completes = t.isNotEmpty && query.toLowerCase().startsWith(t.toLowerCase());
+    return InkWell(
+      onTap: () {
+        FocusManager.instance.primaryFocus?.unfocus();
+        yt.useHistory(query);
+      },
+      child: Padding(
+        padding: EdgeInsets.only(left: 16 * scale, right: 4 * scale),
+        child: Row(
+          children: <Widget>[
+            Icon(icon, size: 20 * scale, color: ink.withValues(alpha: 0.55)),
+            SizedBox(width: 14 * scale),
+            Expanded(
+              child: Text.rich(
+                completes
+                    ? TextSpan(
+                        children: <TextSpan>[
+                          TextSpan(text: query.substring(0, t.length)),
+                          TextSpan(text: query.substring(t.length), style: const TextStyle(fontWeight: FontWeight.w700)),
+                        ],
+                      )
+                    : TextSpan(text: query),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Edit "$query"',
+              onPressed: () => yt.fillSearch(query),
+              // Iconsax has no up-left arrow: its up arrow, turned.
+              icon: Transform.rotate(
+                angle: -pi / 4,
+                child: Icon(Iconsax.arrow_up_3_copy, size: 18 * scale, color: ink.withValues(alpha: 0.45)),
               ),
             ),
           ],

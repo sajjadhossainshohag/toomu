@@ -29,7 +29,23 @@ class _Channels implements ChannelSource {
       const VideosPage([]);
 }
 
+class _Page implements FeedPage {
+  _Page(this.videos);
+
+  @override
+  final List<Video> videos;
+
+  @override
+  Future<FeedPage?> nextPage() async => null;
+}
+
 class _Yt extends YoutubeController {
+  _Yt()
+    : super(
+        suggest: (q) async => ['$q live', '$q mix', 'lofi beats'],
+        search: (q) async => _Page([for (var i = 0; i < 5; i++) _video('vid${'$i'.padLeft(8, '0')}', '$q video $i')]),
+      );
+
   final opened = <String>[];
 
   @override
@@ -115,6 +131,46 @@ void main() {
     await tester.pump();
     expect(yt.searchText.text, 'lofi beats', reason: 'the tap reached the list before the field lost focus');
     expect(find.text('Recent searches'), findsNothing);
+    await settle(tester);
+  });
+
+  testWidgets('typing suggests like YouTube: matching recent searches, YouTube\'s searches, then a few videos',
+      (tester) async {
+    final yt = await open(tester);
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'lofi');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('lofi live', findRichText: true), findsOneWidget);
+    expect(find.text('lofi mix', findRichText: true), findsOneWidget);
+    expect(find.text('lofi beats', findRichText: true), findsOneWidget, reason: 'once, as a recent search');
+    expect(find.text('Videos'), findsNothing, reason: 'videos wait for a pause in typing');
+
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('Videos'), findsOneWidget);
+    expect(find.text('lofi video 0'), findsOneWidget);
+    expect(find.text('lofi video 3'), findsNothing, reason: 'three, the rest are a search away');
+
+    await tester.tap(find.text('lofi video 1'));
+    await tester.pump();
+    expect(yt.opened, ['vid00000001']);
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    await tester.tap(find.text('lofi mix', findRichText: true));
+    await tester.pump();
+    expect(yt.searchText.text, 'lofi mix');
+    expect(yt.searchQuery.value, 'lofi mix', reason: 'a suggestion searches it');
+    await settle(tester);
+  });
+
+  testWidgets('a pasted link gets no suggestions', (tester) async {
+    final yt = await open(tester);
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'https://youtu.be/aaaaaaaaaaa');
+    await tester.pump(const Duration(seconds: 1));
+    expect(yt.suggestions, isEmpty);
+    expect(yt.suggestedVideos, isEmpty);
+    expect(find.text('Videos'), findsNothing);
     await settle(tester);
   });
 

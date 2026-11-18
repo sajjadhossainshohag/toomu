@@ -1,11 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' show PlatformDispatcher;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -41,6 +43,7 @@ import '../../../services/storage_service.dart';
 import '../../../data/providers/ytdlp/ytdlp_bridge.dart';
 import '../../../services/ytdlp_service.dart';
 import '../views/widgets/format_sheet.dart';
+import '../../browser/address.dart' show parseGoogleSuggest;
 import '../../channel/controllers/channel_controller.dart';
 import '../../shorts/controllers/shorts_controller.dart';
 import '../../home/home_tabs.dart';
@@ -73,13 +76,16 @@ class YoutubeController extends GetxController {
   YoutubeController({
     Random? random,
     Future<FeedPage> Function(String query)? search,
+    Future<List<String>> Function(String typed)? suggest,
     AccountFeed? account,
   }) : _random = random ?? Random(),
        _searchOverride = search,
+       _suggestOverride = suggest,
        _accountOverride = account;
 
   final Random _random;
   final Future<FeedPage> Function(String query)? _searchOverride;
+  final Future<List<String>> Function(String typed)? _suggestOverride;
   final AccountFeed? _accountOverride;
 
   final YoutubeProvider _yt = YoutubeProvider();
@@ -399,6 +405,9 @@ class YoutubeController extends GetxController {
   @override
   void onClose() {
     _signInWatch?.dispose();
+    _suggestTimer?.cancel();
+    _videosTimer?.cancel();
+    _suggestClient.close(force: true);
     searchText.dispose();
     _yt.dispose();
     super.onClose();
@@ -575,6 +584,58 @@ class YoutubeController extends GetxController {
   void useHistory(String q) {
     searchText.text = q;
     submit(q);
+  }
+
+  void fillSearch(String q) {
+    searchText.value = TextEditingValue(text: q, selection: TextSelection.collapsed(offset: q.length));
+    typed(q);
+  }
+
+  final suggestions = <String>[].obs;
+  final suggestedVideos = <Video>[].obs;
+  Timer? _suggestTimer, _videosTimer;
+  String _typed = '';
+  final _suggestClient = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 5),
+    receiveTimeout: const Duration(seconds: 5),
+    responseType: ResponseType.plain,
+  ));
+
+  // As you type, like YouTube: its suggested searches almost at once, a few videos after a pause.
+  void typed(String text) {
+    final q = text.trim();
+    _typed = q;
+    _suggestTimer?.cancel();
+    _videosTimer?.cancel();
+    final link = LinkParser.youtubeVideoId(q) != null || (Uri.tryParse(q)?.hasScheme ?? false);
+    if (q.isEmpty || link) {
+      suggestions.clear();
+      suggestedVideos.clear();
+      return;
+    }
+    _suggestTimer = Timer(const Duration(milliseconds: 150), () async {
+      try {
+        final list = await (_suggestOverride ?? _youtubeSuggestions)(q);
+        if (_typed == q) suggestions.assignAll(list);
+      } catch (_) {
+        // Offline: recent searches still match.
+      }
+    });
+    _videosTimer = Timer(const Duration(milliseconds: 600), () async {
+      try {
+        final page = await _search(q);
+        if (_typed == q) suggestedVideos.assignAll(page.videos.take(3));
+      } catch (_) {}
+    });
+  }
+
+  Future<List<String>> _youtubeSuggestions(String q) async {
+    final r = await _suggestClient.get<String>(
+      'https://suggestqueries.google.com/complete/search',
+      // ds=yt: YouTube's suggestions. UTF-8 both ways, or Bangla and other scripts come back garbled.
+      queryParameters: {'client': 'firefox', 'ds': 'yt', 'ie': 'utf-8', 'oe': 'utf-8', 'q': q},
+    );
+    return parseGoogleSuggest(jsonDecode(r.data ?? ''));
   }
 
   void clearHistory() {
