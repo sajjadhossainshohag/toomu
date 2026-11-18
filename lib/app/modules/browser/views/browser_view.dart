@@ -44,7 +44,7 @@ class BrowserView extends GetView<BrowserSession> {
             bottom: false,
             child: Obx(() {
               final tab = session.active.value;
-              if (tab == null) return const SizedBox.shrink();
+              if (tab == null) return TabSwitcher(session: session);
               return Stack(
                 children: <Widget>[
                   // Each part watches only what it shows: a progress tick or

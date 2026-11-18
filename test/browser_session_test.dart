@@ -30,7 +30,12 @@ void main() {
     final history = StorageService(await tempBox('session_history_${n++}', dir));
     Get.put(BrowserStore(main, () async => history));
   });
-  tearDown(Get.reset);
+  tearDown(() {
+    // Closing the session (not just forgetting it) cancels its pending save, which would otherwise run after
+    // the store is gone.
+    Get.delete<BrowserSession>(force: true);
+    Get.reset();
+  });
 
   BrowserSession open() => Get.put(BrowserSession());
 
@@ -60,6 +65,32 @@ void main() {
     s.close(c); // the shown one
     expect(s.showingSwitcher.value, isTrue);
     expect(s.active.value, b);
+    await Future<void>.delayed(Duration.zero);
+  });
+
+  test('closing the last tab really closes it: the switcher is left empty, no new tab pops up', () async {
+    final s = open();
+    s.openSwitcher();
+    s.close(s.tab);
+    expect(s.tabs, isEmpty);
+    expect(s.active.value, isNull);
+    expect(s.showingSwitcher.value, isTrue);
+    expect(await s.handleBack(), isTrue, reason: 'back from the empty switcher leaves the browser');
+    await Future<void>.delayed(Duration.zero);
+  });
+
+  test('"Close all" leaves no tabs either, and the next visit starts with a new tab', () async {
+    final s = open();
+    s.newTab(url: 'https://b.com/');
+    s.openSwitcher();
+    s.closeAll();
+    expect(s.tabs, isEmpty);
+    expect(s.showingSwitcher.value, isTrue);
+    Get.delete<BrowserSession>(force: true); // leaving the browser saves the tabs
+
+    final again = open();
+    expect(again.tabs, hasLength(1));
+    expect(again.tab.tabUrl, newTabUrl);
     await Future<void>.delayed(Duration.zero);
   });
 

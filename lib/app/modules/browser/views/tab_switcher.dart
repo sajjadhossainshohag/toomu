@@ -5,6 +5,7 @@ import '../../../core/theme/brand_colors.dart';
 import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
 import '../../../widgets/app_dialog.dart';
+import '../../../widgets/empty_state.dart';
 import '../controllers/browser_controller.dart';
 import '../controllers/browser_session.dart';
 import 'site_icon.dart';
@@ -77,8 +78,10 @@ class TabSwitcher extends StatelessWidget {
             child: Row(
               children: <Widget>[
                 IconButton(
-                  tooltip: 'Back to the page',
-                  onPressed: () => session.showingSwitcher.value = false,
+                  tooltip: 'Back',
+                  onPressed: () async {
+                    if (await session.handleBack()) Get.back<void>();
+                  },
                   icon: Icon(Icons.arrow_back_rounded, color: ink),
                 ),
                 Expanded(
@@ -90,18 +93,22 @@ class TabSwitcher extends StatelessWidget {
                     );
                   }),
                 ),
-                IconButton(
-                  tooltip: 'Close all tabs',
-                  onPressed: () async {
-                    final ok = await showConfirmDialog(
-                      title: 'Close all tabs?',
-                      message: 'Every open tab closes.',
-                      confirmLabel: 'Close all',
-                      destructive: true,
-                    );
-                    if (ok) session.closeAll();
-                  },
-                  icon: Icon(Icons.layers_clear_outlined, color: ink.withValues(alpha: 0.8)),
+                Obx(
+                  () => IconButton(
+                    tooltip: 'Close all tabs',
+                    onPressed: session.tabs.isEmpty
+                        ? null
+                        : () async {
+                            final ok = await showConfirmDialog(
+                              title: 'Close all tabs?',
+                              message: 'Every open tab closes.',
+                              confirmLabel: 'Close all',
+                              destructive: true,
+                            );
+                            if (ok) session.closeAll();
+                          },
+                    icon: Icon(Icons.layers_clear_outlined, color: ink.withValues(alpha: 0.8)),
+                  ),
                 ),
                 IconButton(
                   tooltip: 'New tab',
@@ -113,29 +120,37 @@ class TabSwitcher extends StatelessWidget {
           ),
           Expanded(
             child: Obx(
-              () => GridView.builder(
-                padding: EdgeInsets.fromLTRB(12 * scale, 4 * scale, 12 * scale, 24 * scale),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: MediaQuery.sizeOf(context).width > 600 ? 3 : 2,
-                  mainAxisSpacing: 12 * scale,
-                  crossAxisSpacing: 12 * scale,
-                  childAspectRatio: 0.72,
-                ),
-                itemCount: session.tabs.length,
-                itemBuilder: (_, i) {
-                  final t = session.tabs[i];
-                  return Dismissible(
-                    key: ValueKey(t.id),
-                    onDismissed: (_) => session.close(t),
-                    child: TabCard(
-                      tab: t,
-                      selected: t == session.active.value,
-                      onTap: () => session.activate(t),
-                      onClose: () => session.close(t),
+              () => session.tabs.isEmpty
+                  ? EmptyState(
+                      icon: Icons.tab_rounded,
+                      title: 'No open tabs',
+                      message: 'Open a new tab to keep browsing, or go back to leave the browser.',
+                      actionLabel: 'New tab',
+                      onAction: session.newTab,
+                    )
+                  : GridView.builder(
+                      padding: EdgeInsets.fromLTRB(12 * scale, 4 * scale, 12 * scale, 24 * scale),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: MediaQuery.sizeOf(context).width > 600 ? 3 : 2,
+                        mainAxisSpacing: 12 * scale,
+                        crossAxisSpacing: 12 * scale,
+                        childAspectRatio: 0.72,
+                      ),
+                      itemCount: session.tabs.length,
+                      itemBuilder: (_, i) {
+                        final t = session.tabs[i];
+                        return Dismissible(
+                          key: ValueKey(t.id),
+                          onDismissed: (_) => session.close(t),
+                          child: TabCard(
+                            tab: t,
+                            selected: t == session.active.value,
+                            onTap: () => session.activate(t),
+                            onClose: () => session.close(t),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ),
         ],

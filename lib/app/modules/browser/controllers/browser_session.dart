@@ -157,8 +157,9 @@ class BrowserSession extends GetxController {
     _save();
   }
 
-  /// Closes tab [c]. Closing the last one leaves a new-tab page. The tab
-  /// switcher stays open (closing several tabs there is one tap each).
+  /// Closes tab [c]. Closing the last one leaves the switcher empty, like
+  /// Chrome: "+" opens a tab, back leaves the browser. The switcher stays
+  /// open (closing several tabs there is one tap each).
   void close(BrowserController c) {
     final wasShown = identical(active.value, c);
     final switcher = showingSwitcher.value;
@@ -168,11 +169,10 @@ class BrowserSession extends GetxController {
     _forget(c);
     if (next == null) {
       active.value = null;
-      newTab();
     } else if (wasShown) {
       activate(tabs.firstWhere((t) => t.id == next));
     }
-    showingSwitcher.value = switcher;
+    showingSwitcher.value = switcher || tabs.isEmpty;
     _save();
   }
 
@@ -184,7 +184,8 @@ class BrowserSession extends GetxController {
     tabs.clear();
     live.clear();
     active.value = null;
-    newTab();
+    showingSwitcher.value = true;
+    _save();
   }
 
   /// Opens at once; the shown page's picture fills in when it's taken.
@@ -199,6 +200,7 @@ class BrowserSession extends GetxController {
   /// close.
   Future<bool> handleBack() async {
     if (showingSwitcher.value) {
+      if (tabs.isEmpty) return true;
       showingSwitcher.value = false;
       return false;
     }
