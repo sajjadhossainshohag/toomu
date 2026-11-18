@@ -41,6 +41,7 @@ import '../../channel/controllers/channel_controller.dart';
 import '../../shorts/controllers/shorts_controller.dart';
 import '../../home/home_tabs.dart';
 import '../../../data/models/download_task.dart';
+import '../../../data/models/saved_videos.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/app_snackbar.dart';
@@ -313,6 +314,39 @@ class YoutubeController extends GetxController {
       (_storage.read<List>(AppConstants.kSearchHistory) ?? const [])
           .cast<String>(),
     );
+    watched.assignAll(SavedVideos.read(_storage.read<List>(AppConstants.kWatchHistory)));
+    watchLater.assignAll(SavedVideos.read(_storage.read<List>(AppConstants.kWatchLater)));
+  }
+
+  final watched = <Video>[].obs;
+  final watchLater = <Video>[].obs;
+
+  void _rememberWatched(Video video) {
+    watched.assignAll(SavedVideos.add(watched, video));
+    unawaited(_storage.write(AppConstants.kWatchHistory, SavedVideos.write(watched)));
+  }
+
+  void removeWatched(Video video) {
+    watched.removeWhere((v) => v.id == video.id);
+    unawaited(_storage.write(AppConstants.kWatchHistory, SavedVideos.write(watched)));
+  }
+
+  void clearWatched() {
+    watched.clear();
+    unawaited(_storage.remove(AppConstants.kWatchHistory));
+  }
+
+  bool isSaved(Video video) => watchLater.any((v) => v.id == video.id);
+
+  void toggleWatchLater(Video video) {
+    if (isSaved(video)) {
+      watchLater.removeWhere((v) => v.id == video.id);
+      showSnack('Removed from Watch later', video.title, duration: const Duration(seconds: 2));
+    } else {
+      watchLater.assignAll(SavedVideos.add(watchLater, video));
+      showSnack('Saved to Watch later', video.title, duration: const Duration(seconds: 2));
+    }
+    unawaited(_storage.write(AppConstants.kWatchLater, SavedVideos.write(watchLater)));
   }
 
   @override
@@ -882,7 +916,7 @@ class YoutubeController extends GetxController {
     openingVideo.value = false;
   }
 
-  /// Video card ▶ button: straight to the player, no sheet. The card shows
+  /// Video card: straight to the player, no sheet. The card shows
   /// a spinner while the streams are looked up.
   final watchingId = RxnString();
 
@@ -895,7 +929,10 @@ class YoutubeController extends GetxController {
       video.id.value,
       video.title,
       duration: video.duration,
-      beforeOpen: () => watchingId.value = null,
+      beforeOpen: () {
+        watchingId.value = null;
+        _rememberWatched(video);
+      },
     );
     watchingId.value = null;
   }
@@ -903,16 +940,21 @@ class YoutubeController extends GetxController {
   Future<void> showVideoMenu(Video video) async {
     final pick = await showOptionSheet<String>(
       title: video.title,
-      options: const <SheetOption<String>>[
-        SheetOption(value: 'download', label: 'Download', icon: Icons.download_rounded),
-        SheetOption(value: 'channel', label: 'Go to channel', icon: Icons.account_circle_rounded),
-        SheetOption(value: 'share', label: 'Share', icon: Icons.share_rounded),
-        SheetOption(value: 'copy', label: 'Copy link', icon: Icons.link_rounded),
+      options: <SheetOption<String>>[
+        const SheetOption(value: 'download', label: 'Download', icon: Icons.download_rounded),
+        isSaved(video)
+            ? const SheetOption(value: 'later', label: 'Remove from Watch later', icon: Icons.bookmark_remove_rounded)
+            : const SheetOption(value: 'later', label: 'Save to Watch later', icon: Icons.bookmark_add_outlined),
+        const SheetOption(value: 'channel', label: 'Go to channel', icon: Icons.account_circle_rounded),
+        const SheetOption(value: 'share', label: 'Share', icon: Icons.share_rounded),
+        const SheetOption(value: 'copy', label: 'Copy link', icon: Icons.link_rounded),
       ],
     );
     switch (pick) {
       case 'download':
         await openVideo(video.id.value, known: video);
+      case 'later':
+        toggleWatchLater(video);
       case 'channel':
         await openChannel(video);
       case 'share':
@@ -956,7 +998,10 @@ class YoutubeController extends GetxController {
       video.title,
       duration: video.duration,
       replace: true,
-      beforeOpen: () => watchingId.value = null,
+      beforeOpen: () {
+        watchingId.value = null;
+        _rememberWatched(video);
+      },
     );
     watchingId.value = null;
   }

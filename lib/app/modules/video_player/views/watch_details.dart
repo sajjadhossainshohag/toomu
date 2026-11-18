@@ -171,6 +171,11 @@ class _WatchDetailsState extends State<WatchDetails> {
                     primary: true,
                     onTap: () => yt.openVideo(v.id.value, known: v),
                   ),
+                  _Pill(
+                    icon: yt.isSaved(v) ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
+                    label: yt.isSaved(v) ? 'Saved' : 'Save',
+                    onTap: () => yt.toggleWatchLater(v),
+                  ),
                   _Pill(icon: Icons.share_rounded, label: 'Share', onTap: () => yt.shareVideo(v)),
                   _Pill(icon: Icons.link_rounded, label: 'Copy link', onTap: () => yt.copyLink(v)),
                 ],

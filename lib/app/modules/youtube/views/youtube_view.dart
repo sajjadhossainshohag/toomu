@@ -30,6 +30,7 @@ class YoutubeView extends GetView<YoutubeController> {
         AppHeader(
           title: 'Toomu',
           actions: <Widget>[
+            HeaderAction(icon: Icons.video_library_outlined, tooltip: 'Library', onTap: () => Get.toNamed(Routes.library)),
             HeaderAction(icon: Iconsax.global_copy, tooltip: 'Browser', onTap: () => Get.toNamed(Routes.browser)),
           ],
           bottom: AppSearchField(

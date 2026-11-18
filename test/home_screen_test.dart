@@ -18,10 +18,10 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'support/temp_storage.dart';
 
 class _Yt extends YoutubeController {
-  final watched = <String>[];
+  final opened = <String>[];
 
   @override
-  Future<void> watchFromCard(Video video) async => watched.add(video.id.value);
+  Future<void> watchFromCard(Video video) async => opened.add(video.id.value);
 }
 
 class _Home extends HomeController {
@@ -115,7 +115,7 @@ void main() {
 
     await tester.tap(find.text('Building a tiny house in 30 days'));
     await tester.pump();
-    expect(yt.watched, ['aaaaaaaaaaa'], reason: 'the card opens the video, not the download sheet');
+    expect(yt.opened, ['aaaaaaaaaaa'], reason: 'the card opens the video, not the download sheet');
     await settle(tester);
   });
 

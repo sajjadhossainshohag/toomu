@@ -17,6 +17,7 @@ import '../modules/video_player/bindings/video_player_binding.dart';
 import '../modules/video_player/views/video_player_view.dart';
 import '../modules/videos/bindings/videos_binding.dart';
 import '../modules/videos/views/video_folder_view.dart';
+import '../modules/youtube/views/library_view.dart';
 
 part 'app_routes.dart';
 
@@ -77,5 +78,6 @@ class AppPages {
       page: () => const ShortsView(),
       binding: ShortsBinding(),
     ),
+    GetPage(name: _Paths.library, page: () => const LibraryView()),
   ];
 }

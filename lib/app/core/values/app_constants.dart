@@ -35,6 +35,8 @@ abstract class AppConstants {
   static const kEqualizerEnabled = 'eq_enabled';
   static const kEqualizerGains = 'eq_gains';
   static const kSearchHistory = 'yt_search_history';
+  static const kWatchHistory = 'yt_watch_history';
+  static const kWatchLater = 'yt_watch_later';
   static const kRemoteConfig = 'remote_config_cache';
   static const kFeedCache = 'home_feed_cache';
 
