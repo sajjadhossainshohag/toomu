@@ -25,15 +25,17 @@ class QueueSheet extends StatelessWidget {
       constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
       child: AppSheet(
         title: 'Up next',
-        child: Obx(
-          () => ReorderableListView.builder(
+        // The rows are built during layout, after this Obx ran: the playing index is read here, where it is watched.
+        child: Obx(() {
+          final playing = audio.currentIndex.value;
+          return ReorderableListView.builder(
             shrinkWrap: true,
             buildDefaultDragHandles: false,
             itemCount: audio.queue.length,
             onReorder: (from, to) => audio.move(from, to > from ? to - 1 : to),
             itemBuilder: (_, i) {
               final t = audio.queue[i];
-              final current = i == audio.currentIndex.value;
+              final current = i == playing;
               return Dismissible(
                 key: ValueKey('${t.id}#$i'),
                 direction: current ? DismissDirection.none : DismissDirection.endToStart,
@@ -97,8 +99,8 @@ class QueueSheet extends StatelessWidget {
                 ),
               );
             },
-          ),
-        ),
+          );
+        }),
       ),
     );
   }
