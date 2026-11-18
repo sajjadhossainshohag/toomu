@@ -40,7 +40,7 @@ abstract class TiktokService {
     try {
       final req = await client.getUrl(Uri.parse(url));
       req.headers.set(HttpHeaders.acceptLanguageHeader, 'en-US,en;q=0.9');
-      final pass = await _cookieHeader();
+      final pass = await cookieHeader();
       if (pass.isNotEmpty) req.headers.set(HttpHeaders.cookieHeader, pass);
       final res = await req.close().timeout(const Duration(seconds: 15));
       if (res.redirects.isNotEmpty) {
@@ -91,8 +91,19 @@ abstract class TiktokService {
     }
   }
 
-  static Future<String> _cookieHeader() async =>
+  static Future<String> cookieHeader() async =>
       (await _cookies()).map((c) => '${c.name}=${c.value}').join('; ');
+
+  /// What TikTok's video servers expect from a player: the browser that
+  /// read the feed (identity, page, cookies).
+  static Future<Map<String, String>> playHeaders() async {
+    final cookies = await cookieHeader();
+    return {
+      'User-Agent': agent,
+      'Referer': 'https://www.tiktok.com/',
+      if (cookies.isNotEmpty) 'Cookie': cookies,
+    };
+  }
 
   /// yt-dlp options for TikTok: the WebView's cookies (TikTok's firewall
   /// pass) with the same browser identity they were issued to.

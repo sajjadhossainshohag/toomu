@@ -180,6 +180,20 @@ class StreamQuality {
   /// "1080p60", "720p", "4K"…
   final String label;
 
+  /// [label] without the frame rate ("1080p60" → "1080p"), for the
+  /// player's top bar; the quality menu keeps the full label.
+  String get shortLabel => label.replaceFirstMapped(RegExp(r'^(\d+p)\d+'), (m) => m[1]!);
+
+  /// The quality menu's names for [options]: short ("1080p"), except where
+  /// two would read the same (1080p60 and 1080p30): those keep their rate.
+  static List<String> menuLabels(List<StreamQuality> options) {
+    final counts = <String, int>{};
+    for (final q in options) {
+      counts[q.shortLabel] = (counts[q.shortLabel] ?? 0) + 1;
+    }
+    return [for (final q in options) counts[q.shortLabel]! > 1 ? q.label : q.shortLabel];
+  }
+
   /// Quality class (2160, 1080, 720…), for remembering the choice.
   final int quality;
   final String videoUri;

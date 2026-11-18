@@ -147,6 +147,28 @@ void main() {
     return asked;
   }
 
+  testWidgets('upright on a narrow phone: the top bar fits (no "right overflowed by 7.6 pixels"), at the top, 1080p',
+      (tester) async {
+    await open(tester, const Size(337, 760));
+    VideoSessionService.to.items[0] = const VideoItem(
+      uri: 'https://v/1080.mp4',
+      title: 'Building a tiny house',
+      remoteKey: 'yt:aaaaaaaaaaa',
+      qualities: [StreamQuality(label: '1080p60', quality: 1080, videoUri: 'https://v/1080.mp4', width: 1920, height: 1080)],
+    );
+    Get.find<VideoPlaybackController>()
+      ..pipSupported.value = true
+      ..controlsVisible.value = true;
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('1080p'), findsOneWidget);
+    final rotate = tester.getRect(find.byTooltip('Rotate'));
+    expect(rotate.right, lessThanOrEqualTo(337));
+    expect(rotate.top, lessThan(90), reason: 'at the top of the video, not over the play button');
+    expect(rotate.top, closeTo(tester.getRect(find.byTooltip('Minimize')).top, 12), reason: 'in line with the chevron');
+    await tester.pump(const Duration(seconds: 10)); // the controls hide by themselves
+  });
+
   testWidgets('upright: the video on top, its seek bar at the bottom of it, the watch page underneath', (tester) async {
     final asked = await open(tester, const Size(390, 844));
     const box = 390 * 9 / 16;

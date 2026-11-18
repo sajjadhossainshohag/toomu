@@ -697,14 +697,15 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     if (options.isEmpty) return;
     _hideTimer?.cancel();
     final now = current.currentQuality;
+    final names = StreamQuality.menuLabels(options);
     final picked = await showOptionSheet<StreamQuality>(
       title: 'Quality',
       selected: now,
       options: [
-        for (final q in options)
+        for (final (i, q) in options.indexed)
           SheetOption(
             value: q,
-            label: q.label,
+            label: names[i],
             subtitle: [
               if (q.codec != null) q.codec!,
               if (q.quality >= 1440 && q.codec != 'H.264') 'may heat the phone',

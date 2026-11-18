@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -218,6 +220,9 @@ class _FullControls extends GetView<VideoPlaybackController> {
   @override
   Widget build(BuildContext context) {
     const scrim = [Color(0xB3000000), Color(0x00000000)];
+    // The top bar's width: the player spans the screen (inside the safe
+    // area), less the bar's own padding.
+    final room = MediaQuery.sizeOf(context).width - MediaQuery.paddingOf(context).horizontal - 12;
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
@@ -260,42 +265,58 @@ class _FullControls extends GetView<VideoPlaybackController> {
                           ),
                         ),
                       ),
-                    // YouTube streams: quality menu.
-                    Obx(() {
-                      if (controller.items.isEmpty) return const SizedBox.shrink();
-                      final item = controller.current;
-                      if (item.qualities.isEmpty) return const SizedBox.shrink();
-                      return _TextButton(
-                        label: item.currentQuality?.label ?? item.quality ?? 'Quality',
-                        onTap: controller.pickQuality,
-                      );
-                    }),
-                    Obx(
-                      () => _TextButton(
-                        label: controller.rate.value == 1 ? '1x' : '${controller.rate.value}x',
-                        onTap: controller.pickSpeed,
+                    // On a narrow phone the buttons don't all fit (a long quality
+                    // like "1080p60" pushed Rotate off the screen): past the room
+                    // left by the back button (and a little of the title), they
+                    // shrink a little instead. Height stays the bar's own.
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: math.max(0, room - 48 - (compact ? 0 : 96))),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                                // YouTube streams: quality menu.
+                                Obx(() {
+                                  if (controller.items.isEmpty) return const SizedBox.shrink();
+                                  final item = controller.current;
+                                  if (item.qualities.isEmpty) return const SizedBox.shrink();
+                                  return _TextButton(
+                                    label: item.currentQuality?.shortLabel ?? item.quality ?? 'Quality',
+                                    onTap: controller.pickQuality,
+                                  );
+                                }),
+                                Obx(
+                                  () => _TextButton(
+                                    label: controller.rate.value == 1 ? '1x' : '${controller.rate.value}x',
+                                    onTap: controller.pickSpeed,
+                                  ),
+                                ),
+                                Obx(
+                                  () => _IconAction(
+                                    icon: controller.backgroundPlay.value ? Icons.headphones_rounded : Icons.headset_off_rounded,
+                                    onTap: controller.toggleBackgroundPlay,
+                                    tooltip: 'Background play',
+                                    active: controller.backgroundPlay.value,
+                                  ),
+                                ),
+                                Obx(
+                                  () => controller.pipSupported.value
+                                      ? _IconAction(
+                                          icon: Icons.picture_in_picture_alt_rounded,
+                                          onTap: controller.enterPip,
+                                          tooltip: 'Picture-in-picture',
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                                _IconAction(icon: Icons.audiotrack_rounded, onTap: controller.pickAudioTrack, tooltip: 'Audio'),
+                                _IconAction(icon: Icons.subtitles_rounded, onTap: controller.pickSubtitle, tooltip: 'Subtitles'),
+                                _IconAction(icon: Icons.screen_rotation_rounded, onTap: controller.rotate, tooltip: 'Rotate'),
+                          ],
+                        ),
                       ),
                     ),
-                    Obx(
-                      () => _IconAction(
-                        icon: controller.backgroundPlay.value ? Icons.headphones_rounded : Icons.headset_off_rounded,
-                        onTap: controller.toggleBackgroundPlay,
-                        tooltip: 'Background play',
-                        active: controller.backgroundPlay.value,
-                      ),
-                    ),
-                    Obx(
-                      () => controller.pipSupported.value
-                          ? _IconAction(
-                              icon: Icons.picture_in_picture_alt_rounded,
-                              onTap: controller.enterPip,
-                              tooltip: 'Picture-in-picture',
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                    _IconAction(icon: Icons.audiotrack_rounded, onTap: controller.pickAudioTrack, tooltip: 'Audio'),
-                    _IconAction(icon: Icons.subtitles_rounded, onTap: controller.pickSubtitle, tooltip: 'Subtitles'),
-                    _IconAction(icon: Icons.screen_rotation_rounded, onTap: controller.rotate, tooltip: 'Rotate'),
                   ],
                 ),
               ),

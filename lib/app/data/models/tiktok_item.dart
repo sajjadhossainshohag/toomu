@@ -18,6 +18,7 @@ class TiktokItem {
     this.comments = 0,
     this.shares = 0,
     this.plays = 0,
+    this.liked = false,
   });
 
   final String id;
@@ -45,6 +46,9 @@ class TiktokItem {
   final int shares;
   final int plays;
 
+  /// The signed-in account liked it (TikTok's `digged`).
+  final bool liked;
+
   /// The video's page (what yt-dlp downloads from).
   String get webUrl => pageUrl ?? 'https://www.tiktok.com/@$authorId/video/$id';
 
@@ -54,7 +58,7 @@ class TiktokItem {
     final id = j['id'];
     final video = j['video'];
     if (id is! String || video is! Map) return null;
-    final play = video['playAddr'];
+    final play = bestPlayUrl(video) ?? video['playAddr'];
     final author = j['author'] is Map ? j['author'] as Map : const {};
     final stats = j['stats'] is Map ? j['stats'] as Map : const {};
     final music = j['music'] is Map ? j['music'] as Map : const {};
@@ -68,7 +72,7 @@ class TiktokItem {
       playUrl: play is String ? play : '',
       authorId: authorId,
       authorName: (author['nickname'] as String?) ?? authorId,
-      avatarUrl: author['avatarThumb'] as String?,
+      avatarUrl: (author['avatarMedium'] ?? author['avatarThumb']) as String?,
       caption: (j['desc'] as String?) ?? '',
       coverUrl: (video['cover'] ?? video['originCover']) as String?,
       music: title is String && title.isNotEmpty
@@ -83,7 +87,36 @@ class TiktokItem {
       comments: number(stats['commentCount']),
       shares: number(stats['shareCount']),
       plays: number(stats['playCount']),
+      liked: j['digged'] == true,
     );
+  }
+
+  /// The best H.264 file among TikTok's qualities (`bitrateInfo`): every
+  /// phone decodes H.264 in hardware, not every one H.265. Null when the
+  /// data lists none (then `playAddr`, TikTok's default pick).
+  static String? bestPlayUrl(Map<dynamic, dynamic> video) {
+    final gears = video['bitrateInfo'];
+    if (gears is! List) return null;
+    String? best;
+    var bestRate = -1;
+    for (final g in gears) {
+      if (g is! Map) continue;
+      final codec = '${g['CodecType'] ?? ''}'.toLowerCase();
+      if (codec.isNotEmpty && !codec.contains('264')) continue;
+      final urls = (g['PlayAddr'] is Map
+          ? g['PlayAddr'] as Map
+          : const {})['UrlList'];
+      final rate = g['Bitrate'] is num ? (g['Bitrate'] as num).toInt() : 0;
+      if (urls is! List ||
+          urls.isEmpty ||
+          urls.first is! String ||
+          rate <= bestRate) {
+        continue;
+      }
+      best = urls.first as String;
+      bestRate = rate;
+    }
+    return best;
   }
 
   /// TikTok marks paid placements in a few ways; any of them → skipped.

@@ -43,6 +43,37 @@ void main() {
     return c as _FakePlayback;
   }
 
+  testWidgets('the top bar fits a narrow phone: no "right overflowed by 7.6 pixels" with 1080p60 and picture-in-picture',
+      (tester) async {
+    tester.view
+      ..devicePixelRatio = 1
+      ..physicalSize = const Size(337, 760); // the phone in the report, upright
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() async {
+      Get.put(StorageService(await tempBox('overlays_${n++}', dir)));
+      Get.put(SettingsService().init());
+      Get.put(VideoSessionService()).items.add(const VideoItem(
+            uri: 'https://v/1080.mp4',
+            title: 'All of Science Explained in like 10 minutes',
+            qualities: [
+              StreamQuality(label: '1080p60', quality: 1080, videoUri: 'https://v/1080.mp4', width: 1920, height: 1080),
+            ],
+          ));
+    });
+    addTearDown(Get.reset);
+    Get.put<VideoPlaybackController>(_FakePlayback())
+      ..exiting.value = true
+      ..pipSupported.value = true
+      ..controlsVisible.value = true;
+    await tester.pumpWidget(const MaterialApp(home: VideoPlayerView()));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('1080p'), findsOneWidget, reason: 'the top bar shows 1080p, not 1080p60');
+    final rotate = tester.getRect(find.byTooltip('Rotate'));
+    expect(rotate.right, lessThanOrEqualTo(337), reason: 'the last button is on screen');
+    expect(rotate.top, lessThan(80), reason: 'the buttons stay at the top, not in the middle of the video');
+  });
+
   int paintOrder(WidgetTester tester, Finder f) => tester.allElements.toList().indexOf(f.evaluate().single);
 
   testWidgets('a loader shows while buffering, even with the controls up', (tester) async {
@@ -106,5 +137,19 @@ void main() {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
+  });
+
+  test('the top bar names qualities without the frame rate: 1080p, 720p', () {
+    StreamQuality q(String label) => StreamQuality(label: label, quality: 0, videoUri: '', width: 0, height: 0);
+    expect(q('1080p60').shortLabel, '1080p');
+    expect(q('720p').shortLabel, '720p');
+    expect(q('2160p60').shortLabel, '2160p');
+    expect(q('4K').shortLabel, '4K');
+  });
+
+  test('the quality menu says 1080p, 720p too; two of one size keep their frame rate', () {
+    StreamQuality q(String label) => StreamQuality(label: label, quality: 0, videoUri: '', width: 0, height: 0);
+    expect(StreamQuality.menuLabels([q('1080p60'), q('720p60'), q('480p')]), ['1080p', '720p', '480p']);
+    expect(StreamQuality.menuLabels([q('1080p60'), q('1080p30'), q('720p')]), ['1080p60', '1080p30', '720p']);
   });
 }

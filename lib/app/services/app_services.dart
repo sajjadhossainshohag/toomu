@@ -14,6 +14,7 @@ import 'remote_config_service.dart';
 import 'settings_service.dart';
 import 'storage_service.dart';
 import 'stream_proxy.dart';
+import 'tiktok_account_service.dart';
 import 'update_service.dart';
 import 'video_session_service.dart';
 import 'youtube_account_service.dart';
@@ -36,6 +37,7 @@ abstract class AppServices {
     Get.put(DiagnosticsService().init(), permanent: true); // before anything logs
     Get.put(SettingsService().init(), permanent: true);
     Get.put(BrowserStore(), permanent: true); // reads lazily, on first use
+    Get.put(TiktokAccountService().init(), permanent: true); // cookie check in background
     await Future.wait([
       Get.putAsync(() => YoutubeAccountService().init(), permanent: true),
       Get.putAsync(() => StreamProxy().init(), permanent: true), // 127.0.0.1, instant
