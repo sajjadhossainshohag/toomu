@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
+import 'package:toomu/app/services/video_session_service.dart';
 import 'package:toomu/app/widgets/floating_video.dart';
 
 void main() {
@@ -22,5 +24,25 @@ void main() {
     expect(high.top, 24 + 8);
     final low = FloatingVideo.restRect(screen, padding, left: true, top: 5000);
     expect(low.bottom, 844 - 16 - 8);
+  });
+
+  testWidgets('corner video is not left in half the box after returning to the app', (tester) async {
+    // Hidden, Android takes the video surface away and gives a new one back on return; the old picture
+    // widget kept the old layout (video in a corner, the rest blank). Back in the app, it is made afresh.
+    Get.put(VideoSessionService());
+    addTearDown(Get.reset);
+    await tester.pumpWidget(const Directionality(textDirection: TextDirection.ltr, child: FloatingVideo()));
+    final state = tester.state<State<FloatingVideo>>(find.byType(FloatingVideo));
+    final before = FloatingVideo.surfaceOf(state);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+
+    expect(FloatingVideo.surfaceOf(state), isNot(before));
   });
 }

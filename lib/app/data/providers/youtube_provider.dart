@@ -31,7 +31,9 @@ class VideoPage implements FeedPage {
   @override
   Future<VideoPage?> nextPage() async {
     final next = await _list.nextPage();
-    return next == null ? null : VideoPage._(YoutubeProvider._toVideos(next), next);
+    return next == null
+        ? null
+        : VideoPage._(YoutubeProvider._toVideos(next), next);
   }
 }
 
@@ -47,7 +49,11 @@ abstract class WatchSource {
 /// What a channel page shows.
 abstract class ChannelSource {
   Future<Channel> channel(ChannelId id);
-  Future<VideosPage> uploads(ChannelId id, {required bool shorts, required VideoSorting sort});
+  Future<VideosPage> uploads(
+    ChannelId id, {
+    required bool shorts,
+    required VideoSorting sort,
+  });
 }
 
 class VideosPage {
@@ -68,7 +74,7 @@ class CommentsPage {
 /// YouTube search, home feed, video details and the fast stream lookup
 /// (youtube_explode_dart). Downloads are done by yt-dlp (YtDlpService).
 class YoutubeProvider implements WatchSource, ChannelSource {
-  YoutubeProvider({YoutubeHttpClient? http}) : this._(http ?? YoutubeHttpClient());
+  YoutubeProvider({YoutubeHttpClient? http}) : this._(http ?? YoutubeHttp());
 
   YoutubeProvider._(this._http) : _yt = YoutubeExplode(httpClient: _http);
 
@@ -81,7 +87,10 @@ class YoutubeProvider implements WatchSource, ChannelSource {
   /// library's `search()` throws a FormatException on some "Streamed …"
   /// upload dates, which broke whole result pages.
   Future<VideoPage> search(String query) async {
-    final list = await _yt.search.searchContent(query, filter: TypeFilters.video);
+    final list = await _yt.search.searchContent(
+      query,
+      filter: TypeFilters.video,
+    );
     return VideoPage._(_toVideos(list), list);
   }
 
@@ -126,16 +135,36 @@ class YoutubeProvider implements WatchSource, ChannelSource {
   Future<Channel> channel(ChannelId id) => _yt.channels.get(id);
 
   @override
-  Future<VideosPage> uploads(ChannelId id, {required bool shorts, required VideoSorting sort}) async {
+  Future<VideosPage> uploads(
+    ChannelId id, {
+    required bool shorts,
+    required VideoSorting sort,
+  }) async {
     if (shorts) {
-      return _videosPage(await _yt.channels.getUploadsFromPage(id, videoSorting: sort, videoType: VideoType.shorts));
+      return _videosPage(
+        await _yt.channels.getUploadsFromPage(
+          id,
+          videoSorting: sort,
+          videoType: VideoType.shorts,
+        ),
+      );
     }
     // youtube_explode 3.1.0 reads YouTube's current items ("lockupViewModel") at paths YouTube doesn't use:
     // every title came back empty and every length 0:00. Same page, read with our own lockup parser.
-    final code = switch (sort) { VideoSorting.newest => 'dd', VideoSorting.oldest => 'da', VideoSorting.popularity => 'p' };
-    final html = await _http.getString('https://www.youtube.com/channel/${id.value}/videos?view=0&sort=$code&flow=grid');
+    final code = switch (sort) {
+      VideoSorting.newest => 'dd',
+      VideoSorting.oldest => 'da',
+      VideoSorting.popularity => 'p',
+    };
+    final html = await _http.getString(
+      'https://www.youtube.com/channel/${id.value}/videos?view=0&sort=$code&flow=grid',
+    );
     final data = initialData(html);
-    final channel = ((data['metadata'] as Map?)?['channelMetadataRenderer'] as Map?)?['title'] as String? ?? '';
+    final channel =
+        ((data['metadata'] as Map?)?['channelMetadataRenderer']
+                as Map?)?['title']
+            as String? ??
+        '';
     return _uploadsPage(data, id, channel);
   }
 
@@ -143,7 +172,13 @@ class YoutubeProvider implements WatchSource, ChannelSource {
     final (videos, next) = channelUploads(json, id, channel);
     return VideosPage(
       videos,
-      next == null ? null : () async => _uploadsPage(await _http.sendContinuation('browse', next), id, channel),
+      next == null
+          ? null
+          : () async => _uploadsPage(
+              await _http.sendContinuation('browse', next),
+              id,
+              channel,
+            ),
     );
   }
 
@@ -151,12 +186,19 @@ class YoutubeProvider implements WatchSource, ChannelSource {
     const marker = 'var ytInitialData = ';
     final start = html.indexOf(marker);
     final end = start < 0 ? -1 : html.indexOf(';</script>', start);
-    if (end < 0) throw const FormatException('No ytInitialData on the channel page');
-    return jsonDecode(html.substring(start + marker.length, end)) as Map<String, dynamic>;
+    if (end < 0) {
+      throw const FormatException('No ytInitialData on the channel page');
+    }
+    return jsonDecode(html.substring(start + marker.length, end))
+        as Map<String, dynamic>;
   }
 
   // On a channel's own page an item's one metadata row is [views, age], with a collaboration's channels first.
-  static (List<Video>, String?) channelUploads(Object? json, ChannelId id, String channel) {
+  static (List<Video>, String?) channelUploads(
+    Object? json,
+    ChannelId id,
+    String channel,
+  ) {
     final videos = <Video>[];
     final seen = <String>{};
     String? next;
@@ -170,32 +212,48 @@ class YoutubeProvider implements WatchSource, ChannelSource {
       if (lockup is Map) {
         final v = AccountFeed.videoOf(j);
         if (v == null || !seen.add(v.id.value)) return;
-        final rows = ((((lockup['metadata'] as Map?)?['lockupMetadataViewModel'] as Map?)?['metadata'] as Map?)?[
-                    'contentMetadataViewModel'] as Map?)?['metadataRows'] as List? ??
+        final rows =
+            ((((lockup['metadata'] as Map?)?['lockupMetadataViewModel']
+                            as Map?)?['metadata']
+                        as Map?)?['contentMetadataViewModel']
+                    as Map?)?['metadataRows']
+                as List? ??
             const [];
         final parts = [
-          for (final p in ((rows.firstOrNull as Map?)?['metadataParts'] as List?) ?? const [])
+          for (final p
+              in ((rows.firstOrNull as Map?)?['metadataParts'] as List?) ??
+                  const [])
             if (AccountFeed.text((p as Map)['text']) case final String s) s,
         ];
-        videos.add(Video(
-          v.id,
-          v.title,
-          channel,
-          id,
-          null,
-          parts.length > 1 ? parts.last : null,
-          null,
-          '',
-          v.duration,
-          v.thumbnails,
-          null,
-          Engagement(AccountFeed.parseViews(parts.length > 1 ? parts[parts.length - 2] : null), null, null),
-          false,
-        ));
+        videos.add(
+          Video(
+            v.id,
+            v.title,
+            channel,
+            id,
+            null,
+            parts.length > 1 ? parts.last : null,
+            null,
+            '',
+            v.duration,
+            v.thumbnails,
+            null,
+            Engagement(
+              AccountFeed.parseViews(
+                parts.length > 1 ? parts[parts.length - 2] : null,
+              ),
+              null,
+              null,
+            ),
+            false,
+          ),
+        );
         return;
       }
-      final token = ((((j['continuationItemRenderer'] as Map?)?['continuationEndpoint'] as Map?)?[
-              'continuationCommand']) as Map?)?['token'];
+      final token =
+          ((((j['continuationItemRenderer'] as Map?)?['continuationEndpoint']
+                  as Map?)?['continuationCommand'])
+              as Map?)?['token'];
       if (token is String) {
         next = token;
         return;
@@ -207,10 +265,11 @@ class YoutubeProvider implements WatchSource, ChannelSource {
     return (videos, next);
   }
 
-  VideosPage _videosPage(ChannelUploadsList list) => VideosPage(list.toList(), () async {
-    final more = await list.nextPage();
-    return more == null ? null : _videosPage(more);
-  });
+  VideosPage _videosPage(ChannelUploadsList list) =>
+      VideosPage(list.toList(), () async {
+        final more = await list.nextPage();
+        return more == null ? null : _videosPage(more);
+      });
 
   final _watchNext = WatchNext();
 
@@ -219,19 +278,30 @@ class YoutubeProvider implements WatchSource, ChannelSource {
   final _repliesTokens = Expando<String>();
 
   Future<WatchNextPage> _next(String videoId) {
-    if (_nextPages.length >= 10 && !_nextPages.containsKey(videoId)) _nextPages.remove(_nextPages.keys.first);
-    final page = _nextPages.putIfAbsent(videoId, () => _watchNext.next(videoId));
-    page.then((_) {}, onError: (Object _) => _nextPages.remove(videoId)); // a failure is retried next time
+    if (_nextPages.length >= 10 && !_nextPages.containsKey(videoId)) {
+      _nextPages.remove(_nextPages.keys.first);
+    }
+    final page = _nextPages.putIfAbsent(
+      videoId,
+      () => _watchNext.next(videoId),
+    );
+    page.then(
+      (_) {},
+      onError: (Object _) => _nextPages.remove(videoId),
+    ); // a failure is retried next time
     return page;
   }
 
   @override
-  Future<List<Video>> related(Video video) async => (await _next(video.id.value)).related;
+  Future<List<Video>> related(Video video) async =>
+      (await _next(video.id.value)).related;
 
   @override
   Future<CommentsPage?> comments(Video video) async {
     final token = (await _next(video.id.value)).commentsToken;
-    return token == null ? null : _commentsPage(await _watchNext.comments(token));
+    return token == null
+        ? null
+        : _commentsPage(await _watchNext.comments(token));
   }
 
   CommentsPage _commentsPage(WatchNextComments page) {
@@ -242,23 +312,36 @@ class YoutubeProvider implements WatchSource, ChannelSource {
     return CommentsPage(
       page.comments,
       page.total,
-      next == null ? null : () async => _commentsPage(await _watchNext.comments(next)),
+      next == null
+          ? null
+          : () async => _commentsPage(await _watchNext.comments(next)),
     );
   }
 
   @override
   Future<List<Comment>> replies(Comment comment) async {
     final token = _repliesTokens[comment];
-    return token == null ? const [] : (await _watchNext.comments(token)).comments;
+    return token == null
+        ? const []
+        : (await _watchNext.comments(token)).comments;
   }
 
   // Up next back and forth, or reopening from History, finds the list here instead of asking YouTube again.
-  static final _captionLists = <String, ({DateTime at, Future<List<ClosedCaptionTrackInfo>> tracks})>{};
+  static final _captionLists =
+      <String, ({DateTime at, Future<List<ClosedCaptionTrackInfo>> tracks})>{};
 
-  Future<List<ClosedCaptionTrackInfo>> captionTracks(String videoId, List<String> langs) {
+  Future<List<ClosedCaptionTrackInfo>> captionTracks(
+    String videoId,
+    List<String> langs,
+  ) {
     final hit = _captionLists[videoId];
-    if (hit != null && DateTime.now().difference(hit.at) < const Duration(minutes: 30)) return hit.tracks;
-    if (_captionLists.length >= 50) _captionLists.remove(_captionLists.keys.first);
+    if (hit != null &&
+        DateTime.now().difference(hit.at) < const Duration(minutes: 30)) {
+      return hit.tracks;
+    }
+    if (_captionLists.length >= 50) {
+      _captionLists.remove(_captionLists.keys.first);
+    }
     final tracks = _yt.videos.closedCaptions
         .getManifest(videoId, formats: const [ClosedCaptionFormat.srv3])
         .then((m) => Subtitles.forWatching(m.tracks, langs));
@@ -268,8 +351,13 @@ class YoutubeProvider implements WatchSource, ChannelSource {
     return tracks;
   }
 
-  Future<String?> captionFile(String videoId, ClosedCaptionTrackInfo t, String dir) async {
-    final path = '$dir/$videoId.${t.language.code}${t.isAutoGenerated ? '.auto' : ''}.srt';
+  Future<String?> captionFile(
+    String videoId,
+    ClosedCaptionTrackInfo t,
+    String dir,
+  ) async {
+    final path =
+        '$dir/$videoId.${t.language.code}${t.isAutoGenerated ? '.auto' : ''}.srt';
     if (await File(path).exists()) return path; // picked before in this app run
     return await _writeCaptions(t, path) ? path : null;
   }
@@ -284,8 +372,15 @@ class YoutubeProvider implements WatchSource, ChannelSource {
     return true;
   }
 
-  Future<List<String>> saveSubtitles(String videoId, String videoPath, List<String> langs) async {
-    final manifest = await _yt.videos.closedCaptions.getManifest(videoId, formats: const [ClosedCaptionFormat.srv3]);
+  Future<List<String>> saveSubtitles(
+    String videoId,
+    String videoPath,
+    List<String> langs,
+  ) async {
+    final manifest = await _yt.videos.closedCaptions.getManifest(
+      videoId,
+      formats: const [ClosedCaptionFormat.srv3],
+    );
     final saved = <String>[];
     for (final t in Subtitles.pick(manifest.tracks, langs)) {
       try {
@@ -341,18 +436,25 @@ class YoutubeProvider implements WatchSource, ChannelSource {
   void warmUp() => unawaited(_visitor());
 
   static Future<String?> _visitor({bool fresh = false}) {
-    if (!fresh && _visitorData != null && DateTime.now().difference(_visitorAt) < const Duration(hours: 6)) {
+    if (!fresh &&
+        _visitorData != null &&
+        DateTime.now().difference(_visitorAt) < const Duration(hours: 6)) {
       return Future.value(_visitorData);
     }
     return _visitorInFlight ??= () async {
       try {
         // A tiny endpoint first; the home page (large) if that ever changes.
         for (final (url, pattern) in [
-          ('https://www.youtube.com/sw.js_data', RegExp(r'"(Cg[A-Za-z0-9_\-%]{20,})"')),
+          (
+            'https://www.youtube.com/sw.js_data',
+            RegExp(r'"(Cg[A-Za-z0-9_\-%]{20,})"'),
+          ),
           ('https://www.youtube.com/', RegExp(r'"VISITOR_DATA":"([^"]+)"')),
         ]) {
           final body = await _get(url);
-          final found = body == null ? null : pattern.firstMatch(body)?.group(1);
+          final found = body == null
+              ? null
+              : pattern.firstMatch(body)?.group(1);
           if (found != null) {
             _visitorData = found;
             _visitorAt = DateTime.now();
@@ -369,11 +471,16 @@ class YoutubeProvider implements WatchSource, ChannelSource {
   static Future<String?> _get(String url) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     try {
-      final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      final req = await client
+          .getUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 5));
       req.headers.set(HttpHeaders.userAgentHeader, _visionOsAgent);
       final res = await req.close().timeout(const Duration(seconds: 5));
       if (res.statusCode != 200) return null;
-      return await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 8));
+      return await res
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 8));
     } catch (_) {
       return null;
     } finally {
@@ -390,14 +497,17 @@ class YoutubeProvider implements WatchSource, ChannelSource {
   /// links are test-fetched before use. Null when no client works.
   Future<FastLinks?> fastLinks(String videoId, {Duration? duration}) {
     final cached = _fastCache[videoId];
-    if (cached != null && DateTime.now().difference(cached.at) < const Duration(minutes: 30)) {
+    if (cached != null &&
+        DateTime.now().difference(cached.at) < const Duration(minutes: 30)) {
       return Future.value(cached.links);
     }
     return _fastInFlight[videoId] ??= _fastLookup(videoId, duration)
         .then((links) {
           if (links != null) {
             _fastCache[videoId] = (at: DateTime.now(), links: links);
-            if (_fastCache.length > 30) _fastCache.remove(_fastCache.keys.first);
+            if (_fastCache.length > 30) {
+              _fastCache.remove(_fastCache.keys.first);
+            }
           }
           return links;
         })
@@ -423,7 +533,9 @@ class YoutubeProvider implements WatchSource, ChannelSource {
           if (visitor == null) continue;
           client = _visionOs(visitor);
         } else {
-          client = name == 'android' ? YoutubeApiClient.android : YoutubeApiClient.androidSdkless;
+          client = name == 'android'
+              ? YoutubeApiClient.android
+              : YoutubeApiClient.androidSdkless;
         }
         StreamManifest manifest;
         try {
@@ -435,8 +547,12 @@ class YoutubeProvider implements WatchSource, ChannelSource {
           if (visitor == null) rethrow;
           manifest = await _manifest(videoId, _visionOs(visitor));
         }
-        final agent = (client.payload['context'] as Map?)?['client']?['userAgent'] as String?;
-        final headers = agent == null ? const <String, String>{} : {'User-Agent': agent};
+        final agent =
+            (client.payload['context'] as Map?)?['client']?['userAgent']
+                as String?;
+        final headers = agent == null
+            ? const <String, String>{}
+            : {'User-Agent': agent};
         final info = YtInfo(
           id: videoId,
           title: '',
@@ -444,11 +560,15 @@ class YoutubeProvider implements WatchSource, ChannelSource {
           duration: duration,
           formats: [
             for (final s in manifest.streams)
-              if (s is! HlsVideoStreamInfo && s is! HlsAudioStreamInfo && s is! HlsMuxedStreamInfo)
+              if (s is! HlsVideoStreamInfo &&
+                  s is! HlsAudioStreamInfo &&
+                  s is! HlsMuxedStreamInfo)
                 _toFormat(s, headers: headers),
           ],
         );
-        final test = YoutubeStream.qualities(info).firstOrNull?.videoUri ?? info.bestAudio?.url;
+        final test =
+            YoutubeStream.qualities(info).firstOrNull?.videoUri ??
+            info.bestAudio?.url;
         if (test == null) continue;
         // A link that serves the end of its file is a whole-file link
         // (Grayjay's check); one that only serves the start is not.
@@ -463,30 +583,45 @@ class YoutubeProvider implements WatchSource, ChannelSource {
         );
         return FastLinks(info, name, full: full);
       } catch (e) {
-        debugPrint('[YouTube] fast lookup $name failed: ${e.toString().split('\n').first}');
+        debugPrint(
+          '[YouTube] fast lookup $name failed: ${e.toString().split('\n').first}',
+        );
       }
     }
     return null;
   }
 
-  Future<StreamManifest> _manifest(String videoId, YoutubeApiClient client) => _yt.videos.streams
-      .getManifest(videoId, ytClients: [client], requireWatchPage: false)
-      .timeout(const Duration(seconds: 6));
+  @visibleForTesting
+  Future<StreamManifest> manifestFor(String videoId, YoutubeApiClient client) =>
+      _manifest(videoId, client);
+
+  Future<StreamManifest> _manifest(String videoId, YoutubeApiClient client) =>
+      _yt.videos.streams
+          .getManifest(videoId, ytClients: [client], requireWatchPage: false)
+          .timeout(const Duration(seconds: 6));
 
   /// Whether YouTube serves [url]'s first byte — or with [tail], its last
   /// bytes — asked for the way the stream proxy asks (`range=` parameter).
   static HttpClient Function(Uri url)? pooledClient;
 
   @visibleForTesting
-  static Future<bool> serves(String url, Map<String, String> headers, {bool tail = false}) async {
+  static Future<bool> serves(
+    String url,
+    Map<String, String> headers, {
+    bool tail = false,
+  }) async {
     final length = int.tryParse(Uri.parse(url).queryParameters['clen'] ?? '');
     if (tail && (length == null || length < 1024)) return false;
     final range = tail ? '${length! - 512}-${length - 1}' : '0-0';
     // The stream proxy's pool: playback reuses this connection, and it has the link's IP version.
     final pooled = pooledClient?.call(Uri.parse(url));
-    final client = pooled ?? (HttpClient()..connectionTimeout = const Duration(seconds: 3));
+    final client =
+        pooled ??
+        (HttpClient()..connectionTimeout = const Duration(seconds: 3));
     try {
-      final req = await client.getUrl(Uri.parse('$url&range=$range')).timeout(const Duration(seconds: 3));
+      final req = await client
+          .getUrl(Uri.parse('$url&range=$range'))
+          .timeout(const Duration(seconds: 3));
       headers.forEach(req.headers.set);
       final res = await req.close().timeout(const Duration(seconds: 3));
       await res.drain<void>();
@@ -498,7 +633,10 @@ class YoutubeProvider implements WatchSource, ChannelSource {
     }
   }
 
-  static YtFormat _toFormat(StreamInfo s, {Map<String, String> headers = const {}}) {
+  static YtFormat _toFormat(
+    StreamInfo s, {
+    Map<String, String> headers = const {},
+  }) {
     final video = s is VideoStreamInfo ? s : null;
     final audio = s is AudioStreamInfo ? s : null;
     final mp4 = s.container == StreamContainer.mp4;
@@ -519,7 +657,9 @@ class YoutubeProvider implements WatchSource, ChannelSource {
       url: s.url.toString(),
       httpHeaders: headers,
       // yt-dlp ranks the original language highest; dubs below.
-      languagePreference: audio == null ? null : (track == null || track.audioIsDefault ? 10 : -1),
+      languagePreference: audio == null
+          ? null
+          : (track == null || track.audioIsDefault ? 10 : -1),
     );
   }
 
@@ -539,4 +679,47 @@ class FastLinks {
   /// (Android client without a PO token); the stream proxy carries on with
   /// yt-dlp's links.
   final bool full;
+}
+
+/// youtube_explode's HTTP client, minus the player answer's DASH / HLS manifest links. Toomu plays and
+/// downloads whole files, and youtube_explode can't read DASH: it takes every stream's bitrate with `!` and
+/// its DASH parser never sets one, so a live or just-ended live video failed the whole lookup ("Null check
+/// operator used on a null value"). Skipping them also saves a manifest download per lookup.
+class YoutubeHttp extends YoutubeHttpClient {
+  YoutubeHttp([super.httpClient]);
+
+  @override
+  Future<String> postString(
+    dynamic url, {
+    Map<String, dynamic>? body,
+    Map<String, String> headers = const {},
+    bool validate = true,
+  }) async {
+    final text = await super.postString(
+      url,
+      body: body,
+      headers: headers,
+      validate: validate,
+    );
+    return '$url'.contains('/youtubei/v1/player')
+        ? withoutManifests(text)
+        : text;
+  }
+
+  @visibleForTesting
+  static String withoutManifests(String player) {
+    if (!player.contains('ManifestUrl')) return player;
+    final Object? json;
+    try {
+      json = jsonDecode(player);
+    } on FormatException {
+      return player;
+    }
+    final streaming = json is Map ? json['streamingData'] : null;
+    if (streaming is! Map) return player;
+    streaming
+      ..remove('dashManifestUrl')
+      ..remove('hlsManifestUrl');
+    return jsonEncode(json);
+  }
 }

@@ -34,7 +34,8 @@ class AccountFeedPage implements FeedPage {
   final List<AccountChip> chips;
 
   @override
-  Future<AccountFeedPage?> nextPage() async => _next == null ? null : _feed.continuation(_next);
+  Future<AccountFeedPage?> nextPage() async =>
+      _next == null ? null : _feed.continuation(_next);
 }
 
 /// The signed-in account's YouTube feeds — Home (recommendations),
@@ -48,7 +49,8 @@ class AccountFeed {
 
   // One client keeps the connection to YouTube open between pages (no new
   // TLS handshake per page). It holds no login state: cookies go per request.
-  final HttpClient _client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+  final HttpClient _client = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 10);
 
   static const _origin = 'https://www.youtube.com';
   static const webClientVersion = '2.20260708.00.00';
@@ -58,15 +60,19 @@ class AccountFeed {
   /// Home: recommendations plus the account's categories. Null when YouTube
   /// has none (e.g. watch history off: YouTube then shows an empty home).
   Future<AccountFeedPage?> home() async {
-    final page = await _browse({'browseId': 'FEwhat_to_watch'}, withChips: true);
+    final page = await _browse({
+      'browseId': 'FEwhat_to_watch',
+    }, withChips: true);
     return page.videos.isEmpty ? null : page;
   }
 
-  Future<AccountFeedPage> subscriptions() => _browse({'browseId': 'FEsubscriptions'});
+  Future<AccountFeedPage> subscriptions() =>
+      _browse({'browseId': 'FEsubscriptions'});
 
   Future<AccountFeedPage> chip(AccountChip chip) => continuation(chip.token);
 
-  Future<AccountFeedPage> continuation(String token) => _browse({'continuation': token});
+  Future<AccountFeedPage> continuation(String token) =>
+      _browse({'continuation': token});
 
   Future<AccountFeedPage> history() => _browse({'browseId': 'FEhistory'});
 
@@ -78,62 +84,181 @@ class AccountFeed {
   // YouTube's history only has what was reported as played: the same report youtube.com (and yt-dlp's
   // --mark-watched) sends, the player's "videostats playback" URL with a fresh client playback nonce.
   Future<void> markWatched(String videoId) async {
-    final player = jsonDecode(await _post('player', {'videoId': videoId}));
+    final player = jsonDecode(
+      await _post(
+        'player',
+        playerRequest(videoId, await _signatureTimestamp()),
+      ),
+    );
     final url = watchedUrl(player, _nonce());
-    if (url == null) throw StateError('YouTube gave no playback report link.');
+    if (url == null) {
+      final status = player is Map ? player['playabilityStatus'] : null;
+      final why = status is Map
+          ? ' (${status['status']}: ${status['reason']})'
+          : '';
+      throw StateError('YouTube gave no playback report link$why.');
+    }
     final cookies = await _cookies();
     final req = await _client.getUrl(url);
     headersFor(cookies).forEach(req.headers.set);
     final res = await req.close().timeout(const Duration(seconds: 15));
     await res.drain<void>();
-    if (res.statusCode >= 300) throw HttpException('YouTube answered ${res.statusCode}');
+    if (res.statusCode >= 300) {
+      throw HttpException('YouTube answered ${res.statusCode}');
+    }
+  }
+
+  /// The WEB player only answers with the video (and its report link) when asked with the signature
+  /// timestamp of YouTube's current player script, as youtube.com does; otherwise "The page needs to be
+  /// reloaded." (Nov 2026).
+  @visibleForTesting
+  static Map<String, Object> playerRequest(
+    String videoId,
+    int? signatureTimestamp,
+  ) => {
+    'videoId': videoId,
+    if (signatureTimestamp != null)
+      'playbackContext': {
+        'contentPlaybackContext': {'signatureTimestamp': signatureTimestamp},
+      },
+  };
+
+  /// The player script named in YouTube's iframe API (its version changes every few days).
+  @visibleForTesting
+  static Uri? playerScriptOf(String iframeApi) {
+    final id = RegExp(
+      r'player\\?/([0-9a-f]{8})\\?/',
+    ).firstMatch(iframeApi)?.group(1);
+    return id == null
+        ? null
+        : Uri.parse('$_origin/s/player/$id/player_ias.vflset/en_US/base.js');
+  }
+
+  @visibleForTesting
+  static int? signatureTimestampOf(String script) => int.tryParse(
+    RegExp(
+          r'(?:signatureTimestamp|sts):(\d{5})',
+        ).firstMatch(script)?.group(1) ??
+        '',
+  );
+
+  ({DateTime at, int value})? _sts;
+
+  /// Looked up once a day (the script is ~2.5 MB); null when YouTube can't be read, and then the request
+  /// goes without it, as before.
+  Future<int?> _signatureTimestamp() async {
+    final known = _sts;
+    if (known != null &&
+        DateTime.now().difference(known.at) < const Duration(hours: 12)) {
+      return known.value;
+    }
+    try {
+      final script = playerScriptOf(
+        await _getText(Uri.parse('$_origin/iframe_api')),
+      );
+      final value = script == null
+          ? null
+          : signatureTimestampOf(await _getText(script));
+      if (value != null) _sts = (at: DateTime.now(), value: value);
+      return value ?? known?.value;
+    } catch (e) {
+      debugPrint('[YouTube] player script: ${e.toString().split('\n').first}');
+      return known?.value;
+    }
+  }
+
+  Future<String> _getText(Uri url) async {
+    final req = await _client.getUrl(url);
+    req.headers.set('User-Agent', webAgent);
+    final res = await req.close().timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) {
+      await res.drain<void>();
+      throw HttpException('YouTube answered ${res.statusCode}', uri: url);
+    }
+    return res
+        .transform(utf8.decoder)
+        .join()
+        .timeout(const Duration(seconds: 20));
   }
 
   static String _nonce() {
-    const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const abc =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     final r = Random.secure();
-    return String.fromCharCodes(List.generate(16, (_) => abc.codeUnitAt(r.nextInt(abc.length))));
+    return String.fromCharCodes(
+      List.generate(16, (_) => abc.codeUnitAt(r.nextInt(abc.length))),
+    );
   }
 
-  static Map<String, Object> editWatchLaterBody(String videoId, {required bool add}) => {
+  static Map<String, Object> editWatchLaterBody(
+    String videoId, {
+    required bool add,
+  }) => {
     'playlistId': 'WL',
     'actions': [
       add
           ? {'action': 'ACTION_ADD_VIDEO', 'addedVideoId': videoId}
-          : {'action': 'ACTION_REMOVE_VIDEO_BY_VIDEO_ID', 'removedVideoId': videoId},
+          : {
+              'action': 'ACTION_REMOVE_VIDEO_BY_VIDEO_ID',
+              'removedVideoId': videoId,
+            },
     ],
   };
 
   static Uri? watchedUrl(Object? player, String nonce) {
-    final base = (((player is Map ? player['playbackTracking'] : null) as Map?)?['videostatsPlaybackUrl']
-        as Map?)?['baseUrl'];
+    final base =
+        (((player is Map ? player['playbackTracking'] : null)
+                as Map?)?['videostatsPlaybackUrl']
+            as Map?)?['baseUrl'];
     if (base is! String) return null;
     final uri = Uri.parse(base);
-    return uri.replace(queryParameters: {...uri.queryParameters, 'ver': '2', 'cpn': nonce});
+    return uri.replace(
+      queryParameters: {...uri.queryParameters, 'ver': '2', 'cpn': nonce},
+    );
   }
 
-  Future<AccountFeedPage> _browse(Map<String, Object> body, {bool withChips = false}) async {
+  Future<AccountFeedPage> _browse(
+    Map<String, Object> body, {
+    bool withChips = false,
+  }) async {
     final text = await _post('browse', body);
     // A page is up to ~1 MB of JSON: decoding it here would stall scrolling.
-    return parse(this, await Isolate.run(() => jsonDecode(text)), withChips: withChips);
+    return parse(
+      this,
+      await Isolate.run(() => jsonDecode(text)),
+      withChips: withChips,
+    );
   }
 
   Future<String> _post(String endpoint, Map<String, Object> body) async {
     final cookies = await _cookies();
     if (cookies.isEmpty) throw StateError('Not signed in to YouTube.');
-    final req = await _client.postUrl(Uri.parse('$_origin/youtubei/v1/$endpoint?prettyPrint=false'));
+    final req = await _client.postUrl(
+      Uri.parse('$_origin/youtubei/v1/$endpoint?prettyPrint=false'),
+    );
     headersFor(cookies).forEach(req.headers.set);
-    req.add(utf8.encode(jsonEncode({
-      'context': {
-        'client': {'clientName': 'WEB', 'clientVersion': webClientVersion, 'hl': 'en'},
-      },
-      ...body,
-    })));
+    req.add(
+      utf8.encode(
+        jsonEncode({
+          'context': {
+            'client': {
+              'clientName': 'WEB',
+              'clientVersion': webClientVersion,
+              'hl': 'en',
+            },
+          },
+          ...body,
+        }),
+      ),
+    );
     final HttpClientResponse res;
     final String text;
     try {
       res = await req.close().timeout(const Duration(seconds: 15));
-      text = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 15));
+      text = await res
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 15));
     } catch (_) {
       req.abort(); // the shared client would otherwise keep the stalled connection
       rethrow;
@@ -141,21 +266,29 @@ class AccountFeed {
     if (res.statusCode == 401 || res.statusCode == 403) {
       throw SignInExpired();
     }
-    if (res.statusCode != 200) throw HttpException('YouTube answered ${res.statusCode}');
+    if (res.statusCode != 200) {
+      throw HttpException('YouTube answered ${res.statusCode}');
+    }
     return text;
   }
 
   /// Headers of a signed-in request from youtube.com (as yt-dlp builds them).
   @visibleForTesting
-  static Map<String, String> headersFor(Map<String, String> cookies, {DateTime? now}) {
-    final time = ((now ?? DateTime.now()).millisecondsSinceEpoch / 1000).round();
+  static Map<String, String> headersFor(
+    Map<String, String> cookies, {
+    DateTime? now,
+  }) {
+    final time = ((now ?? DateTime.now()).millisecondsSinceEpoch / 1000)
+        .round();
     String hash(String scheme, String sid) =>
         '$scheme ${time}_${sha1.convert(utf8.encode('$time $sid $_origin'))}';
     final sapisid = cookies['SAPISID'] ?? cookies['__Secure-3PAPISID'];
     final auth = [
       if (sapisid != null) hash('SAPISIDHASH', sapisid),
-      if (cookies['__Secure-1PAPISID'] != null) hash('SAPISID1PHASH', cookies['__Secure-1PAPISID']!),
-      if (cookies['__Secure-3PAPISID'] != null) hash('SAPISID3PHASH', cookies['__Secure-3PAPISID']!),
+      if (cookies['__Secure-1PAPISID'] != null)
+        hash('SAPISID1PHASH', cookies['__Secure-1PAPISID']!),
+      if (cookies['__Secure-3PAPISID'] != null)
+        hash('SAPISID3PHASH', cookies['__Secure-3PAPISID']!),
     ].join(' ');
     return {
       'Content-Type': 'application/json',
@@ -176,9 +309,17 @@ class AccountFeed {
   /// Videos (both of YouTube's item formats), the next-page token and, on
   /// Home, the category chips. Shorts, playlists, mixes and ads are skipped.
   @visibleForTesting
-  static AccountFeedPage parse(AccountFeed feed, Object? json, {bool withChips = false}) {
+  static AccountFeedPage parse(
+    AccountFeed feed,
+    Object? json, {
+    bool withChips = false,
+  }) {
     // Cookies YouTube doesn't accept still get a 200: a signed-out page with no videos.
-    if (json case {'responseContext': {'mainAppWebResponseContext': {'loggedOut': true}}}) throw SignInExpired();
+    if (json case {
+      'responseContext': {'mainAppWebResponseContext': {'loggedOut': true}},
+    }) {
+      throw SignInExpired();
+    }
     final videos = <Video>[];
     final seen = <String>{};
     String? next;
@@ -197,7 +338,9 @@ class AccountFeed {
         if (seen.add(video.id.value)) videos.add(video);
         return;
       }
-      if (j['videoRenderer'] is Map || j['playlistVideoRenderer'] is Map || j['lockupViewModel'] is Map) {
+      if (j['videoRenderer'] is Map ||
+          j['playlistVideoRenderer'] is Map ||
+          j['lockupViewModel'] is Map) {
         return; // skipped kind
       }
       final cont = j['continuationItemRenderer'];
@@ -209,7 +352,9 @@ class AccountFeed {
       if (chip is Map) {
         final label = _text(chip['text']);
         final token = _token(chip['navigationEndpoint']);
-        if (withChips && label != null && token != null && label != 'All') chips.add(AccountChip(label, token));
+        if (withChips && label != null && token != null && label != 'All') {
+          chips.add(AccountChip(label, token));
+        }
         return;
       }
       for (final v in j.values) {
@@ -258,14 +403,20 @@ class AccountFeed {
   static Video? _fromVideoRenderer(Map v) {
     final id = v['videoId'];
     if (id is! String) return null;
-    final owner = (v['ownerText'] ?? v['longBylineText'] ?? v['shortBylineText']) as Map?;
-    final channel = ((((owner?['runs'] as List?)?.firstOrNull as Map?)?['navigationEndpoint'] as Map?)?['browseEndpoint']
-        as Map?)?['browseId'];
+    final owner =
+        (v['ownerText'] ?? v['longBylineText'] ?? v['shortBylineText']) as Map?;
+    final channel =
+        ((((owner?['runs'] as List?)?.firstOrNull
+                    as Map?)?['navigationEndpoint']
+                as Map?)?['browseEndpoint']
+            as Map?)?['browseId'];
     final length = _text(v['lengthText']);
     // Playlist items: "1.2M views", " • ", "3 years ago" in one line.
     final info = [
       for (final r in ((v['videoInfo'] as Map?)?['runs'] as List?) ?? const [])
-        if ((r as Map)['text'] case final String s when s.trim() != '•' && s.trim().isNotEmpty) s.trim(),
+        if ((r as Map)['text'] case final String s
+            when s.trim() != '•' && s.trim().isNotEmpty)
+          s.trim(),
     ];
     return _video(
       id: id,
@@ -279,14 +430,21 @@ class AccountFeed {
   }
 
   static Video? _fromLockup(Map l) {
-    if (l['contentType'] != 'LOCKUP_CONTENT_TYPE_VIDEO') return null; // playlists, mixes
+    if (l['contentType'] != 'LOCKUP_CONTENT_TYPE_VIDEO') {
+      return null; // playlists, mixes
+    }
     final id = l['contentId'];
     if (id is! String) return null;
     final meta = (l['metadata'] as Map?)?['lockupMetadataViewModel'] as Map?;
-    final rows = ((((meta?['metadata'] as Map?)?['contentMetadataViewModel'] as Map?)?['metadataRows']) as List?) ?? [];
+    final rows =
+        ((((meta?['metadata'] as Map?)?['contentMetadataViewModel']
+                as Map?)?['metadataRows'])
+            as List?) ??
+        [];
     List<String> parts(int i) => i < rows.length
         ? [
-            for (final p in ((rows[i] as Map)['metadataParts'] as List?) ?? const [])
+            for (final p
+                in ((rows[i] as Map)['metadataParts'] as List?) ?? const [])
               if (_text((p as Map)['text']) case final String s) s,
           ]
         : const [];
@@ -387,10 +545,18 @@ class AccountFeed {
 
   /// "1.2M views", "2.5B", "12,345 views", "No views" → count.
   static int parseViews(String? text) {
-    final m = RegExp(r'([\d.,]+)\s*([KMB])?', caseSensitive: false).firstMatch(text ?? '');
+    final m = RegExp(
+      r'([\d.,]+)\s*([KMB])?',
+      caseSensitive: false,
+    ).firstMatch(text ?? '');
     if (m == null) return 0;
     final number = double.tryParse(m[1]!.replaceAll(',', '')) ?? 0;
-    final scale = switch (m[2]?.toUpperCase()) { 'K' => 1e3, 'M' => 1e6, 'B' => 1e9, _ => 1.0 };
+    final scale = switch (m[2]?.toUpperCase()) {
+      'K' => 1e3,
+      'M' => 1e6,
+      'B' => 1e9,
+      _ => 1.0,
+    };
     return (number * scale).round();
   }
 }

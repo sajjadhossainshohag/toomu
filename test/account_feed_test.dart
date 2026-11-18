@@ -63,6 +63,24 @@ void main() {
     expect(AccountFeed.watchedUrl({'playabilityStatus': {}}, 'NONCE'), isNull);
   });
 
+  test('watched videos reach YouTube history: the player request carries the signature timestamp', () {
+    // Without it YouTube's WEB player answers "The page needs to be reloaded." and no playback report link
+    // (Nov 2026), so nothing watched in Toomu showed up in the account's History.
+    expect(AccountFeed.playerRequest('abcdefghijk', 20770), {
+      'videoId': 'abcdefghijk',
+      'playbackContext': {
+        'contentPlaybackContext': {'signatureTimestamp': 20770},
+      },
+    });
+    expect(
+      AccountFeed.playerScriptOf(r'var scriptUrl = "https:\/\/www.youtube.com\/s\/player\/b559f50c\/www-widgetapi.vflset";'),
+      Uri.parse('https://www.youtube.com/s/player/b559f50c/player_ias.vflset/en_US/base.js'),
+    );
+    expect(AccountFeed.signatureTimestampOf('a=1;signatureTimestamp:20770,b'), 20770);
+    expect(AccountFeed.signatureTimestampOf('x={sts:20771}'), 20771);
+    expect(AccountFeed.signatureTimestampOf('nothing here'), isNull);
+  });
+
   test('signed-in headers carry the SAPISIDHASH authorisations', () {
     final at = DateTime.fromMillisecondsSinceEpoch(1700000000000);
     final h = AccountFeed.headersFor(

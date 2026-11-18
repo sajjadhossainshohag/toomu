@@ -87,7 +87,7 @@ class _ShortPage extends GetView<ShortsController> {
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: ColorConstants.white),
                     ),
-                    TextButton(onPressed: () => controller.show(index), child: const Text('Try again')),
+                    TextButton(onPressed: () => controller.show(index, now: true), child: const Text('Try again')),
                   ],
                 ),
               ),

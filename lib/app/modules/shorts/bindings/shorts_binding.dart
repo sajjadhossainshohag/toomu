@@ -23,6 +23,10 @@ class ShortsBinding extends Bindings {
           await session.player.setPlaylistMode(PlaylistMode.single);
           await session.openItem(item);
         },
+        pause: () async {
+          if (session.hasPlayer) await session.player.pause();
+        },
+        prefetch: yt.prefetch,
         stop: () async {
           if (session.hasPlayer) await session.player.setPlaylistMode(PlaylistMode.none);
           await session.detach(keepPlaying: false);

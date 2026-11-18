@@ -27,6 +27,10 @@ class FloatingVideo extends StatefulWidget {
   static bool landsLeft(Rect dropped, double screenWidth, double velocityX) =>
       velocityX.abs() > 800 ? velocityX < 0 : dropped.center.dx < screenWidth / 2;
 
+  /// Which picture widget the corner video is on (a new one after each return to the app).
+  @visibleForTesting
+  static int surfaceOf(State<FloatingVideo> state) => (state as _FloatingVideoState)._surface;
+
   @override
   State<FloatingVideo> createState() => _FloatingVideoState();
 }
@@ -34,7 +38,7 @@ class FloatingVideo extends StatefulWidget {
 class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProviderStateMixin {
   final _session = VideoSessionService.to;
   late final AppLifecycleListener _life;
-  late final _shrink = AnimationController(vsync: this, duration: const Duration(milliseconds: 300), value: 1);
+  late final AnimationController _shrink;
   late final Worker _minimizedWatch;
   Rect? _from;
   double _fromRadius = 0;
@@ -43,10 +47,12 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
   double? _top;
   Rect _shown = Rect.zero;
   Rect? _dragged;
+  int _surface = 0;
 
   @override
   void initState() {
     super.initState();
+    _shrink = AnimationController(vsync: this, duration: const Duration(milliseconds: 300), value: 1);
     _minimizedWatch = ever(_session.minimized, (bool on) {
       _snapping = false;
       _fromRadius = 0;
@@ -65,6 +71,9 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
         }
       },
       onResume: () {
+        // Android gave the video a new surface while the app was hidden; a picture widget made before
+        // kept the old layout (the video in a corner or half the box, the rest blank).
+        setState(() => _surface++);
         if (_session.minimized.value) _session.setVideoEnabled(true);
       },
     );
@@ -120,6 +129,7 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
         fit: StackFit.expand,
         children: <Widget>[
           Video(
+            key: ValueKey(_surface),
             controller: _session.video,
             controls: NoVideoControls,
             fill: Colors.black,

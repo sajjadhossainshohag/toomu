@@ -95,6 +95,81 @@ void main() {
       expect(c.playing.value, _id('b'));
     });
 
+    test('flicking through Shorts looks up only the one it stops on, not every one passed', () async {
+      // Each short swiped past started its own YouTube lookup and they all ran at once: the one on screen
+      // then took 4-12 s, timed out or got only its first minute.
+      ShortsController.settle = const Duration(milliseconds: 30);
+      addTearDown(() => ShortsController.settle = const Duration(milliseconds: 300));
+      final many = [for (final s in 'abcde'.split('')) _video(_id(s))];
+      final hold = Completer<void>();
+      final looked = <String>[];
+      final c = ShortsController((videos: many, index: 0), resolve: (v) async {
+        looked.add(v.id.value);
+        if (v.id.value == _id('b')) await hold.future;
+        return item(v);
+      }, play: (_) async {}, stop: () async {});
+      await c.show(0, now: true);
+      final passed = [c.show(1), c.show(2), c.show(3)];
+      await c.show(4);
+      hold.complete();
+      await Future.wait(passed);
+      expect(looked, [_id('a'), _id('b'), _id('e')]);
+      expect(c.playing.value, _id('e'));
+    });
+
+    test('Shorts play quickly: one swipe starts at once, and the next short is looked up ahead', () async {
+      ShortsController.settle = const Duration(seconds: 5); // would show if a single swipe waited
+      addTearDown(() => ShortsController.settle = const Duration(milliseconds: 300));
+      final ahead = <String>[];
+      final c = ShortsController((videos: shorts, index: 0),
+          resolve: (v) async => item(v), play: (_) async {}, stop: () async {}, prefetch: (v) => ahead.add(v.id.value));
+      await c.show(0, now: true);
+      expect(ahead, [_id('b')]);
+      await c.show(1).timeout(const Duration(seconds: 1));
+      expect(c.playing.value, _id('b'));
+      expect(ahead, [_id('b'), _id('c')]);
+      await c.show(2);
+      expect(ahead, [_id('b'), _id('c')], reason: 'nothing after the last');
+    });
+
+    test('swiping to the next short: the one before goes quiet at once, not when the next starts', () async {
+      final events = <String>[];
+      final hold = Completer<void>();
+      final c = ShortsController((videos: shorts, index: 0), resolve: (v) async {
+        if (v.id.value == _id('b')) await hold.future;
+        return item(v);
+      }, play: (i) async => events.add('play ${i.youtubeId}'), stop: () async {}, pause: () async => events.add('pause'));
+      await c.show(0, now: true);
+      final next = c.show(1);
+      await Future<void>.delayed(Duration.zero);
+      expect(events, ['play ${_id('a')}', 'pause'], reason: 'quiet while b loads');
+      hold.complete();
+      await next;
+      expect(events.last, 'play ${_id('b')}');
+    });
+
+    test('a short still opening when swiped away does not start playing over the next one', () async {
+      final events = <String>[];
+      final opening = Completer<void>();
+      final hold = Completer<void>();
+      final c = ShortsController((videos: shorts, index: 0), resolve: (v) async {
+        if (v.id.value == _id('b')) await hold.future;
+        return item(v);
+      }, play: (i) async {
+        events.add('play ${i.youtubeId}');
+        if (i.youtubeId == _id('a')) await opening.future;
+      }, stop: () async {}, pause: () async => events.add('pause'));
+      final first = c.show(0, now: true);
+      await Future<void>.delayed(Duration.zero);
+      final next = c.show(1);
+      opening.complete(); // a finishes opening (and starts) after the swipe
+      await first;
+      expect(events.last, 'pause');
+      hold.complete();
+      await next;
+      expect(events.last, 'play ${_id('b')}');
+    });
+
     test('a short that will not play says why; Try again plays it', () async {
       var fail = true;
       final c = ShortsController((videos: shorts, index: 0), resolve: (v) async {
