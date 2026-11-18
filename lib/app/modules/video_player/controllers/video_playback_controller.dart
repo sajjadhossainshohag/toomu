@@ -19,6 +19,7 @@ import '../../../services/storage_service.dart';
 import '../../../services/video_session_service.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/app_snackbar.dart';
+import '../../youtube/controllers/youtube_controller.dart';
 
 /// What to play: a list (e.g. a folder) and where to start.
 class VideoPlaylist {
@@ -327,7 +328,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
         ? saved
         : null;
     final sw = Stopwatch()..start();
-    await _session.openItem(item, play: true, start: resumeAt);
+    await _openWithSubtitles(item, () => _session.openItem(item, play: true, start: resumeAt));
     if (resumeAt != null) {
       resumedFrom.value = resumeAt;
       _resumeTimer?.cancel();
@@ -605,7 +606,8 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     _savePosition();
     items[index.value] = item;
     buffering.value = true;
-    await _session.openItem(item, play: wasPlaying, start: at);
+    // A new stream drops the subtitles mpv had: they are added again.
+    await _openWithSubtitles(item, () => _session.openItem(item, play: wasPlaying, start: at));
     _syncPlatform(); // new aspect for PiP
   }
 
@@ -623,6 +625,40 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     );
     if (picked != null) await player.setAudioTrack(picked);
     _scheduleHide();
+  }
+
+  final _youtubeSubtitles = <String, Future<List<({String path, String lang, String title})>>>{};
+
+  // mpv attaches subtitles to a loaded file only, and says nothing when there is none yet: so the wait for this
+  // file's duration starts before it is opened (a new file, even the same video in another quality, goes from no
+  // duration to its length).
+  Future<void> _openWithSubtitles(VideoItem item, Future<void> Function() open) async {
+    final id = item.youtubeId;
+    if (id == null || player.platform is! NativePlayer || !Get.isRegistered<YoutubeController>()) return open();
+    final loaded = player.stream.duration.firstWhere((d) => d > Duration.zero).timeout(const Duration(seconds: 60));
+    try {
+      await open();
+    } catch (_) {
+      loaded.ignore();
+      rethrow;
+    }
+    unawaited(_addYoutubeSubtitles(id, loaded));
+  }
+
+  Future<void> _addYoutubeSubtitles(String id, Future<Duration> loaded) async {
+    final mpv = player.platform as NativePlayer;
+    try {
+      final subs = _youtubeSubtitles.putIfAbsent(id, () => Get.find<YoutubeController>().youtubeSubtitles(id));
+      await Future.wait<Object>([subs, loaded]);
+      if (isClosed || current.youtubeId != id) return;
+      for (final s in await subs) {
+        // "auto": listed under Subtitles but off until picked, like YouTube's own player.
+        await mpv.command(['sub-add', s.path, 'auto', s.title, s.lang]);
+      }
+    } catch (e) {
+      _youtubeSubtitles.remove(id);
+      debugPrint('[Video] YouTube subtitles for $id: $e');
+    }
   }
 
   Future<void> pickSubtitle() async {

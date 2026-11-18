@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../../../core/utils/error_text.dart';
+import '../../../core/utils/subtitles.dart';
 import '../../../extractors/direct_file_extractor.dart';
 import '../../../core/utils/link_parser.dart';
 import '../../../core/utils/video_matcher.dart';
@@ -973,6 +977,12 @@ class YoutubeController extends GetxController {
     } else {
       await Get.toNamed<void>(Routes.channel, arguments: args);
     }
+  }
+
+  Future<List<({String path, String lang, String title})>> youtubeSubtitles(String videoId) async {
+    final dir = Directory('${(await getTemporaryDirectory()).path}/yt-subs');
+    await dir.create(recursive: true);
+    return _yt.watchSubtitles(videoId, dir.path, Subtitles.wanted(PlatformDispatcher.instance.locale));
   }
 
   Future<void> openShorts(List<Video> videos, int index) async {

@@ -50,6 +50,14 @@ void main() {
     test('"en" does not match languages that only start with the same letters', () {
       expect(Subtitles.pick([track('eno')], ['en']), isEmpty);
     });
+
+    test('watching: none in the wanted languages still offers what the video has, uploaded first', () {
+      final picked = Subtitles.forWatching([track('bn', auto: true), track('ja')], ['en']);
+      expect(picked.single.language.code, 'ja');
+      expect(Subtitles.forWatching([track('bn', auto: true)], ['en']).single.language.code, 'bn');
+      expect(Subtitles.forWatching([track('en'), track('ja')], ['en']).map((t) => t.language.code), ['en']);
+      expect(Subtitles.forWatching(const [], ['en']), isEmpty);
+    });
   });
 
   group('SRT', () {
