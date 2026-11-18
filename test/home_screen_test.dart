@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:toomu/app/data/models/download_task.dart';
 import 'package:toomu/app/modules/downloads/controllers/downloads_controller.dart';
 import 'package:toomu/app/modules/home/controllers/home_controller.dart';
+import 'package:toomu/app/data/providers/youtube_provider.dart';
 import 'package:toomu/app/modules/youtube/controllers/youtube_controller.dart';
 import 'package:toomu/app/modules/youtube/views/youtube_view.dart';
 import 'package:toomu/app/services/download_service.dart';
@@ -13,12 +14,26 @@ import 'package:toomu/app/services/remote_config_service.dart';
 import 'package:toomu/app/services/settings_service.dart';
 import 'package:toomu/app/services/storage_service.dart';
 import 'package:toomu/app/services/youtube_account_service.dart';
+import 'package:toomu/app/routes/app_pages.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import 'support/temp_storage.dart';
 
+class _Channels implements ChannelSource {
+  @override
+  Future<Channel> channel(ChannelId id) async =>
+      Channel(id, id.value.endsWith('a') ? 'Alpha Channel' : 'Beta Channel', '', '', 10);
+
+  @override
+  Future<VideosPage> uploads(ChannelId id, {required bool shorts, required VideoSorting sort}) async =>
+      const VideosPage([]);
+}
+
 class _Yt extends YoutubeController {
   final opened = <String>[];
+
+  @override
+  ChannelSource get channelSource => _Channels();
 
   @override
   Future<void> watchFromCard(Video video) async => opened.add(video.id.value);
@@ -60,7 +75,9 @@ void main() {
       ..devicePixelRatio = 1
       ..physicalSize = const Size(390, 844);
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(const GetMaterialApp(home: Scaffold(body: SafeArea(child: YoutubeView()))));
+    await tester.pumpWidget(
+      GetMaterialApp(getPages: AppPages.routes, home: const Scaffold(body: SafeArea(child: YoutubeView()))),
+    );
     // After the controller's own first load has started (it never finishes offline).
     yt.feedLoading.value = false;
     yt.feed.assignAll([_video('aaaaaaaaaaa', 'Building a tiny house in 30 days')]);
@@ -134,6 +151,37 @@ void main() {
     task.status.value = DownloadStatus.completed;
     await tester.pump();
     expect(find.textContaining('downloading'), findsNothing);
+    await settle(tester);
+  });
+
+  testWidgets('a second channel opened over the first shows the second channel', (tester) async {
+    await open(tester);
+    Get.toNamed<void>(Routes.channel, arguments: (id: 'UC${'a' * 22}', title: 'Alpha Channel'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Alpha Channel'), findsWidgets);
+
+    // As from the watch page: a video opened from channel A, then channel B's row replaces the player.
+    Get.toNamed<void>(Routes.library);
+    await tester.pump(const Duration(seconds: 1));
+    Get.offNamed<void>(Routes.channel, arguments: (id: 'UC${'b' * 22}', title: 'Beta Channel'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Beta Channel'), findsWidgets, reason: 'not the first channel page again');
+    await settle(tester);
+  });
+
+  testWidgets('a video tapped in the Library shows that it is loading', (tester) async {
+    final yt = await open(tester);
+    yt.watched.assignAll([_video('ccccccccccc', 'Seen before')]);
+    Get.toNamed<void>(Routes.library);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    yt.watchingId.value = 'ccccccccccc';
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    yt.watchingId.value = null;
     await settle(tester);
   });
 }

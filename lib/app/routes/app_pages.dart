@@ -70,7 +70,7 @@ class AppPages {
     ),
     GetPage(
       name: _Paths.channel,
-      page: () => const ChannelView(),
+      page: () => ChannelView(),
       binding: ChannelBinding(),
     ),
     GetPage(

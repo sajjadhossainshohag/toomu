@@ -15,7 +15,12 @@ import '../controllers/channel_controller.dart';
 
 /// A YouTube channel: its videos (latest, popular or oldest first) and its Shorts.
 class ChannelView extends GetView<ChannelController> {
-  const ChannelView({super.key});
+  ChannelView({super.key}) : _tag = (Get.arguments as ChannelArgs).id;
+
+  final String _tag;
+
+  @override
+  String get tag => _tag;
 
   @override
   Widget build(BuildContext context) {
@@ -181,10 +186,13 @@ class ChannelView extends GetView<ChannelController> {
                       itemCount: controller.videos.length,
                       itemBuilder: (_, i) {
                         final v = controller.videos[i];
-                        return VideoRow(
-                          video: v,
-                          loading: yt.watchingId.value == v.id.value,
-                          onTap: () => yt.watchFromCard(v),
+                        // Rows are built during layout, after the page's Obx ran: each row watches its own spinner.
+                        return Obx(
+                          () => VideoRow(
+                            video: v,
+                            loading: yt.watchingId.value == v.id.value,
+                            onTap: () => yt.watchFromCard(v),
+                          ),
                         );
                       },
                     ),
