@@ -3,12 +3,16 @@ import 'package:get/get.dart';
 import '../core/utils/device_profile.dart';
 import '../modules/browser/bindings/browser_binding.dart';
 import '../modules/browser/views/browser_view.dart';
+import '../modules/channel/bindings/channel_binding.dart';
+import '../modules/channel/views/channel_view.dart';
 import '../modules/home/bindings/home_binding.dart';
 import '../modules/home/views/home_view.dart';
 import '../modules/music/bindings/collection_binding.dart';
 import '../modules/music/views/collection_view.dart';
 import '../modules/player/bindings/player_binding.dart';
 import '../modules/player/views/player_view.dart';
+import '../modules/shorts/bindings/shorts_binding.dart';
+import '../modules/shorts/views/shorts_view.dart';
 import '../modules/video_player/bindings/video_player_binding.dart';
 import '../modules/video_player/views/video_player_view.dart';
 import '../modules/videos/bindings/videos_binding.dart';
@@ -62,6 +66,16 @@ class AppPages {
       name: _Paths.musicCollection,
       page: () => const CollectionView(),
       binding: CollectionBinding(),
+    ),
+    GetPage(
+      name: _Paths.channel,
+      page: () => const ChannelView(),
+      binding: ChannelBinding(),
+    ),
+    GetPage(
+      name: _Paths.shorts,
+      page: () => const ShortsView(),
+      binding: ShortsBinding(),
     ),
   ];
 }

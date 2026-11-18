@@ -37,6 +37,8 @@ import '../../../services/storage_service.dart';
 import '../../../data/providers/ytdlp/ytdlp_bridge.dart';
 import '../../../services/ytdlp_service.dart';
 import '../views/widgets/format_sheet.dart';
+import '../../channel/controllers/channel_controller.dart';
+import '../../shorts/controllers/shorts_controller.dart';
 import '../../home/home_tabs.dart';
 import '../../../data/models/download_task.dart';
 import '../../../widgets/app_dialog.dart';
@@ -77,6 +79,7 @@ class YoutubeController extends GetxController {
 
   final YoutubeProvider _yt = YoutubeProvider();
   WatchSource get watchSource => _yt;
+  ChannelSource get channelSource => _yt;
 
   Future<FeedPage> _search(String query) =>
       _searchOverride?.call(query) ?? _yt.search(query);
@@ -902,6 +905,7 @@ class YoutubeController extends GetxController {
       title: video.title,
       options: const <SheetOption<String>>[
         SheetOption(value: 'download', label: 'Download', icon: Icons.download_rounded),
+        SheetOption(value: 'channel', label: 'Go to channel', icon: Icons.account_circle_rounded),
         SheetOption(value: 'share', label: 'Share', icon: Icons.share_rounded),
         SheetOption(value: 'copy', label: 'Copy link', icon: Icons.link_rounded),
       ],
@@ -909,11 +913,29 @@ class YoutubeController extends GetxController {
     switch (pick) {
       case 'download':
         await openVideo(video.id.value, known: video);
+      case 'channel':
+        await openChannel(video);
       case 'share':
         await shareVideo(video);
       case 'copy':
         await copyLink(video);
     }
+  }
+
+  // From the watch page the channel takes the player's place: with one shared player and no video mini player,
+  // a video left playing under it would be taken over by the channel's Shorts.
+  Future<void> openChannel(Video video, {bool replace = false}) async {
+    final ChannelArgs args = (id: video.channelId.value, title: video.author);
+    if (replace) {
+      await Get.offNamed<void>(Routes.channel, arguments: args);
+    } else {
+      await Get.toNamed<void>(Routes.channel, arguments: args);
+    }
+  }
+
+  Future<void> openShorts(List<Video> videos, int index) async {
+    final ShortsArgs args = (videos: videos, index: index);
+    await Get.toNamed<void>(Routes.shorts, arguments: args);
   }
 
   static String linkOf(Video video) => 'https://youtu.be/${video.id.value}';
@@ -952,8 +974,34 @@ class YoutubeController extends GetxController {
     bool replace = false,
     required VoidCallback beforeOpen,
   }) async {
-    final sw = Stopwatch()..start();
     try {
+      final item = await resolveStream(id, title, info: info, duration: duration);
+      beforeOpen();
+      final args = VideoPlaylist([item], 0);
+      if (replace) {
+        // From the watch page's Up next: the next video takes this player's place instead of stacking a second one.
+        await Get.offNamed<void>(Routes.videoPlayer, arguments: args);
+      } else {
+        await Get.toNamed<void>(Routes.videoPlayer, arguments: args);
+      }
+    } catch (e) {
+      debugPrint('[YouTube] watch failed: $e');
+      showSnack(
+        'Can\'t play this video',
+        ErrorText.of(e),
+        mainButton: _wantsSignIn(e)
+            ? TextButton(
+                onPressed: () => YoutubeSignInPage.open(),
+                child: const Text('Sign in'),
+              )
+            : null,
+      );
+    }
+  }
+
+  Future<VideoItem> resolveStream(String id, String title, {YtInfo? info, Duration? duration}) async {
+    final sw = Stopwatch()..start();
+    {
       final ytdlp = YtDlpService.to;
       final url = 'https://www.youtube.com/watch?v=$id';
       final preferred = _storage.read<int>(AppConstants.kStreamQuality);
@@ -1006,26 +1054,7 @@ class YoutubeController extends GetxController {
         '[YouTube] watching ${item.quality ?? '?'}'
         '${item.audioUri != null ? ' + separate audio' : ''} from $source after ${sw.elapsedMilliseconds} ms',
       );
-      beforeOpen();
-      final args = VideoPlaylist([item], 0);
-      if (replace) {
-        // From the watch page's Up next: the next video takes this player's place instead of stacking a second one.
-        await Get.offNamed<void>(Routes.videoPlayer, arguments: args);
-      } else {
-        await Get.toNamed<void>(Routes.videoPlayer, arguments: args);
-      }
-    } catch (e) {
-      debugPrint('[YouTube] watch failed: $e');
-      showSnack(
-        'Can\'t play this video',
-        ErrorText.of(e),
-        mainButton: _wantsSignIn(e)
-            ? TextButton(
-                onPressed: () => YoutubeSignInPage.open(),
-                child: const Text('Sign in'),
-              )
-            : null,
-      );
+      return item;
     }
   }
 

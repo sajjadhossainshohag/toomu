@@ -37,6 +37,7 @@ class VideoSessionService extends GetxService {
   Player? _player;
   VideoController? _video;
   Player get player => _player!;
+  bool get hasPlayer => _player != null;
   VideoController get video => _video!;
 
   /// A video is loaded (player screen open, or playing in the background).

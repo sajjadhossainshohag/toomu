@@ -42,6 +42,19 @@ abstract class WatchSource {
   Future<List<Comment>> replies(Comment comment);
 }
 
+/// What a channel page shows.
+abstract class ChannelSource {
+  Future<Channel> channel(ChannelId id);
+  Future<VideosPage> uploads(ChannelId id, {required bool shorts, required VideoSorting sort});
+}
+
+class VideosPage {
+  const VideosPage(this.videos, [this.next]);
+
+  final List<Video> videos;
+  final Future<VideosPage?> Function()? next;
+}
+
 class CommentsPage {
   const CommentsPage(this.comments, this.total, [this.next]);
 
@@ -52,7 +65,7 @@ class CommentsPage {
 
 /// YouTube search, home feed, video details and the fast stream lookup
 /// (youtube_explode_dart). Downloads are done by yt-dlp (YtDlpService).
-class YoutubeProvider implements WatchSource {
+class YoutubeProvider implements WatchSource, ChannelSource {
   YoutubeProvider() : _yt = YoutubeExplode();
 
   final YoutubeExplode _yt;
@@ -104,6 +117,15 @@ class YoutubeProvider implements WatchSource {
 
   @override
   Future<Channel> channel(ChannelId id) => _yt.channels.get(id);
+
+  @override
+  Future<VideosPage> uploads(ChannelId id, {required bool shorts, required VideoSorting sort}) async =>
+      _videosPage(await _yt.channels.getUploadsFromPage(id, videoSorting: sort, videoType: shorts ? VideoType.shorts : VideoType.normal));
+
+  VideosPage _videosPage(ChannelUploadsList list) => VideosPage(list.toList(), () async {
+        final more = await list.nextPage();
+        return more == null ? null : _videosPage(more);
+      });
 
   @override
   Future<List<Video>> related(Video video) async => (await _yt.videos.getRelatedVideos(video))?.toList() ?? const [];
