@@ -12,6 +12,7 @@ import 'app/routes/app_pages.dart';
 import 'app/services/app_services.dart';
 import 'app/services/settings_service.dart';
 import 'app/services/storage_service.dart';
+import 'app/widgets/floating_video.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +61,7 @@ class ToomuApp extends StatelessWidget {
         initialRoute: AppPages.initial,
         getPages: AppPages.routes,
         defaultTransition: AppPages.motion(Transition.cupertino),
+        builder: (_, child) => Stack(children: <Widget>[child!, const FloatingVideo()]),
       ),
     );
   }

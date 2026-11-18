@@ -24,7 +24,7 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
           controller.showControls();
           return;
         }
-        controller.exit();
+        controller.back();
       },
       child: Scaffold(
         backgroundColor: ColorConstants.black,
@@ -39,13 +39,19 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
             final Size box = watch ? Size(constraints.maxWidth, constraints.maxWidth / aspect) : constraints.biggest;
             controller.viewSize = box;
             controller.screenSize = constraints.biggest;
+            controller.watching = watch;
             // The status bar shows over the watch page, like YouTube; full screen hides the bars.
             controller.showSystemBars(watch);
-            final player = SizedBox.fromSize(
-              size: box,
-              child: _player(context, box, watch, constraints.maxWidth > constraints.maxHeight),
+            final content = _player(context, box, watch, constraints.maxWidth > constraints.maxHeight);
+            if (!watch) return SizedBox.fromSize(size: box, child: content);
+            // The height changes once the video's shape is known: it slides there, like YouTube's.
+            final player = TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: box.height),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutCubic,
+              builder: (_, height, child) => SizedBox(width: box.width, height: height, child: child),
+              child: content,
             );
-            if (!watch) return player;
             return AnnotatedRegion<SystemUiOverlayStyle>(
               value: SystemUiOverlayStyle.light,
               child: Column(
@@ -215,12 +221,19 @@ class _FullControls extends GetView<VideoPlaybackController> {
                 padding: EdgeInsets.fromLTRB(4, 4, 8, compact ? 4 : 24),
                 child: Row(
                   children: <Widget>[
-                    IconButton(
-                      // Not Get.back: that closes at once, turning the
-                      // screen upright during the close animation.
-                      onPressed: controller.exit,
-                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                    ),
+                    if (compact)
+                      IconButton(
+                        onPressed: controller.minimize,
+                        tooltip: 'Minimize',
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 30),
+                      )
+                    else
+                      IconButton(
+                        // Not Get.back: that closes at once, turning the
+                        // screen upright during the close animation.
+                        onPressed: controller.exit,
+                        icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                      ),
                     if (compact)
                       const Spacer()
                     else

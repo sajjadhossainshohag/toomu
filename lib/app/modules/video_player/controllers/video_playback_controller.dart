@@ -219,8 +219,8 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     _platform.invokeMethod<void>('updatePip', {'autoEnter': false, 'playing': false});
     // Background play on + playing → the audio continues after leaving the
     // player (notification + mini bar); otherwise the session ends.
-    final keepPlaying = backgroundPlay.value && playing.value;
-    _session.detach(keepPlaying: keepPlaying);
+    final keepPlaying = _minimizing || (backgroundPlay.value && playing.value);
+    _session.detach(keepPlaying: keepPlaying, minimize: _minimizing);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     ScreenBrightness.instance.resetApplicationScreenBrightness();
@@ -597,6 +597,24 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   /// close animation re-laid out the page behind it mid-flight — a flicker
   /// on some phones. The picture is hidden while the screen turns.
   final exiting = false.obs;
+
+  /// Set by the view: the small player above the watch page is showing.
+  bool watching = false;
+
+  bool _minimizing = false;
+
+  /// Back on the watch page shrinks the video into the corner, like YouTube; elsewhere it leaves.
+  void back() => watching ? minimize() : exit();
+
+  void minimize() {
+    // Still looking the stream up: there is nothing to keep playing in the corner yet.
+    if (current.uri.isEmpty) {
+      exit();
+      return;
+    }
+    _minimizing = true;
+    Get.back();
+  }
 
   Future<void> exit() async {
     if (exiting.value) return;

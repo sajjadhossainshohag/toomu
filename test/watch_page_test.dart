@@ -66,6 +66,14 @@ class _Home extends HomeController {
 }
 
 class _Playback extends VideoPlaybackController {
+  final left = <String>[];
+
+  @override
+  void minimize() => left.add('minimize');
+
+  @override
+  Future<void> exit() async => left.add('exit');
+
   @override
   // ignore: must_call_super
   void onInit() {}
@@ -165,7 +173,7 @@ void main() {
     await tester.pump();
 
     // The video starts under the cutout (48); the back button belongs 16 below that.
-    expect(tester.getTopLeft(find.byIcon(Icons.arrow_back_rounded).first).dy, lessThan(48 + 20),
+    expect(tester.getTopLeft(find.byIcon(Icons.keyboard_arrow_down_rounded).first).dy, lessThan(48 + 20),
         reason: 'the cutout moves the video down once, not the top bar again inside it');
     await tester.pump(const Duration(seconds: 5));
   });
@@ -181,6 +189,37 @@ void main() {
       await tester.pump();
       expect(c.viewSize.height, closeTo(height, 0.5), reason: 'video $aspect');
     }
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('a new shape slides the player to its height instead of jumping', (tester) async {
+    await open(tester, const Size(400, 844));
+    final box = find.descendant(of: find.byType(TweenAnimationBuilder<double>), matching: find.byType(SizedBox)).first;
+    expect(tester.getSize(box).height, 225);
+    Get.find<VideoPlaybackController>().videoAspect.value = 4 / 3;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.getSize(box).height, allOf(greaterThan(225), lessThan(300)), reason: 'on its way');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(tester.getSize(box).height, 300);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('the watch page minimizes like YouTube: the top-left chevron and back; full screen back leaves',
+      (tester) async {
+    await open(tester, const Size(390, 844));
+    final c = Get.find<VideoPlaybackController>() as _Playback;
+    c.controlsVisible.value = true;
+    await tester.pump();
+    expect(find.byIcon(Icons.arrow_back_rounded), findsNothing);
+    await tester.tap(find.byTooltip('Minimize'));
+    await tester.binding.handlePopRoute();
+    expect(c.left, ['minimize', 'minimize']);
+
+    tester.view.physicalSize = const Size(844, 390);
+    await tester.pump();
+    await tester.binding.handlePopRoute();
+    expect(c.left.last, 'exit');
     await tester.pump(const Duration(seconds: 5));
   });
 

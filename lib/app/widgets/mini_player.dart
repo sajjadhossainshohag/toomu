@@ -27,8 +27,10 @@ class MiniPlayer extends StatelessWidget {
     final Color ink = ColorConstants.textOn(dark);
 
     return Obx(() {
-      // A video playing in the background takes the mini bar's place.
-      if (VideoSessionService.to.inBackground.value) return const _VideoMiniBar();
+      // A video playing in the background takes the mini bar's place (minimized, it is in the corner instead).
+      final session = VideoSessionService.to;
+      if (session.minimized.value) return const SizedBox.shrink();
+      if (session.inBackground.value) return const _VideoMiniBar();
       final track = audio.current;
       if (track == null) return const SizedBox.shrink();
 

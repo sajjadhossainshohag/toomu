@@ -49,6 +49,9 @@ class VideoSessionService extends GetxService {
   final inBackground = false.obs;
   final playing = false.obs;
 
+  /// Shrunk into the corner of the app (YouTube's minimize): still playing, picture on.
+  final minimized = false.obs;
+
   VideoItem? get current => items.isEmpty ? null : items[index.value];
 
   /// Set while a player screen is attached; receives PiP / button events.
@@ -105,7 +108,10 @@ class VideoSessionService extends GetxService {
         args.index == index.value &&
         args.items.isNotEmpty &&
         args.items[args.index].resumeKey == current?.resumeKey;
-    _outsideBuild(() => inBackground.value = false);
+    _outsideBuild(() {
+      inBackground.value = false;
+      minimized.value = false;
+    });
     if (same) {
       setVideoEnabled(true);
       return true;
@@ -180,11 +186,12 @@ class VideoSessionService extends GetxService {
 
   /// Player screen closing. With [keepPlaying] the audio continues in the
   /// background; otherwise the session ends.
-  Future<void> detach({required bool keepPlaying}) async {
+  Future<void> detach({required bool keepPlaying, bool minimize = false}) async {
     _screen = null;
     if (keepPlaying && _active) {
       inBackground.value = true;
-      setVideoEnabled(false); // audio only until the player is reopened
+      minimized.value = minimize;
+      if (!minimize) setVideoEnabled(false); // audio only until the player is reopened
       return;
     }
     await stop();
@@ -194,6 +201,7 @@ class VideoSessionService extends GetxService {
   Future<void> stop() async {
     _savePosition();
     inBackground.value = false;
+    minimized.value = false;
     _endSession();
     await _stopMedia();
   }
