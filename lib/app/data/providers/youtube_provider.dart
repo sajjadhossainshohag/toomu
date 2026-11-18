@@ -8,6 +8,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../../core/utils/subtitles.dart';
 import '../models/youtube_stream.dart';
 import '../models/yt_info.dart';
+import 'youtube/account_feed.dart';
 import 'youtube/watch_next.dart';
 
 /// A page of videos in the home feed: search results, or the signed-in
@@ -67,8 +68,11 @@ class CommentsPage {
 /// YouTube search, home feed, video details and the fast stream lookup
 /// (youtube_explode_dart). Downloads are done by yt-dlp (YtDlpService).
 class YoutubeProvider implements WatchSource, ChannelSource {
-  YoutubeProvider() : _yt = YoutubeExplode();
+  YoutubeProvider({YoutubeHttpClient? http}) : this._(http ?? YoutubeHttpClient());
 
+  YoutubeProvider._(this._http) : _yt = YoutubeExplode(httpClient: _http);
+
+  final YoutubeHttpClient _http;
   final YoutubeExplode _yt;
 
   // ----------------------------------------------------------------- search
@@ -122,13 +126,86 @@ class YoutubeProvider implements WatchSource, ChannelSource {
   Future<Channel> channel(ChannelId id) => _yt.channels.get(id);
 
   @override
-  Future<VideosPage> uploads(ChannelId id, {required bool shorts, required VideoSorting sort}) async => _videosPage(
-    await _yt.channels.getUploadsFromPage(
-      id,
-      videoSorting: sort,
-      videoType: shorts ? VideoType.shorts : VideoType.normal,
-    ),
-  );
+  Future<VideosPage> uploads(ChannelId id, {required bool shorts, required VideoSorting sort}) async {
+    if (shorts) {
+      return _videosPage(await _yt.channels.getUploadsFromPage(id, videoSorting: sort, videoType: VideoType.shorts));
+    }
+    // youtube_explode 3.1.0 reads YouTube's current items ("lockupViewModel") at paths YouTube doesn't use:
+    // every title came back empty and every length 0:00. Same page, read with our own lockup parser.
+    final code = switch (sort) { VideoSorting.newest => 'dd', VideoSorting.oldest => 'da', VideoSorting.popularity => 'p' };
+    final html = await _http.getString('https://www.youtube.com/channel/${id.value}/videos?view=0&sort=$code&flow=grid');
+    final data = initialData(html);
+    final channel = ((data['metadata'] as Map?)?['channelMetadataRenderer'] as Map?)?['title'] as String? ?? '';
+    return _uploadsPage(data, id, channel);
+  }
+
+  VideosPage _uploadsPage(Object? json, ChannelId id, String channel) {
+    final (videos, next) = channelUploads(json, id, channel);
+    return VideosPage(
+      videos,
+      next == null ? null : () async => _uploadsPage(await _http.sendContinuation('browse', next), id, channel),
+    );
+  }
+
+  static Map<String, dynamic> initialData(String html) {
+    const marker = 'var ytInitialData = ';
+    final start = html.indexOf(marker);
+    final end = start < 0 ? -1 : html.indexOf(';</script>', start);
+    if (end < 0) throw const FormatException('No ytInitialData on the channel page');
+    return jsonDecode(html.substring(start + marker.length, end)) as Map<String, dynamic>;
+  }
+
+  // On a channel's own page an item's one metadata row is [views, age], with a collaboration's channels first.
+  static (List<Video>, String?) channelUploads(Object? json, ChannelId id, String channel) {
+    final videos = <Video>[];
+    final seen = <String>{};
+    String? next;
+    void walk(Object? j) {
+      if (j is List) {
+        j.forEach(walk);
+        return;
+      }
+      if (j is! Map) return;
+      final lockup = j['lockupViewModel'];
+      if (lockup is Map) {
+        final v = AccountFeed.videoOf(j);
+        if (v == null || !seen.add(v.id.value)) return;
+        final rows = ((((lockup['metadata'] as Map?)?['lockupMetadataViewModel'] as Map?)?['metadata'] as Map?)?[
+                    'contentMetadataViewModel'] as Map?)?['metadataRows'] as List? ??
+            const [];
+        final parts = [
+          for (final p in ((rows.firstOrNull as Map?)?['metadataParts'] as List?) ?? const [])
+            if (AccountFeed.text((p as Map)['text']) case final String s) s,
+        ];
+        videos.add(Video(
+          v.id,
+          v.title,
+          channel,
+          id,
+          null,
+          parts.length > 1 ? parts.last : null,
+          null,
+          '',
+          v.duration,
+          v.thumbnails,
+          null,
+          Engagement(AccountFeed.parseViews(parts.length > 1 ? parts[parts.length - 2] : null), null, null),
+          false,
+        ));
+        return;
+      }
+      final token = ((((j['continuationItemRenderer'] as Map?)?['continuationEndpoint'] as Map?)?[
+              'continuationCommand']) as Map?)?['token'];
+      if (token is String) {
+        next = token;
+        return;
+      }
+      j.values.forEach(walk);
+    }
+
+    walk(json);
+    return (videos, next);
+  }
 
   VideosPage _videosPage(ChannelUploadsList list) => VideosPage(list.toList(), () async {
     final more = await list.nextPage();
