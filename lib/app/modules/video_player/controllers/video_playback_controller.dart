@@ -629,37 +629,63 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
 
   final _youtubeSubtitles = <String, Future<List<({String path, String lang, String title})>>>{};
 
-  // mpv attaches subtitles to a loaded file only, and says nothing when there is none yet: so the wait for this
-  // file's duration starts before it is opened (a new file, even the same video in another quality, goes from no
-  // duration to its length).
   Future<void> _openWithSubtitles(VideoItem item, Future<void> Function() open) async {
     final id = item.youtubeId;
     if (id == null || player.platform is! NativePlayer || !Get.isRegistered<YoutubeController>()) return open();
-    final loaded = player.stream.duration.firstWhere((d) => d > Duration.zero).timeout(const Duration(seconds: 60));
+    // The track shown now comes back on in the new stream (a quality switch or a replaced stream).
+    final keep = player.state.track.subtitle.title;
+    final opening = ++_subtitlesOpen;
+    // mpv attaches subtitles to a loaded file only, and says nothing when there is none yet: so the wait for this
+    // file's duration starts before it is opened (a new file, even the same video in another quality, goes from no
+    // duration to its length).
+    final loaded = player.stream.duration.firstWhere((d) => d > Duration.zero).timeout(const Duration(minutes: 5));
     try {
       await open();
     } catch (_) {
       loaded.ignore();
       rethrow;
     }
-    unawaited(_addYoutubeSubtitles(id, loaded));
+    unawaited(_addYoutubeSubtitles(id, loaded, opening, keep));
   }
 
-  Future<void> _addYoutubeSubtitles(String id, Future<Duration> loaded) async {
+  // Only the newest open adds tracks: an older one finishing late would add them a second time.
+  int _subtitlesOpen = 0;
+  final _subtitlesLoading = <String>{};
+
+  Future<void> _addYoutubeSubtitles(String id, Future<Duration> loaded, int opening, String? keep) async {
     final mpv = player.platform as NativePlayer;
+    _subtitlesLoading.add(id);
     try {
-      final subs = _youtubeSubtitles.putIfAbsent(id, () => Get.find<YoutubeController>().youtubeSubtitles(id));
-      await Future.wait<Object>([subs, loaded]);
-      if (isClosed || current.youtubeId != id) return;
-      for (final s in await subs) {
-        // "auto": listed under Subtitles but off until picked, like YouTube's own player.
-        await mpv.command(['sub-add', s.path, 'auto', s.title, s.lang]);
+      final List<({String path, String lang, String title})> subs;
+      try {
+        subs = await _youtubeSubtitles.putIfAbsent(id, () => Get.find<YoutubeController>().youtubeSubtitles(id));
+      } catch (e) {
+        _youtubeSubtitles.remove(id);
+        loaded.ignore();
+        debugPrint('[Video] YouTube subtitles for $id: $e');
+        return;
       }
-    } catch (e) {
-      _youtubeSubtitles.remove(id);
-      debugPrint('[Video] YouTube subtitles for $id: $e');
+      try {
+        await loaded;
+      } on TimeoutException {
+        debugPrint('[Video] YouTube subtitles for $id: the video never started');
+        return;
+      }
+      if (isClosed || opening != _subtitlesOpen || current.youtubeId != id) return;
+      for (final command in subAddCommands(subs, keep: keep)) {
+        await mpv.command(command);
+      }
+    } finally {
+      _subtitlesLoading.remove(id);
     }
   }
+
+  @visibleForTesting
+  static List<List<String>> subAddCommands(List<({String path, String lang, String title})> subs, {String? keep}) => [
+        // "auto": listed under Subtitles but off until picked, like YouTube's own player; "select": the one that was
+        // on before the stream changed.
+        for (final s in subs) ['sub-add', s.path, keep != null && s.title == keep ? 'select' : 'auto', s.title, s.lang],
+      ];
 
   Future<void> pickSubtitle() async {
     _hideTimer?.cancel();
@@ -674,7 +700,12 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     );
     if (picked != null) await player.setSubtitleTrack(picked);
     if (tracks.isEmpty && picked == null) {
-      showSnack('Subtitles', 'This video has no subtitles.', duration: const Duration(seconds: 2));
+      final loading = _subtitlesLoading.contains(current.youtubeId);
+      showSnack(
+        'Subtitles',
+        loading ? 'Still loading this video\'s subtitles. Try again in a moment.' : 'This video has no subtitles.',
+        duration: const Duration(seconds: 2),
+      );
     }
     _scheduleHide();
   }

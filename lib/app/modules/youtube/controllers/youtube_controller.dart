@@ -979,8 +979,20 @@ class YoutubeController extends GetxController {
     }
   }
 
+  static bool _subtitlesDirCleared = false;
+
   Future<List<({String path, String lang, String title})>> youtubeSubtitles(String videoId) async {
     final dir = Directory('${(await getTemporaryDirectory()).path}/yt-subs');
+    // Once per app run, before anything in it can be playing: one file per watched video and language otherwise
+    // piles up forever (Windows never clears its temp folder).
+    if (!_subtitlesDirCleared) {
+      _subtitlesDirCleared = true;
+      try {
+        if (await dir.exists()) await dir.delete(recursive: true);
+      } on FileSystemException catch (e) {
+        debugPrint('[YouTube] old subtitle files: $e');
+      }
+    }
     await dir.create(recursive: true);
     return _yt.watchSubtitles(videoId, dir.path, Subtitles.wanted(PlatformDispatcher.instance.locale));
   }

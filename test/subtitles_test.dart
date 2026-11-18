@@ -3,6 +3,7 @@ import 'dart:ui' show Locale;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:toomu/app/core/utils/subtitles.dart';
+import 'package:toomu/app/modules/video_player/controllers/video_playback_controller.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 ClosedCaptionTrackInfo track(String code, {bool auto = false, ClosedCaptionFormat format = ClosedCaptionFormat.srv3}) =>
@@ -51,12 +52,35 @@ void main() {
       expect(Subtitles.pick([track('eno')], ['en']), isEmpty);
     });
 
-    test('watching: none in the wanted languages still offers what the video has, uploaded first', () {
-      final picked = Subtitles.forWatching([track('bn', auto: true), track('ja')], ['en']);
-      expect(picked.single.language.code, 'ja');
-      expect(Subtitles.forWatching([track('bn', auto: true)], ['en']).single.language.code, 'bn');
+    test('watching, none in the wanted languages: the spoken language (what YouTube auto-captions), not a translation',
+        () {
+      expect(Subtitles.forWatching([track('af'), track('bn', auto: true)], ['en']).single.language.code, 'bn',
+          reason: 'an uploaded Afrikaans translation is not the language of the video');
+      final uploaded = Subtitles.forWatching([track('af'), track('bn', auto: true), track('bn-BD')], ['en']).single;
+      expect(uploaded.language.code, 'bn-BD', reason: 'uploaded captions in the spoken language beat the automatic ones');
+      expect(Subtitles.forWatching([track('ja'), track('fr')], ['en']).single.language.code, 'ja',
+          reason: 'nothing automatic: the first uploaded one');
       expect(Subtitles.forWatching([track('en'), track('ja')], ['en']).map((t) => t.language.code), ['en']);
       expect(Subtitles.forWatching(const [], ['en']), isEmpty);
+    });
+  });
+
+  group('YouTube subtitles in the player', () {
+    const subs = [
+      (path: '/t/a.en.srt', lang: 'en', title: 'English'),
+      (path: '/t/a.bn.srt', lang: 'bn', title: 'Bengali (auto-generated)'),
+    ];
+
+    test('added but off until picked, like YouTube', () {
+      expect(VideoPlaybackController.subAddCommands(subs), [
+        ['sub-add', '/t/a.en.srt', 'auto', 'English', 'en'],
+        ['sub-add', '/t/a.bn.srt', 'auto', 'Bengali (auto-generated)', 'bn'],
+      ]);
+    });
+
+    test('subtitles that were on stay on after a quality switch', () {
+      final commands = VideoPlaybackController.subAddCommands(subs, keep: 'Bengali (auto-generated)');
+      expect(commands.map((c) => c[2]), ['auto', 'select']);
     });
   });
 
