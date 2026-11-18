@@ -92,6 +92,14 @@ def adaptive_layers():
         f'    <path android:fillColor="#FFFFFFFF" android:pathData="{STEM} {BAR}"/>\n  </group>\n</vector>\n',
         encoding="utf-8")
 
+    # Status bar icon: the glyph alone, filling the 20dp live area of the 24dp box.
+    (RES / "drawable/ic_stat_toomu.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    android:width="24dp" android:height="24dp"\n    android:viewportWidth="70" android:viewportHeight="70">\n'
+        '  <group android:translateX="-16.5" android:translateY="-16">\n'
+        f'    <path android:fillColor="#FFFFFFFF" android:pathData="{STEM} {BAR}"/>\n  </group>\n</vector>\n',
+        encoding="utf-8")
+
 
 def main():
     for name, text in {"toomu_logo.svg": icon_svg(True), "toomu_logo_square.svg": icon_svg(False),
