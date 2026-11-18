@@ -12,6 +12,21 @@ import '../services/video_session_service.dart';
 class FloatingVideo extends StatefulWidget {
   const FloatingVideo({super.key});
 
+  @visibleForTesting
+  static Rect restRect(Size screen, EdgeInsets padding, {required bool left, double? top}) {
+    final width = min(screen.width * 0.46, 280.0);
+    final height = width * 9 / 16;
+    final highest = padding.top + 8;
+    final lowest = max(highest, screen.height - padding.bottom - 8 - height);
+    // Above the bottom tabs until the user moves it.
+    final y = (top ?? screen.height - padding.bottom - 80 - height).clamp(highest, lowest);
+    return Rect.fromLTWH(left ? 12 : screen.width - 12 - width, y, width, height);
+  }
+
+  @visibleForTesting
+  static bool landsLeft(Rect dropped, double screenWidth, double velocityX) =>
+      velocityX.abs() > 800 ? velocityX < 0 : dropped.center.dx < screenWidth / 2;
+
   @override
   State<FloatingVideo> createState() => _FloatingVideoState();
 }
@@ -22,11 +37,19 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
   late final _shrink = AnimationController(vsync: this, duration: const Duration(milliseconds: 300), value: 1);
   late final Worker _minimizedWatch;
   Rect? _from;
+  double _fromRadius = 0;
+  bool _snapping = false;
+  bool _left = false;
+  double? _top;
+  Rect _shown = Rect.zero;
+  Rect? _dragged;
 
   @override
   void initState() {
     super.initState();
     _minimizedWatch = ever(_session.minimized, (bool on) {
+      _snapping = false;
+      _fromRadius = 0;
       _from = on && !DeviceProfile.reduceMotion ? _session.minimizeFrom : null;
       _session.minimizeFrom = null;
       _from == null ? _shrink.value = 1 : _shrink.forward(from: 0);
@@ -55,30 +78,39 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
     super.dispose();
   }
 
+  void _drop(DragEndDetails d) {
+    final dropped = _dragged;
+    if (dropped == null) return;
+    setState(() {
+      _left = FloatingVideo.landsLeft(dropped, MediaQuery.sizeOf(context).width, d.velocity.pixelsPerSecond.dx);
+      _top = dropped.top;
+      _dragged = null;
+      _from = DeviceProfile.reduceMotion ? null : dropped;
+      _fromRadius = 12;
+      _snapping = true;
+    });
+    if (_from != null) _shrink.forward(from: 0);
+  }
+
   @override
   Widget build(BuildContext context) => Obx(() {
     if (!_session.minimized.value) return const SizedBox.shrink();
     final media = MediaQuery.of(context);
-    final width = min(media.size.width * 0.46, 280.0);
-    final height = width * 9 / 16;
-    // Above the bottom tabs.
-    final corner = Rect.fromLTWH(
-      media.size.width - 12 - width,
-      media.size.height - media.padding.bottom - 80 - height,
-      width,
-      height,
-    );
+    final rest = FloatingVideo.restRect(media.size, media.padding, left: _left, top: _top);
     return AnimatedBuilder(
       animation: _shrink,
       builder: (_, child) {
         final t = Curves.easeOutCubic.transform(_shrink.value);
         final from = _from;
+        _shown = _dragged ?? (from == null ? rest : Rect.lerp(from, rest, t)!);
         return Positioned.fromRect(
-          rect: from == null ? corner : Rect.lerp(from, corner, t)!,
+          rect: _shown,
           child: Material(
             color: Colors.black,
             elevation: 10,
-            borderRadius: BorderRadius.circular(from == null ? 12 : 12 * t),
+            borderRadius: BorderRadius.circular(
+              from == null || _dragged != null ? 12 : _fromRadius + (12 - _fromRadius) * t,
+            ),
             clipBehavior: Clip.antiAlias,
             child: child,
           ),
@@ -95,11 +127,17 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
             resumeUponEnteringForegroundMode: false,
             subtitleViewConfiguration: const SubtitleViewConfiguration(visible: false),
           ),
-          GestureDetector(behavior: HitTestBehavior.opaque, onTap: _session.reopen),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _session.reopen,
+            onPanStart: (_) => setState(() => _dragged = _shown),
+            onPanUpdate: (d) => setState(() => _dragged = _dragged?.shift(d.delta)),
+            onPanEnd: _drop,
+          ),
           Align(
             alignment: Alignment.topRight,
             child: FadeTransition(
-              opacity: _shrink,
+              opacity: _snapping ? kAlwaysCompleteAnimation : _shrink,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
