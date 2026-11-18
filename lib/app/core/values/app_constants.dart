@@ -19,7 +19,7 @@ abstract class AppConstants {
 
   // GitHub redirects /releases/latest/download/<file> to that file in the newest release.
   static String latestDownload({required bool windows}) =>
-      'https://github.com/$githubRepo/releases/latest/download/${windows ? 'toomu-windows-x64.zip' : 'toomu-arm64-v8a.apk'}';
+      'https://github.com/$githubRepo/releases/latest/download/${windows ? 'toomu-windows-setup.exe' : 'toomu-arm64-v8a.apk'}';
 
   /// Ad filters (Adblock Plus syntax), the main list AdBlock uses.
   static const easylistUrl = 'https://easylist.to/easylist/easylist.txt';

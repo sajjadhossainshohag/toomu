@@ -202,6 +202,21 @@ jobs:
           (cd build && 7z a -tzip -bso0 "$GITHUB_WORKSPACE/dist/debug-symbols-windows.zip" symbols-windows)
           ls -lh dist
 
+      # The installer: same files, plus Start menu / desktop shortcuts and an uninstaller. Its own step that may
+      # fail: the zip is attached either way.
+      - name: Windows installer
+        continue-on-error: true
+        run: |
+          iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$iscc" ]; then choco install innosetup -y --no-progress > /dev/null; fi
+          # Git Bash would turn the /D options into paths.
+          MSYS_NO_PATHCONV=1 "$iscc" /Q \
+            "/DAppVersion=$(TZ=Asia/Dhaka date '+%Y.%m.%d-%H%M')" \
+            "/DSourceDir=$GITHUB_WORKSPACE\build\windows\x64\runner\Release" \
+            "/DOutputDir=$GITHUB_WORKSPACE\dist" \
+            windows\\installer\\toomu.iss
+          ls -lh dist
+
       - uses: actions/upload-artifact@v7
         with:
           name: toomu-windows
@@ -237,11 +252,17 @@ jobs:
           if [ -z "$tag" ]; then echo "::error::The release never appeared."; exit 1; fi
           gh release upload "$tag" dist/* --clobber --repo "$GITHUB_REPOSITORY"
           notes=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
-          line='- toomu-windows-x64.zip — Windows 10/11 (unzip, run toomu.exe)'
-          case "$notes" in
-            *"$line"*) ;;
-            *) gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes "$notes"$'\n'"$line" ;;
-          esac
+          added=$notes
+          lines=('- toomu-windows-x64.zip — Windows 10/11 portable (unzip, run toomu.exe)')
+          if [ -f dist/toomu-windows-setup.exe ]; then
+            lines=('- toomu-windows-setup.exe — Windows 10/11 installer (Start menu shortcut, uninstall from Settings)' "${lines[@]}")
+          fi
+          for line in "${lines[@]}"; do
+            case "$added" in *"$line"*) ;; *) added+=$'\n'"$line" ;; esac
+          done
+          if [ "$added" != "$notes" ]; then
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes "$added"
+          fi
 
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
