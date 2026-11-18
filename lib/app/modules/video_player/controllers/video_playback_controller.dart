@@ -20,6 +20,7 @@ import '../../../services/video_session_service.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/app_snackbar.dart';
 import '../../youtube/controllers/youtube_controller.dart';
+import 'watch_details_controller.dart';
 import '../../../core/utils/subtitles.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' show ClosedCaptionTrackInfo;
 
@@ -62,7 +63,7 @@ class GestureFeedback {
   final double? level;
 }
 
-enum _Drag { seek, brightness, volume, zoom }
+enum _Drag { seek, brightness, volume, zoom, dismiss }
 
 /// MX Player-style playback: libmpv (media_kit) plus gestures — swipe left
 /// edge for brightness, right edge for volume, sideways to seek, double-tap
@@ -80,6 +81,14 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   VideoItem get current => items[index.value];
   bool get hasNext => index.value < items.length - 1;
   bool get hasPrevious => index.value > 0;
+  bool get canSkipNext => hasNext || (_details?.related.isNotEmpty ?? false);
+
+  WatchDetailsController? get _details {
+    final id = items.isEmpty ? null : current.youtubeId;
+    return id != null && Get.isRegistered<WatchDetailsController>(tag: id)
+        ? Get.find<WatchDetailsController>(tag: id)
+        : null;
+  }
 
   final playing = false.obs;
   final buffering = false.obs;
@@ -129,13 +138,15 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   String? _savedKey;
   Duration? _savedAt;
 
+  late final void Function(MethodCall call) _screenHandler = _onPlatformCall;
+
   @override
   void onInit() {
     super.onInit();
     FrameProbe.watch('player open');
     final args = Get.arguments as VideoPlaylist;
     _resolve = args.resolve;
-    final rejoined = _session.attach(args, (call) => _onPlatformCall(call));
+    final rejoined = _session.attach(args, _screenHandler);
     WidgetsBinding.instance.addObserver(this);
 
     SystemChrome.setPreferredOrientations(followPhone);
@@ -214,7 +225,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     // Background play on + playing → the audio continues after leaving the
     // player (notification + mini bar); otherwise the session ends.
     final keepPlaying = _minimizing || (backgroundPlay.value && playing.value);
-    _session.detach(keepPlaying: keepPlaying, minimize: _minimizing);
+    _session.detach(keepPlaying: keepPlaying, minimize: _minimizing, screen: _screenHandler);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     ScreenBrightness.instance.resetApplicationScreenBrightness();
@@ -485,16 +496,30 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   }
 
   Future<void> next() async {
-    if (!hasNext) return;
+    if (!hasNext) {
+      // A YouTube video on its own: the first Up next video, like YouTube.
+      final details = _details;
+      if (details == null || details.related.isEmpty) return;
+      await Get.find<YoutubeController>().watchInPlace(details.related.first, from: details.video.value);
+      return;
+    }
     _savePosition();
     index.value++;
     await _open();
   }
 
   Future<void> previous() async {
+    final back = !hasPrevious &&
+        current.youtubeId != null &&
+        Get.isRegistered<YoutubeController>() &&
+        Get.find<YoutubeController>().canWatchBack;
     // MX: "previous" restarts the video when more than 3 s in.
-    if (position.value > const Duration(seconds: 3) || !hasPrevious) {
+    if (position.value > const Duration(seconds: 3) || (!hasPrevious && !back)) {
       await player.seek(Duration.zero);
+      return;
+    }
+    if (back) {
+      await Get.find<YoutubeController>().watchBack();
       return;
     }
     _savePosition();
@@ -617,12 +642,14 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       return;
     }
     _minimizing = true;
-    final box = videoBox.currentContext?.findRenderObject() as RenderBox?;
-    _session.minimizeFrom = box != null && box.hasSize ? box.localToGlobal(Offset.zero) & box.size : null;
+    _session.minimizeFrom = Offset(0, viewTop + dismissDrag.value) & viewSize;
     Get.back();
   }
 
-  final videoBox = GlobalKey();
+  double viewTop = 0;
+
+  final dismissDrag = 0.0.obs;
+  bool dismissDragging = false;
 
   Future<void> exit() async {
     if (exiting.value) return;
@@ -858,9 +885,15 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       if (delta.distance < 14) return; // ignore jitter
       _drag = delta.dx.abs() > delta.dy.abs()
           ? _Drag.seek
+          // The small player above the watch page: down shrinks it into the corner, like YouTube.
+          : watching && delta.dy > 0
+          ? _Drag.dismiss
           : (_dragStart.dx < viewSize.width / 2 ? _Drag.brightness : _Drag.volume);
     }
     switch (_drag!) {
+      case _Drag.dismiss:
+        dismissDragging = true;
+        dismissDrag.value = delta.dy < 0 ? 0 : delta.dy;
       case _Drag.zoom:
         zoom.value = (_startZoom * d.scale).clamp(1.0, 4.0);
         _show(Icons.zoom_in_rounded, '${(zoom.value * 100).round()}%');
@@ -888,6 +921,14 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   }
 
   void onScaleEnd(ScaleEndDetails d) {
+    if (_drag == _Drag.dismiss) {
+      dismissDragging = false;
+      if (dismissDrag.value > viewSize.height * 0.6 || d.velocity.pixelsPerSecond.dy > 900) {
+        minimize();
+      } else {
+        dismissDrag.value = 0;
+      }
+    }
     if (_drag == _Drag.seek && seekPreview.value != null) seekTo(seekPreview.value!);
     _drag = null;
     _hideFeedbackSoon();

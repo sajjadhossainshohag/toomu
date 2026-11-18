@@ -1041,15 +1041,12 @@ class YoutubeController extends GetxController {
     }
   }
 
-  // From the watch page the channel takes the player's place: with one shared player and no video mini player,
-  // a video left playing under it would be taken over by the channel's Shorts.
-  Future<void> openChannel(Video video, {bool replace = false}) async {
+  // From the watch page the video shrinks into the corner first, like YouTube. Upright (the only way the watch
+  // page shows) minimize pops the player at once, so the channel opens over the screen before it.
+  Future<void> openChannel(Video video, {bool fromPlayer = false}) async {
+    if (fromPlayer && Get.isRegistered<VideoPlaybackController>()) Get.find<VideoPlaybackController>().minimize();
     final ChannelArgs args = (id: video.channelId.value, title: video.author);
-    if (replace) {
-      await Get.offNamed<void>(Routes.channel, arguments: args);
-    } else {
-      await Get.toNamed<void>(Routes.channel, arguments: args);
-    }
+    await Get.toNamed<void>(Routes.channel, arguments: args);
   }
 
   static bool _subtitlesDirCleared = false;
@@ -1091,13 +1088,22 @@ class YoutubeController extends GetxController {
     showSnack('Link copied', video.title, duration: const Duration(seconds: 2));
   }
 
-  Future<void> watchInPlace(Video video) => _watch(
-    video.id.value,
-    video.title,
-    duration: video.duration,
-    replace: true,
-    beforeOpen: () => _rememberWatched(video),
-  );
+  // The videos watched before the current one in this chain of Up next picks: the player's Previous goes back.
+  final _watchedBefore = <Video>[];
+  bool get canWatchBack => _watchedBefore.isNotEmpty;
+
+  Future<void> watchInPlace(Video video, {Video? from}) {
+    if (from != null) _watchedBefore.add(from);
+    return _watch(
+      video.id.value,
+      video.title,
+      duration: video.duration,
+      replace: true,
+      beforeOpen: () => _rememberWatched(video),
+    );
+  }
+
+  Future<void> watchBack() => _watchedBefore.isEmpty ? Future.value() : watchInPlace(_watchedBefore.removeLast());
 
   /// Opens the player as fast as possible: yt-dlp's links when it already
   /// has them; otherwise the fast lookup's (well under a second). Those
@@ -1141,6 +1147,7 @@ class YoutubeController extends GetxController {
       // From the watch page's Up next: the next video takes this player's place instead of stacking a second one.
       await Get.offNamed<void>(Routes.videoPlayer, arguments: args);
     } else {
+      _watchedBefore.clear();
       await Get.toNamed<void>(Routes.videoPlayer, arguments: args);
     }
   }

@@ -40,6 +40,7 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
             controller.viewSize = box;
             controller.screenSize = constraints.biggest;
             controller.watching = watch;
+            controller.viewTop = watch ? MediaQuery.paddingOf(context).top : 0;
             // The status bar shows over the watch page, like YouTube; full screen hides the bars.
             controller.showSystemBars(watch);
             final content = _player(context, box, watch, constraints.maxWidth > constraints.maxHeight);
@@ -54,25 +55,37 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
             );
             return AnnotatedRegion<SystemUiOverlayStyle>(
               value: SystemUiOverlayStyle.light,
-              child: Column(
-                children: <Widget>[
-                  // The box is at the top: the screen's bottom inset (gesture bar) belongs to the details below.
-                  // removeTop too: this context is outside the SafeArea, so its padding still has the cutout,
-                  // and the top bar would move down by it a second time.
-                  SafeArea(
-                    bottom: false,
-                    child: MediaQuery.removePadding(
-                      context: context,
-                      removeTop: true,
-                      removeBottom: true,
-                      child: KeyedSubtree(key: controller.videoBox, child: player),
-                    ),
+              // Swiped down: the page follows the finger, then shrinks into the corner or springs back.
+              child: Obx(() {
+                final pulled = controller.dismissDrag.value;
+                return AnimatedContainer(
+                  duration: controller.dismissDragging ? Duration.zero : const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  transform: Matrix4.translationValues(0, pulled, 0),
+                  child: Column(
+                    children: <Widget>[
+                      // The box is at the top: the screen's bottom inset (gesture bar) belongs to the details below.
+                      // removeTop too: this context is outside the SafeArea, so its padding still has the cutout,
+                      // and the top bar would move down by it a second time.
+                      SafeArea(
+                        bottom: false,
+                        child: MediaQuery.removePadding(
+                          context: context,
+                          removeTop: true,
+                          removeBottom: true,
+                          child: player,
+                        ),
+                      ),
+                      Expanded(
+                        child: Opacity(
+                          opacity: (1 - pulled / 300).clamp(0.0, 1.0),
+                          child: WatchDetails(key: ValueKey(youtubeId), videoId: youtubeId),
+                        ),
+                      ),
+                    ],
                   ),
-                  Expanded(
-                    child: WatchDetails(key: ValueKey(youtubeId), videoId: youtubeId),
-                  ),
-                ],
-              ),
+                );
+              }),
             );
           }),
         ),
@@ -308,7 +321,7 @@ class _FullControls extends GetView<VideoPlaybackController> {
                 SizedBox(width: compact ? 22 : 28),
                 _CircleButton(
                   icon: Icons.skip_next_rounded,
-                  onTap: controller.hasNext ? controller.next : null,
+                  onTap: controller.canSkipNext ? controller.next : null,
                   size: compact ? 40 : 48,
                 ),
               ],

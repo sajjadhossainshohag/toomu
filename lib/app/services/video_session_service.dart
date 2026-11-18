@@ -232,7 +232,13 @@ class VideoSessionService extends GetxService {
 
   /// Player screen closing. With [keepPlaying] the audio continues in the
   /// background; otherwise the session ends.
-  Future<void> detach({required bool keepPlaying, bool minimize = false}) async {
+  Future<void> detach({
+    required bool keepPlaying,
+    bool minimize = false,
+    void Function(MethodCall call)? screen,
+  }) async {
+    // Up next: the new screen attaches before the replaced one closes; that one must not end the new video.
+    if (screen != null && !identical(screen, _screen)) return;
     _screen = null;
     if (keepPlaying && _active) {
       inBackground.value = true;
@@ -258,7 +264,7 @@ class VideoSessionService extends GetxService {
     for (final item in items) {
       final id = item.youtubeId;
       if (id != null && !kept.contains(id) && Get.isRegistered<WatchDetailsController>(tag: id)) {
-        Get.delete<WatchDetailsController>(tag: id);
+        Get.delete<WatchDetailsController>(tag: id, force: true);
       }
     }
   }

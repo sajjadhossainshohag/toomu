@@ -28,7 +28,12 @@ class _WatchDetailsState extends State<WatchDetails> {
   // minimize and back, would otherwise load everything again (YouTube rate-limits that) and lose opened comments.
   late final WatchDetailsController c = Get.isRegistered<WatchDetailsController>(tag: widget.videoId)
       ? Get.find<WatchDetailsController>(tag: widget.videoId)
-      : Get.put(WatchDetailsController(widget.videoId, Get.find<YoutubeController>().watchSource), tag: widget.videoId);
+      // permanent: GetX would otherwise delete it with the player screen that created it (minimize closes that).
+      : Get.put(
+          WatchDetailsController(widget.videoId, Get.find<YoutubeController>().watchSource),
+          tag: widget.videoId,
+          permanent: true,
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +118,7 @@ class _WatchDetailsState extends State<WatchDetails> {
                 ),
               ),
             InkWell(
-              onTap: () => yt.openChannel(v, replace: true),
+              onTap: () => yt.openChannel(v, fromPlayer: true),
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16 * scale, 14 * scale, 16 * scale, 0),
                 child: Row(
@@ -238,7 +243,7 @@ class _WatchDetailsState extends State<WatchDetails> {
             }),
             if (c.related.isNotEmpty) ...<Widget>[
               const SectionTitle('Up next'),
-              for (final r in c.related) VideoRow(video: r, onTap: () => yt.watchInPlace(r)),
+              for (final r in c.related) VideoRow(video: r, onTap: () => yt.watchInPlace(r, from: v)),
             ],
           ],
         );

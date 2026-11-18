@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -56,8 +57,20 @@ var _source = _Source();
 final _uiModes = <Object?>[];
 
 class _Yt extends YoutubeController {
+  final skips = <String>[];
+  var back = false;
+
   @override
   WatchSource get watchSource => _source;
+
+  @override
+  Future<void> watchInPlace(Video video, {Video? from}) async => skips.add('${video.id} from ${from?.id}');
+
+  @override
+  bool get canWatchBack => back;
+
+  @override
+  Future<void> watchBack() async => skips.add('back');
 }
 
 class _Home extends HomeController {
@@ -263,19 +276,79 @@ void main() {
   testWidgets('maximizing the minimized video does not load its details, Up next and comments again', (tester) async {
     await open(tester, const Size(390, 844));
     await tester.pump();
+    // The player as its own screen, like the app opens it: GetX ties what the screen creates to it.
+    Get.delete<WatchDetailsController>(tag: 'aaaaaaaaaaa', force: true);
+    _source.videoLoads = 0;
+    unawaited(Get.to<void>(() => const VideoPlayerView()));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
     expect(_source.videoLoads, 1);
+
     final session = VideoSessionService.to..debugActive = true;
-    await tester.pumpWidget(const SizedBox());
+    Get.back<void>();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
     await session.detach(keepPlaying: true, minimize: true);
-    await tester.pumpWidget(const MaterialApp(home: VideoPlayerView()));
-    await tester.pump();
-    expect(find.text('Building a tiny house'), findsOneWidget);
+    unawaited(Get.to<void>(() => const VideoPlayerView()));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Building a tiny house'), findsWidgets);
     expect(_source.videoLoads, 1, reason: 'each maximize loading it again got YouTube to rate-limit the app');
 
     session.debugActive = false;
     await session.stop();
     expect(Get.isRegistered<WatchDetailsController>(tag: 'aaaaaaaaaaa'), isFalse,
         reason: 'closing the video frees its watch page');
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('Up next: the old and new player screens can be on screen together while one replaces the other',
+      (tester) async {
+    await open(tester, const Size(390, 844));
+    await tester.pumpWidget(
+      const MaterialApp(home: Column(children: [Expanded(child: VideoPlayerView()), Expanded(child: VideoPlayerView())])),
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('Up next: the replaced player screen closing does not end the new video or drop its watch page',
+      (tester) async {
+    await open(tester, const Size(390, 844));
+    await tester.pump();
+    final session = VideoSessionService.to;
+    await session.detach(keepPlaying: false, screen: (_) {});
+    expect(Get.isRegistered<WatchDetailsController>(tag: 'aaaaaaaaaaa'), isTrue);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('swiping the small player down shrinks it into the corner like YouTube; a short pull springs back',
+      (tester) async {
+    await open(tester, const Size(390, 844));
+    final c = Get.find<VideoPlaybackController>() as _Playback;
+    await tester.dragFrom(const Offset(60, 150), const Offset(0, 60));
+    await tester.pumpAndSettle();
+    expect(c.left, isEmpty, reason: 'a short pull springs back');
+
+    await tester.dragFrom(const Offset(60, 150), const Offset(0, 300));
+    await tester.pump();
+    expect(c.left, ['minimize']);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('Next plays the first Up next video and Previous goes back to the one before, like YouTube',
+      (tester) async {
+    await open(tester, const Size(390, 844));
+    await tester.pump();
+    final c = Get.find<VideoPlaybackController>();
+    final yt = Get.find<YoutubeController>() as _Yt;
+    expect(c.canSkipNext, isTrue, reason: 'Up next has a video');
+    await c.next();
+    expect(yt.skips, ['bbbbbbbbbbb from aaaaaaaaaaa']);
+
+    yt.back = true;
+    await c.previous();
+    expect(yt.skips.last, 'back');
     await tester.pump(const Duration(seconds: 5));
   });
 
