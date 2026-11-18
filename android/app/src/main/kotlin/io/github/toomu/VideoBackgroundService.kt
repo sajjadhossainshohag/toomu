@@ -1,4 +1,4 @@
-package com.example.toomu
+package io.github.toomu
 
 import android.app.Notification
 import android.app.NotificationChannel

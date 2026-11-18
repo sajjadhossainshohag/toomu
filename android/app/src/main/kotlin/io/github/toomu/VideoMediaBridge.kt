@@ -1,4 +1,4 @@
-package com.example.toomu
+package io.github.toomu
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -12,12 +12,12 @@ import android.os.Looper
  * background-play media controls to the player in Dart (via MainActivity).
  */
 object VideoMediaBridge {
-    const val ACTION_PLAY_PAUSE = "com.example.toomu.video.PLAY_PAUSE"
-    const val ACTION_REWIND = "com.example.toomu.video.REWIND"
-    const val ACTION_FORWARD = "com.example.toomu.video.FORWARD"
-    const val ACTION_STOP = "com.example.toomu.video.STOP"
-    const val ACTION_NEXT = "com.example.toomu.video.NEXT"
-    const val ACTION_PREVIOUS = "com.example.toomu.video.PREVIOUS"
+    const val ACTION_PLAY_PAUSE = "io.github.toomu.video.PLAY_PAUSE"
+    const val ACTION_REWIND = "io.github.toomu.video.REWIND"
+    const val ACTION_FORWARD = "io.github.toomu.video.FORWARD"
+    const val ACTION_STOP = "io.github.toomu.video.STOP"
+    const val ACTION_NEXT = "io.github.toomu.video.NEXT"
+    const val ACTION_PREVIOUS = "io.github.toomu.video.PREVIOUS"
 
     /** Set by MainActivity while a Flutter engine is attached. */
     @Volatile var listener: ((String) -> Unit)? = null

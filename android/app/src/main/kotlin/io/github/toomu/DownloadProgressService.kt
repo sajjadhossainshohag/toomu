@@ -1,4 +1,4 @@
-package com.example.toomu
+package io.github.toomu
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -56,10 +56,10 @@ class DownloadProgressService : Service() {
     )
 
     companion object {
-        const val ACTION_OPEN_DOWNLOADS = "com.example.toomu.OPEN_DOWNLOADS"
-        const val ACTION_PAUSE_ALL = "com.example.toomu.downloads.PAUSE_ALL"
-        const val ACTION_PAUSE = "com.example.toomu.downloads.PAUSE"
-        const val ACTION_CANCEL = "com.example.toomu.downloads.CANCEL"
+        const val ACTION_OPEN_DOWNLOADS = "io.github.toomu.OPEN_DOWNLOADS"
+        const val ACTION_PAUSE_ALL = "io.github.toomu.downloads.PAUSE_ALL"
+        const val ACTION_PAUSE = "io.github.toomu.downloads.PAUSE"
+        const val ACTION_CANCEL = "io.github.toomu.downloads.CANCEL"
         const val EXTRA_ID = "id"
 
         private const val CHANNEL_PROGRESS = "toomu_downloads"

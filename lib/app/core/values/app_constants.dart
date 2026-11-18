@@ -2,7 +2,7 @@ abstract class AppConstants {
   static const appName = 'Toomu';
 
   // Notifications
-  static const playbackChannelId = 'com.example.toomu.playback';
+  static const playbackChannelId = 'io.github.toomu.playback';
   static const playbackChannelName = 'Music playback';
 
   // Downloads

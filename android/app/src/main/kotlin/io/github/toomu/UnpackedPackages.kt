@@ -1,4 +1,4 @@
-package com.example.toomu
+package io.github.toomu
 
 import java.io.File
 

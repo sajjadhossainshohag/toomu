@@ -10,7 +10,7 @@ void main() {
     'description': description,
     'importance': importance,
     'rssKb': 812 * 1024,
-    'process': 'com.example.toomu',
+    'process': 'io.github.toomu',
   };
 
   test('a native crash names its signal, so a kick-out can be told from a kill', () {

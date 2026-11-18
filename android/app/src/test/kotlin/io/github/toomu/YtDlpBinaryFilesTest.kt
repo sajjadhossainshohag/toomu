@@ -1,4 +1,4 @@
-package com.example.toomu
+package io.github.toomu
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals

@@ -1,4 +1,4 @@
-package com.example.toomu
+package io.github.toomu
 
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager

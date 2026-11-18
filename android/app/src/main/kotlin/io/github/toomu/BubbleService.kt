@@ -1,4 +1,4 @@
-package com.example.toomu
+package io.github.toomu
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -15,8 +15,8 @@ import android.provider.Settings
 class BubbleService : Service() {
 
     companion object {
-        const val ACTION_STOP = "com.example.toomu.BUBBLE_STOP"
-        const val ACTION_BUBBLE_TAP = "com.example.toomu.BUBBLE_TAP"
+        const val ACTION_STOP = "io.github.toomu.BUBBLE_STOP"
+        const val ACTION_BUBBLE_TAP = "io.github.toomu.BUBBLE_TAP"
         private const val CHANNEL_ID = "toomu_bubble"
         private const val NOTIFICATION_ID = 7301
 
