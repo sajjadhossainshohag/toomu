@@ -61,11 +61,12 @@ class _WatchDetailsState extends State<WatchDetails> {
           );
         }
         final open = c.descriptionOpen.value;
-        final when = v.uploadDateRaw ?? (v.uploadDate == null ? null : Formatters.ago(v.uploadDate!));
+        // A video's own page gives "raw" as an ISO timestamp; only feed and Up next items have "2 days ago" there.
+        final when = v.uploadDate == null ? v.uploadDateRaw : Formatters.ago(v.uploadDate!);
         final channel = c.channel.value;
         final likes = v.engagement.likeCount;
         return ListView(
-          padding: EdgeInsets.only(bottom: 24 * scale),
+          padding: EdgeInsets.only(bottom: 24 * scale + MediaQuery.paddingOf(context).bottom),
           children: <Widget>[
             InkWell(
               onTap: () => c.descriptionOpen.toggle(),

@@ -127,7 +127,6 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     final rejoined = _session.attach(args, (call) => _onPlatformCall(call));
     WidgetsBinding.instance.addObserver(this);
 
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations(followPhone);
     VolumeController.instance.showSystemUI = false;
 
@@ -540,6 +539,14 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   ];
 
   bool get _viewIsLandscape => screenSize.width > screenSize.height;
+
+  bool? _systemBars;
+
+  void showSystemBars(bool show) {
+    if (_systemBars == show) return;
+    _systemBars = show;
+    SystemChrome.setEnabledSystemUIMode(show ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky);
+  }
 
   void rotate() {
     SystemChrome.setPreferredOrientations(

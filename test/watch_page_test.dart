@@ -26,11 +26,17 @@ Video _video(String id, String title) => Video(VideoId(id), title, 'Cabin Builde
 
 class _Source implements WatchSource {
   var videoLoads = 0;
+  DateTime? uploaded;
 
   @override
   Future<Video> video(String id) async {
     videoLoads++;
-    return _video(id, 'Building a tiny house');
+    final v = _video(id, 'Building a tiny house');
+    final at = uploaded;
+    if (at == null) return v;
+    // A video's own page gives the date and, as "raw", the same date as an ISO string.
+    return Video(v.id, v.title, v.author, v.channelId, at, at.toIso8601String(), null, v.description, v.duration,
+        v.thumbnails, null, v.engagement, false);
   }
   @override
   Future<Channel> channel(ChannelId id) async => Channel(id, 'Cabin Builders', '', '', 1200000);
@@ -45,6 +51,7 @@ class _Source implements WatchSource {
 }
 
 var _source = _Source();
+final _uiModes = <Object?>[];
 
 class _Yt extends YoutubeController {
   @override
@@ -74,8 +81,9 @@ void main() {
   setUpAll(() async => dir = await useTempStorageDir());
   tearDownAll(() => deleteTempStorageDir(dir));
 
-  Future<List<Object?>> open(WidgetTester tester, Size screen) async {
-    _source = _Source();
+  Future<List<Object?>> open(WidgetTester tester, Size screen, {DateTime? uploaded}) async {
+    _source = _Source()..uploaded = uploaded;
+    _uiModes.clear();
     await tester.runAsync(() async {
       Get.put(StorageService(await tempBox('watch_${n++}', dir)));
       for (final tag in [StorageService.downloadsBox, StorageService.logsBox, StorageService.positionsBox]) {
@@ -97,6 +105,7 @@ void main() {
     final asked = <List<Object?>>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
       if (call.method == 'SystemChrome.setPreferredOrientations') asked.add(call.arguments as List<Object?>);
+      if (call.method == 'SystemChrome.setEnabledSystemUIMode') _uiModes.add(call.arguments);
       return null;
     });
     addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
@@ -124,6 +133,40 @@ void main() {
     await tester.tap(find.byIcon(Icons.fullscreen_rounded));
     expect(asked.last, ['DeviceOrientation.landscapeLeft', 'DeviceOrientation.landscapeRight']);
     await tester.pump(const Duration(seconds: 5)); // let the hide timers run out
+  });
+
+  testWidgets('the status bar shows on the watch page and hides only when the player fills the screen', (tester) async {
+    await open(tester, const Size(390, 844));
+    expect(_uiModes.last, 'SystemUiMode.edgeToEdge');
+
+    tester.view.physicalSize = const Size(844, 390);
+    await tester.pump();
+    expect(_uiModes.last, 'SystemUiMode.immersiveSticky');
+
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pump();
+    expect(_uiModes.last, 'SystemUiMode.edgeToEdge');
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('the upload date reads "3 days ago", not as a timestamp', (tester) async {
+    await open(tester, const Size(390, 844), uploaded: DateTime.now().subtract(const Duration(days: 3, hours: 1)));
+    await tester.pump();
+    expect(find.textContaining('3 days ago'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'\d{4}-\d\d-\d\d')), findsNothing);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('upright on a phone with a camera cutout: the top bar stays at the top of the video', (tester) async {
+    tester.view.padding = const FakeViewPadding(top: 48);
+    await open(tester, const Size(360, 800));
+    Get.find<VideoPlaybackController>().controlsVisible.value = true;
+    await tester.pump();
+
+    // The video starts under the cutout (48); the back button belongs 16 below that.
+    expect(tester.getTopLeft(find.byIcon(Icons.arrow_back_rounded).first).dy, lessThan(48 + 20),
+        reason: 'the cutout moves the video down once, not the top bar again inside it');
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('turned sideways: the whole screen is the player', (tester) async {
