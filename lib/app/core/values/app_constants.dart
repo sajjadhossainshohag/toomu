@@ -44,6 +44,7 @@ abstract class AppConstants {
   static const kFeedTopics = 'home_feed_topics';
   static const kBubbleEnabled = 'floating_button_enabled';
   static const kVideoBackgroundPlay = 'video_background_play';
+  static const kDirectVideoDecoding = 'direct_video_decoding';
   static const kVideoAutoPip = 'video_auto_pip';
   static const kCaptureMedia = 'browser_capture_media';
   static const kClipboardLinks = 'clipboard_links';

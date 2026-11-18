@@ -17,6 +17,7 @@ import '../data/providers/local_video_provider.dart';
 import '../data/repositories/video_resume_repository.dart';
 import '../routes/app_pages.dart';
 import '../modules/video_player/controllers/video_playback_controller.dart';
+import 'diagnostics_service.dart';
 import 'settings_service.dart';
 import 'stream_proxy.dart';
 import 'ytdlp_service.dart';
@@ -146,7 +147,17 @@ class VideoSessionService extends GetxService {
         bufferSize: DeviceProfile.lowEnd ? 16 << 20 : 32 << 20,
       ),
     );
-    _video = VideoController(_player!);
+    // media_kit's Android default (vo=gpu, hwdec=auto-safe) can't hand the decoder a surface ("h264_mediacodec:
+    // Both surface and native_window are NULL") and falls back to copying every frame. Direct has no software
+    // fallback: a codec the phone can't decode in hardware shows no picture, hence a test switch for now.
+    final direct = Platform.isAndroid && SettingsService.to.directVideoDecoding.value;
+    _video = VideoController(
+      _player!,
+      configuration: direct
+          ? const VideoControllerConfiguration(vo: 'mediacodec_embed', hwdec: 'mediacodec')
+          : const VideoControllerConfiguration(),
+    );
+    if (direct) debugPrint('[Video] direct hardware decoding (test switch)');
     _configure(_player!);
     String? lastLog;
     _subs.addAll([
@@ -277,6 +288,32 @@ class VideoSessionService extends GetxService {
     // Sidecar subtitles are added explicitly in openItem; mpv's own search would add them twice.
     set('sub-auto', 'no');
     set('osd-level', '0');
+  }
+
+  Future<void> logDecoder() async {
+    final mpv = _player?.platform;
+    if (mpv is! NativePlayer) return;
+    try {
+      final codec = await mpv.getProperty('video-codec');
+      final hw = await mpv.getProperty('hwdec-current');
+      debugPrint('[Video] decoding ${codec.split(' ').first} ${player.state.width}x${player.state.height} with '
+          '${hw.isEmpty || hw == 'no' ? 'software (CPU)' : 'hardware ($hw)'}');
+    } catch (e) {
+      debugPrint('[Video] decoder unknown: $e');
+    }
+  }
+
+  Future<void> logHealth(String after) async {
+    final mpv = _player?.platform;
+    if (mpv is! NativePlayer) return;
+    try {
+      final shown = await mpv.getProperty('frame-drop-count');
+      final decoded = await mpv.getProperty('decoder-frame-drop-count');
+      debugPrint('[Video] after $after: frames dropped $shown (late to the screen), $decoded (decoder too slow); '
+          'phone ${await DiagnosticsService.heatNow()}');
+    } catch (e) {
+      debugPrint('[Video] health unknown: $e');
+    }
   }
 
   /// Opens [item] in the player (at [start] if given): a file, or a stream

@@ -411,12 +411,22 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     player.stream.position
         .firstWhere((p) => p > from)
         .timeout(const Duration(seconds: 30))
-        .then(
-          (_) => debugPrint(
+        .then<void>((_) {
+          debugPrint(
             '[Video] stream playing after ${sw.elapsedMilliseconds} ms'
             '${current.provisional ? ' (fast links)' : ''}',
-          ),
-        )
+          );
+          _session.logDecoder();
+          // Lag and heat with numbers: the app's drawing while it plays, then dropped frames and the phone's heat.
+          final item = current;
+          bool still() => !isClosed && identical(current, item);
+          Timer(const Duration(seconds: 10), () {
+            if (still()) FrameProbe.watch('playing', window: const Duration(seconds: 10));
+          });
+          Timer(const Duration(seconds: 20), () {
+            if (still()) _session.logHealth('20 s');
+          });
+        })
         .catchError((Object _) => debugPrint('[Video] stream not playing after 30 s'));
   }
 

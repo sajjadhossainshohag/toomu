@@ -348,6 +348,41 @@ class MainActivity : AudioServiceActivity() {
             }
         }
 
+        MethodChannel(messenger, "toomu/diagnostics").setMethodCallHandler { call, result ->
+            when (call.method) {
+                // Why earlier runs ended (Android 11+): native crashes and the system's kills never reach the
+                // app's own log.
+                "exitsSince" -> {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                        result.success(emptyList<Map<String, Any?>>())
+                    } else {
+                        val since = call.argument<Number>("since")?.toLong() ?: 0L
+                        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+                        result.success(
+                            am.getHistoricalProcessExitReasons(packageName, 0, 5)
+                                .filter { it.timestamp > since }
+                                .map {
+                                    mapOf(
+                                        "time" to it.timestamp,
+                                        "reason" to it.reason,
+                                        "status" to it.status,
+                                        "description" to it.description,
+                                        "importance" to it.importance,
+                                        "rssKb" to it.rss,
+                                        "process" to it.processName,
+                                    )
+                                },
+                        )
+                    }
+                }
+                "thermal" -> {
+                    val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
+                    result.success(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) pm.currentThermalStatus else -1)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         MethodChannel(messenger, "toomu/media_scanner").setMethodCallHandler { call, result ->
             when (call.method) {
                 "scanFile" -> {
