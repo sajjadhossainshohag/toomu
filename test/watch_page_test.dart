@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -167,6 +168,35 @@ void main() {
     expect(tester.getTopLeft(find.byIcon(Icons.arrow_back_rounded).first).dy, lessThan(48 + 20),
         reason: 'the cutout moves the video down once, not the top bar again inside it');
     await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('upright, the player takes the video\'s shape like YouTube: 16:9 at most wide, 4:5 at most tall',
+      (tester) async {
+    await open(tester, const Size(400, 844));
+    final c = Get.find<VideoPlaybackController>();
+    expect(c.viewSize, const Size(400, 225), reason: 'shape not known yet: 16:9');
+
+    for (final (aspect, height) in [(4 / 3, 300.0), (9 / 16, 500.0), (1.0, 400.0), (21 / 9, 225.0)]) {
+      c.videoAspect.value = aspect;
+      await tester.pump();
+      expect(c.viewSize.height, closeTo(height, 0.5), reason: 'video $aspect');
+    }
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  test('captions read like YouTube\'s: about 15 px in the small player, about 20 px in full screen', () {
+    // media_kit shrinks captions by sqrt(box area / 1920×1080) unless the config gives its own text scaler.
+    double drawn(Size box) {
+      final config = VideoPlayerView.captions(box, TextScaler.noScaling);
+      final size = config.style.fontSize!;
+      return config.textScaler?.scale(size) ?? size * sqrt(box.width * box.height / (1920 * 1080));
+    }
+
+    expect(drawn(const Size(390, 219)), inInclusiveRange(14, 17));
+    expect(drawn(const Size(844, 390)), inInclusiveRange(19, 23));
+    expect(drawn(const Size(1600, 900)), lessThanOrEqualTo(30), reason: 'tablets: big, not huge');
+    expect(VideoPlayerView.captions(const Size(390, 219), const TextScaler.linear(1.5)).textScaler!.scale(10), 15,
+        reason: 'the phone\'s text size setting still counts');
   });
 
   testWidgets('turned sideways: the whole screen is the player', (tester) async {

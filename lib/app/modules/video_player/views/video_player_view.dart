@@ -34,14 +34,16 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
             // Upright with a YouTube video: the player on top and the watch page under it, like YouTube.
             final bool watch =
                 youtubeId != null && constraints.maxHeight > constraints.maxWidth && !controller.inPip.value;
-            final Size box = watch ? Size(constraints.maxWidth, constraints.maxWidth * 9 / 16) : constraints.biggest;
+            // Like YouTube: the player takes the video's shape, from 16:9 (wider videos are letterboxed) to 4:5.
+            final double aspect = (controller.videoAspect.value ?? 16 / 9).clamp(4 / 5, 16 / 9);
+            final Size box = watch ? Size(constraints.maxWidth, constraints.maxWidth / aspect) : constraints.biggest;
             controller.viewSize = box;
             controller.screenSize = constraints.biggest;
             // The status bar shows over the watch page, like YouTube; full screen hides the bars.
             controller.showSystemBars(watch);
             final player = SizedBox.fromSize(
               size: box,
-              child: _player(watch, constraints.maxWidth > constraints.maxHeight),
+              child: _player(context, box, watch, constraints.maxWidth > constraints.maxHeight),
             );
             if (!watch) return player;
             return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -72,7 +74,21 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
     );
   }
 
-  Widget _player(bool compact, bool landscape) => Stack(
+  // Our own size and scaler: media_kit's default shrinks captions by sqrt(box area / 1920×1080), ~6 px in the
+  // small player. YouTube's look: white on a dark box, ~15 px upright, ~21 px full screen on a phone.
+  static SubtitleViewConfiguration captions(Size box, TextScaler system) => SubtitleViewConfiguration(
+    style: TextStyle(
+      fontSize: (box.shortestSide * 0.055).clamp(15.0, 28.0),
+      height: 1.3,
+      color: Colors.white,
+      fontWeight: FontWeight.w500,
+      backgroundColor: const Color(0xBF080808),
+    ),
+    textScaler: system,
+    padding: EdgeInsets.fromLTRB(16, 0, 16, box.shortestSide * 0.06),
+  );
+
+  Widget _player(BuildContext context, Size box, bool compact, bool landscape) => Stack(
     fit: StackFit.expand,
     children: <Widget>[
       // Video (zoom = pinch; fit/aspect = aspect button).
@@ -94,14 +110,7 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
                     resumeUponEnteringForegroundMode: false,
                     fit: controller.fit.value.boxFit,
                     aspectRatio: controller.fit.value.aspect,
-                    subtitleViewConfiguration: const SubtitleViewConfiguration(
-                      style: TextStyle(
-                        fontSize: 30,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        shadows: [Shadow(blurRadius: 6, color: Colors.black)],
-                      ),
-                    ),
+                    subtitleViewConfiguration: captions(box, MediaQuery.textScalerOf(context)),
                   ),
                 ),
               ),

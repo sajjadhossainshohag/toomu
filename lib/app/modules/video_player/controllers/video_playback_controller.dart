@@ -102,6 +102,13 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   /// Shown for a few seconds after resuming ("Resumed from 12:30").
   final resumedFrom = Rxn<Duration>();
 
+  final videoAspect = RxnDouble();
+
+  void _syncAspect() {
+    final w = player.state.width, h = player.state.height;
+    if (w != null && h != null && w > 0 && h > 0) videoAspect.value = w / h;
+  }
+
   /// Set by the view: the player's box (gestures are measured in it).
   Size viewSize = Size.zero;
 
@@ -174,7 +181,11 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
         _lastError = e;
         _streamFailed();
       }),
-      player.stream.width.listen((_) => _syncPlatform()),
+      player.stream.width.listen((_) {
+        _syncAspect();
+        _syncPlatform();
+      }),
+      player.stream.height.listen((_) => _syncAspect()),
     ]);
     _platform.invokeMethod<bool>('pipSupported').then((v) => pipSupported.value = v ?? false);
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _savePosition(onlyIfMoved: true));
