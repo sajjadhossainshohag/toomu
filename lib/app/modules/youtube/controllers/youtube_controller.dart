@@ -1143,13 +1143,14 @@ class YoutubeController extends GetxController {
       0,
       resolve,
     );
-    if (replace) {
-      // From the watch page's Up next: the next video takes this player's place instead of stacking a second one.
-      await Get.offNamed<void>(Routes.videoPlayer, arguments: args);
-    } else {
-      _watchedBefore.clear();
-      await Get.toNamed<void>(Routes.videoPlayer, arguments: args);
+    if (replace && Get.isRegistered<VideoPlaybackController>()) {
+      // Up next plays in the open player: a second player route would find this one's controller (GetX keeps it
+      // while registered) and never load the new video.
+      await Get.find<VideoPlaybackController>().load(args);
+      return;
     }
+    if (!replace) _watchedBefore.clear();
+    await Get.toNamed<void>(Routes.videoPlayer, arguments: args);
   }
 
   Future<VideoItem> resolveStream(String id, String title, {YtInfo? info, Duration? duration}) async {

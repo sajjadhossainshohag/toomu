@@ -59,12 +59,14 @@ final _uiModes = <Object?>[];
 class _Yt extends YoutubeController {
   final skips = <String>[];
   var back = false;
+  var realWatch = false;
 
   @override
   WatchSource get watchSource => _source;
 
   @override
-  Future<void> watchInPlace(Video video, {Video? from}) async => skips.add('${video.id} from ${from?.id}');
+  Future<void> watchInPlace(Video video, {Video? from}) async =>
+      realWatch ? super.watchInPlace(video, from: from) : skips.add('${video.id} from ${from?.id}');
 
   @override
   bool get canWatchBack => back;
@@ -81,6 +83,10 @@ class _Home extends HomeController {
 
 class _Playback extends VideoPlaybackController {
   final left = <String>[];
+  final loaded = <String?>[];
+
+  @override
+  Future<void> load(VideoPlaylist args) async => loaded.add(args.items[args.index].remoteKey);
 
   @override
   void minimize() => left.add('minimize');
@@ -349,6 +355,18 @@ void main() {
     yt.back = true;
     await c.previous();
     expect(yt.skips.last, 'back');
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('tapping an Up next video opens it in the player', (tester) async {
+    await open(tester, const Size(390, 844));
+    await tester.pump();
+    (Get.find<YoutubeController>() as _Yt).realWatch = true;
+    await tester.ensureVisible(find.text('Street food tour'));
+    await tester.tap(find.text('Street food tour'));
+    await tester.pump(const Duration(seconds: 1));
+    expect((Get.find<VideoPlaybackController>() as _Playback).loaded, ['yt:bbbbbbbbbbb'],
+        reason: 'opening the player route again kept the old screen\'s controller, so the new video never loaded');
     await tester.pump(const Duration(seconds: 5));
   });
 

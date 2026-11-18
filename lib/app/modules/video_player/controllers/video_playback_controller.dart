@@ -508,6 +508,12 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     await _open();
   }
 
+  Future<void> load(VideoPlaylist args) {
+    _resolve = args.resolve;
+    _session.attach(args, _screenHandler);
+    return _open();
+  }
+
   Future<void> previous() async {
     final back = !hasPrevious &&
         current.youtubeId != null &&
