@@ -6,6 +6,7 @@ import '../../../core/theme/brand_colors.dart';
 import '../../../core/theme/color_constants.dart';
 import '../../../core/utils/formatters.dart';
 import '../controllers/video_playback_controller.dart';
+import 'watch_details.dart';
 
 /// Full-screen MX-style player.
 class VideoPlayerView extends GetView<VideoPlaybackController> {
@@ -27,94 +28,110 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
       child: Scaffold(
         backgroundColor: ColorConstants.black,
         body: LayoutBuilder(
-          builder: (context, constraints) {
-            controller.viewSize = constraints.biggest;
-            return Stack(
-              fit: StackFit.expand,
+          builder: (context, constraints) => Obx(() {
+            final String? youtubeId = controller.items.isEmpty ? null : controller.current.youtubeId;
+            // Upright with a YouTube video: the player on top and the watch page under it, like YouTube.
+            final bool watch =
+                youtubeId != null && constraints.maxHeight > constraints.maxWidth && !controller.inPip.value;
+            final Size box = watch ? Size(constraints.maxWidth, constraints.maxWidth * 9 / 16) : constraints.biggest;
+            controller.viewSize = box;
+            controller.screenSize = constraints.biggest;
+            final player = SizedBox.fromSize(size: box, child: _player(watch, constraints.maxWidth > constraints.maxHeight));
+            if (!watch) return player;
+            return Column(
               children: <Widget>[
-                // Video (zoom = pinch; fit/aspect = aspect button).
-                Obx(
-                  () => controller.exiting.value
-                      ? const SizedBox.expand()
-                      : ClipRect(
-                    child: Transform.scale(
-                      scale: controller.zoom.value,
-                      child: Video(
-                        // A fresh surface per orientation: some phones kept
-                        // the old layout after turning (half the picture).
-                        key: ValueKey(constraints.maxWidth > constraints.maxHeight),
-                        controller: controller.video,
-                        controls: NoVideoControls,
-                        fill: ColorConstants.black,
-                        // The controller decides (PiP / background play / pause).
-                        pauseUponEnteringBackgroundMode: false,
-                        resumeUponEnteringForegroundMode: false,
-                        fit: controller.fit.value.boxFit,
-                        aspectRatio: controller.fit.value.aspect,
-                        subtitleViewConfiguration:
-                            const SubtitleViewConfiguration(
-                              style: TextStyle(
-                                fontSize: 30,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                shadows: [
-                                  Shadow(blurRadius: 6, color: Colors.black),
-                                ],
-                              ),
-                            ),
-                      ),
-                    ),
-                  ),
+                // The box is at the top: the screen's bottom inset (gesture bar) belongs to the details below.
+                SafeArea(
+                  bottom: false,
+                  child: MediaQuery.removePadding(context: context, removeBottom: true, child: player),
                 ),
-
-                // Everything below is hidden in picture-in-picture.
-                Obx(
-                  () => controller.inPip.value
-                      ? const SizedBox.shrink()
-                      : Stack(
-                          fit: StackFit.expand,
-                          children: <Widget>[
-                            // Gestures.
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: controller.onTap,
-                              onDoubleTapDown: controller.onDoubleTapDown,
-                              onDoubleTap: controller.onDoubleTap,
-                              onScaleStart: controller.onScaleStart,
-                              onScaleUpdate: controller.onScaleUpdate,
-                              onScaleEnd: controller.onScaleEnd,
-                            ),
-
-                            const _SkipRipples(),
-                            // With the controls up, the play/pause button is the loader.
-                            Obx(
-                              () => controller.buffering.value && !controller.controlsVisible.value
-                                  ? const Center(
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                            const _Controls(),
-                            const _GestureFeedbackCard(),
-                            const _ResumedChip(),
-                          ],
-                        ),
+                Expanded(
+                  child: WatchDetails(key: ValueKey(youtubeId), videoId: youtubeId),
                 ),
               ],
             );
-          },
+          }),
         ),
       ),
     );
   }
+
+  Widget _player(bool compact, bool landscape) => Stack(
+    fit: StackFit.expand,
+    children: <Widget>[
+      // Video (zoom = pinch; fit/aspect = aspect button).
+      Obx(
+        () => controller.exiting.value
+            ? const SizedBox.expand()
+            : ClipRect(
+                child: Transform.scale(
+                  scale: controller.zoom.value,
+                  child: Video(
+                    // A fresh surface per orientation: some phones kept
+                    // the old layout after turning (half the picture).
+                    key: ValueKey(landscape),
+                    controller: controller.video,
+                    controls: NoVideoControls,
+                    fill: ColorConstants.black,
+                    // The controller decides (PiP / background play / pause).
+                    pauseUponEnteringBackgroundMode: false,
+                    resumeUponEnteringForegroundMode: false,
+                    fit: controller.fit.value.boxFit,
+                    aspectRatio: controller.fit.value.aspect,
+                    subtitleViewConfiguration: const SubtitleViewConfiguration(
+                      style: TextStyle(
+                        fontSize: 30,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        shadows: [Shadow(blurRadius: 6, color: Colors.black)],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+      ),
+
+      // Everything below is hidden in picture-in-picture.
+      Obx(
+        () => controller.inPip.value
+            ? const SizedBox.shrink()
+            : Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  // Gestures.
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: controller.onTap,
+                    onDoubleTapDown: controller.onDoubleTapDown,
+                    onDoubleTap: controller.onDoubleTap,
+                    onScaleStart: controller.onScaleStart,
+                    onScaleUpdate: controller.onScaleUpdate,
+                    onScaleEnd: controller.onScaleEnd,
+                  ),
+
+                  const _SkipRipples(),
+                  // With the controls up, the play/pause button is the loader.
+                  Obx(
+                    () => controller.buffering.value && !controller.controlsVisible.value
+                        ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                        : const SizedBox.shrink(),
+                  ),
+                  _Controls(compact: compact),
+                  const _GestureFeedbackCard(),
+                  _ResumedChip(compact: compact),
+                ],
+              ),
+      ),
+    ],
+  );
 }
 
 // ------------------------------------------------------------------ controls
 
 class _Controls extends GetView<VideoPlaybackController> {
-  const _Controls();
+  const _Controls({required this.compact});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -126,7 +143,7 @@ class _Controls extends GetView<VideoPlaybackController> {
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
           opacity: visible ? 1 : 0,
-          child: locked ? const _LockedOverlay() : const _FullControls(),
+          child: locked ? const _LockedOverlay() : _FullControls(compact: compact),
         ),
       );
     });
@@ -142,18 +159,17 @@ class _LockedOverlay extends GetView<VideoPlaybackController> {
       alignment: Alignment.centerLeft,
       child: Padding(
         padding: const EdgeInsets.only(left: 24),
-        child: _CircleButton(
-          icon: Icons.lock_rounded,
-          onTap: controller.toggleLock,
-          size: 54,
-        ),
+        child: _CircleButton(icon: Icons.lock_rounded, onTap: controller.toggleLock, size: 54),
       ),
     ),
   );
 }
 
 class _FullControls extends GetView<VideoPlaybackController> {
-  const _FullControls();
+  const _FullControls({required this.compact});
+
+  // The small player above the watch page: the title is below it, and full screen replaces lock/aspect.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -166,66 +182,52 @@ class _FullControls extends GetView<VideoPlaybackController> {
           alignment: Alignment.topCenter,
           child: DecoratedBox(
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: scrim,
-              ),
+              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: scrim),
             ),
             child: SafeArea(
               bottom: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(4, 4, 8, 24),
+                padding: EdgeInsets.fromLTRB(4, 4, 8, compact ? 4 : 24),
                 child: Row(
                   children: <Widget>[
                     IconButton(
                       // Not Get.back: that closes at once, turning the
                       // screen upright during the close animation.
                       onPressed: controller.exit,
-                      icon: const Icon(
-                        Icons.arrow_back_rounded,
-                        color: Colors.white,
-                      ),
+                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                     ),
-                    Expanded(
-                      child: Obx(
-                        () => Text(
-                          controller.current.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
+                    if (compact)
+                      const Spacer()
+                    else
+                      Expanded(
+                        child: Obx(
+                          () => Text(
+                            controller.current.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
                           ),
                         ),
                       ),
-                    ),
                     // YouTube streams: quality menu.
-                    Obx(
-                      () {
-                        if (controller.items.isEmpty) return const SizedBox.shrink();
-                        final item = controller.current;
-                        if (item.qualities.isEmpty) return const SizedBox.shrink();
-                        return _TextButton(
-                          label: item.currentQuality?.label ?? item.quality ?? 'Quality',
-                          onTap: controller.pickQuality,
-                        );
-                      },
-                    ),
+                    Obx(() {
+                      if (controller.items.isEmpty) return const SizedBox.shrink();
+                      final item = controller.current;
+                      if (item.qualities.isEmpty) return const SizedBox.shrink();
+                      return _TextButton(
+                        label: item.currentQuality?.label ?? item.quality ?? 'Quality',
+                        onTap: controller.pickQuality,
+                      );
+                    }),
                     Obx(
                       () => _TextButton(
-                        label: controller.rate.value == 1
-                            ? '1x'
-                            : '${controller.rate.value}x',
+                        label: controller.rate.value == 1 ? '1x' : '${controller.rate.value}x',
                         onTap: controller.pickSpeed,
                       ),
                     ),
                     Obx(
                       () => _IconAction(
-                        icon: controller.backgroundPlay.value
-                            ? Icons.headphones_rounded
-                            : Icons.headset_off_rounded,
+                        icon: controller.backgroundPlay.value ? Icons.headphones_rounded : Icons.headset_off_rounded,
                         onTap: controller.toggleBackgroundPlay,
                         tooltip: 'Background play',
                         active: controller.backgroundPlay.value,
@@ -240,21 +242,9 @@ class _FullControls extends GetView<VideoPlaybackController> {
                             )
                           : const SizedBox.shrink(),
                     ),
-                    _IconAction(
-                      icon: Icons.audiotrack_rounded,
-                      onTap: controller.pickAudioTrack,
-                      tooltip: 'Audio',
-                    ),
-                    _IconAction(
-                      icon: Icons.subtitles_rounded,
-                      onTap: controller.pickSubtitle,
-                      tooltip: 'Subtitles',
-                    ),
-                    _IconAction(
-                      icon: Icons.screen_rotation_rounded,
-                      onTap: controller.rotate,
-                      tooltip: 'Rotate',
-                    ),
+                    _IconAction(icon: Icons.audiotrack_rounded, onTap: controller.pickAudioTrack, tooltip: 'Audio'),
+                    _IconAction(icon: Icons.subtitles_rounded, onTap: controller.pickSubtitle, tooltip: 'Subtitles'),
+                    _IconAction(icon: Icons.screen_rotation_rounded, onTap: controller.rotate, tooltip: 'Rotate'),
                   ],
                 ),
               ),
@@ -268,26 +258,20 @@ class _FullControls extends GetView<VideoPlaybackController> {
             () => Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
+                _CircleButton(icon: Icons.skip_previous_rounded, onTap: controller.previous, size: compact ? 40 : 48),
+                SizedBox(width: compact ? 22 : 28),
                 _CircleButton(
-                  icon: Icons.skip_previous_rounded,
-                  onTap: controller.previous,
-                  size: 48,
-                ),
-                const SizedBox(width: 28),
-                _CircleButton(
-                  icon: controller.playing.value
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
+                  icon: controller.playing.value ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   onTap: controller.playPause,
-                  size: 68,
+                  size: compact ? 54 : 68,
                   filled: true,
                   busy: controller.buffering.value,
                 ),
-                const SizedBox(width: 28),
+                SizedBox(width: compact ? 22 : 28),
                 _CircleButton(
                   icon: Icons.skip_next_rounded,
                   onTap: controller.hasNext ? controller.next : null,
-                  size: 48,
+                  size: compact ? 40 : 48,
                 ),
               ],
             ),
@@ -299,39 +283,44 @@ class _FullControls extends GetView<VideoPlaybackController> {
           alignment: Alignment.bottomCenter,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: scrim,
-              ),
+              gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: scrim),
             ),
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 24, 12, 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    const _SeekBar(),
-                    Row(
-                      children: <Widget>[
-                        _IconAction(
-                          icon: Icons.lock_open_rounded,
-                          onTap: controller.toggleLock,
-                          tooltip: 'Lock',
-                        ),
-                        const Spacer(),
-                        Obx(
-                          () => _IconAction(
-                            icon: controller.fit.value.icon,
-                            onTap: controller.cycleFit,
-                            tooltip: 'Aspect: ${controller.fit.value.label}',
+                padding: EdgeInsets.fromLTRB(12, compact ? 4 : 24, compact ? 4 : 12, compact ? 0 : 8),
+                child: compact
+                    // In a Column like the full layout's: in a bare Row the Slider takes the whole player's height.
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Row(
+                            children: <Widget>[
+                              const Expanded(child: _SeekBar()),
+                              _IconAction(icon: Icons.fullscreen_rounded, onTap: controller.rotate, tooltip: 'Full screen'),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const _SeekBar(),
+                          Row(
+                            children: <Widget>[
+                              _IconAction(icon: Icons.lock_open_rounded, onTap: controller.toggleLock, tooltip: 'Lock'),
+                              const Spacer(),
+                              Obx(
+                                () => _IconAction(
+                                  icon: controller.fit.value.icon,
+                                  onTap: controller.cycleFit,
+                                  tooltip: 'Aspect: ${controller.fit.value.label}',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
               ),
             ),
           ),
@@ -354,9 +343,7 @@ class _SeekBar extends GetView<VideoPlaybackController> {
     );
     return Obx(() {
       final total = controller.duration.value.inMilliseconds.toDouble();
-      final pos = controller.position.value.inMilliseconds
-          .clamp(0, total)
-          .toDouble();
+      final pos = controller.position.value.inMilliseconds.clamp(0, total).toDouble();
       return Row(
         children: <Widget>[
           Text(Formatters.duration(controller.position.value), style: time),
@@ -370,15 +357,8 @@ class _SeekBar extends GetView<VideoPlaybackController> {
               child: Slider(
                 value: total <= 0 ? 0 : pos,
                 max: total <= 0 ? 1 : total,
-                onChanged: total <= 0
-                    ? null
-                    : (v) => controller.previewSeek(
-                        Duration(milliseconds: v.round()),
-                      ),
-                onChangeEnd: total <= 0
-                    ? null
-                    : (v) =>
-                          controller.seekTo(Duration(milliseconds: v.round())),
+                onChanged: total <= 0 ? null : (v) => controller.previewSeek(Duration(milliseconds: v.round())),
+                onChangeEnd: total <= 0 ? null : (v) => controller.seekTo(Duration(milliseconds: v.round())),
               ),
             ),
           ),
@@ -470,20 +450,11 @@ class _SkipRipples extends GetView<VideoPlaybackController> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Icon(
-                  forward
-                      ? Icons.fast_forward_rounded
-                      : Icons.fast_rewind_rounded,
-                  color: Colors.white,
-                  size: 34,
-                ),
+                Icon(forward ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded, color: Colors.white, size: 34),
                 const SizedBox(height: 4),
                 Text(
                   '${forward ? '+' : '−'}${s.abs()}s',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -495,7 +466,9 @@ class _SkipRipples extends GetView<VideoPlaybackController> {
 }
 
 class _ResumedChip extends GetView<VideoPlaybackController> {
-  const _ResumedChip();
+  const _ResumedChip({required this.compact});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Obx(() {
@@ -505,7 +478,7 @@ class _ResumedChip extends GetView<VideoPlaybackController> {
       child: Align(
         alignment: Alignment.bottomLeft,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+          padding: EdgeInsets.fromLTRB(compact ? 12 : 20, 0, 20, compact ? 48 : 110),
           child: Material(
             color: Colors.black.withValues(alpha: 0.7),
             borderRadius: BorderRadius.circular(12),
@@ -516,18 +489,12 @@ class _ResumedChip extends GetView<VideoPlaybackController> {
                 children: <Widget>[
                   Text(
                     'Resumed from ${Formatters.duration(from)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(width: 6),
                   TextButton(
                     onPressed: controller.startOver,
-                    child: Text(
-                      'Start over',
-                      style: TextStyle(color: BrandColors.of(context).accent),
-                    ),
+                    child: Text('Start over', style: TextStyle(color: BrandColors.of(context).accent)),
                   ),
                 ],
               ),
@@ -587,12 +554,7 @@ class _CircleButton extends StatelessWidget {
 }
 
 class _IconAction extends StatelessWidget {
-  const _IconAction({
-    required this.icon,
-    required this.onTap,
-    this.tooltip,
-    this.active = false,
-  });
+  const _IconAction({required this.icon, required this.onTap, this.tooltip, this.active = false});
 
   final IconData icon;
   final VoidCallback onTap;
@@ -611,10 +573,7 @@ class _IconAction extends StatelessWidget {
     padding: EdgeInsets.zero,
     constraints: const BoxConstraints.tightFor(width: 36, height: 40),
     iconSize: 22,
-    icon: Icon(
-      icon,
-      color: active ? BrandColors.of(context).accent : Colors.white,
-    ),
+    icon: Icon(icon, color: active ? BrandColors.of(context).accent : Colors.white),
   );
 }
 

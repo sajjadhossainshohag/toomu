@@ -25,6 +25,18 @@ abstract class Formatters {
 
   static String speed(int bytesPerSecond) => '${bytes(bytesPerSecond)}/s';
 
+  static String ago(DateTime when, {DateTime? now}) {
+    final d = (now ?? DateTime.now()).difference(when);
+    String n(int v, String unit) => '$v $unit${v == 1 ? '' : 's'} ago';
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return n(d.inMinutes, 'minute');
+    if (d.inDays < 1) return n(d.inHours, 'hour');
+    if (d.inDays < 7) return n(d.inDays, 'day');
+    if (d.inDays < 30) return n(d.inDays ~/ 7, 'week');
+    if (d.inDays < 365) return n(d.inDays ~/ 30, 'month');
+    return n(d.inDays ~/ 365, 'year');
+  }
+
   static String duration(Duration? d) {
     if (d == null) return '--:--';
     final h = d.inHours;

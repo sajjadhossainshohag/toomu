@@ -94,8 +94,11 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   /// Shown for a few seconds after resuming ("Resumed from 12:30").
   final resumedFrom = Rxn<Duration>();
 
-  /// Set by the view (gestures need the screen size).
+  /// Set by the view: the player's box (gestures are measured in it).
   Size viewSize = Size.zero;
+
+  /// The whole screen; [viewSize] is only the player, a small box above the watch page while upright.
+  Size screenSize = Size.zero;
 
   // ------------------------------------------- picture-in-picture / background
 
@@ -520,7 +523,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     DeviceOrientation.landscapeRight,
   ];
 
-  bool get _viewIsLandscape => viewSize.width > viewSize.height;
+  bool get _viewIsLandscape => screenSize.width > screenSize.height;
 
   void rotate() {
     SystemChrome.setPreferredOrientations(_viewIsLandscape
@@ -543,7 +546,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
       // Until the window is upright (or ~0.5 s at most).
       for (var i = 0; i < 10; i++) {
-        final size = viewSize;
+        final size = screenSize;
         if (size != Size.zero && size.height >= size.width) break;
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }

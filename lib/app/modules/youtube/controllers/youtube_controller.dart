@@ -75,6 +75,7 @@ class YoutubeController extends GetxController {
   final AccountFeed? _accountOverride;
 
   final YoutubeProvider _yt = YoutubeProvider();
+  WatchSource get watchSource => _yt;
 
   Future<FeedPage> _search(String query) =>
       _searchOverride?.call(query) ?? _yt.search(query);
@@ -895,6 +896,19 @@ class YoutubeController extends GetxController {
     watchingId.value = null;
   }
 
+  Future<void> watchInPlace(Video video) async {
+    if (watchingId.value != null) return;
+    watchingId.value = video.id.value;
+    await _watch(
+      video.id.value,
+      video.title,
+      duration: video.duration,
+      replace: true,
+      beforeOpen: () => watchingId.value = null,
+    );
+    watchingId.value = null;
+  }
+
   /// Opens the player as fast as possible: yt-dlp's links when it already
   /// has them; otherwise the fast lookup's (well under a second). Those
   /// are whole-file links (visionOS client) — or, when only the Android
@@ -905,6 +919,7 @@ class YoutubeController extends GetxController {
     String title, {
     YtInfo? info,
     Duration? duration,
+    bool replace = false,
     required VoidCallback beforeOpen,
   }) async {
     final sw = Stopwatch()..start();
@@ -962,10 +977,13 @@ class YoutubeController extends GetxController {
         '${item.audioUri != null ? ' + separate audio' : ''} from $source after ${sw.elapsedMilliseconds} ms',
       );
       beforeOpen();
-      await Get.toNamed(
-        Routes.videoPlayer,
-        arguments: VideoPlaylist([item], 0),
-      );
+      final args = VideoPlaylist([item], 0);
+      if (replace) {
+        // From the watch page's Up next: the next video takes this player's place instead of stacking a second one.
+        await Get.offNamed<void>(Routes.videoPlayer, arguments: args);
+      } else {
+        await Get.toNamed<void>(Routes.videoPlayer, arguments: args);
+      }
     } catch (e) {
       debugPrint('[YouTube] watch failed: $e');
       showSnack(

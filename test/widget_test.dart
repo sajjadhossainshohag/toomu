@@ -42,6 +42,17 @@ void main() {
       expect(Formatters.duration(const Duration(hours: 1, minutes: 2, seconds: 3)), '1:02:03');
     });
 
+    test('ago: how YouTube says when a video came out', () {
+      final now = DateTime(2026, 11, 18, 12);
+      expect(Formatters.ago(now.subtract(const Duration(minutes: 5)), now: now), '5 minutes ago');
+      expect(Formatters.ago(now.subtract(const Duration(hours: 1)), now: now), '1 hour ago');
+      expect(Formatters.ago(now.subtract(const Duration(days: 2)), now: now), '2 days ago');
+      expect(Formatters.ago(now.subtract(const Duration(days: 15)), now: now), '2 weeks ago');
+      expect(Formatters.ago(now.subtract(const Duration(days: 95)), now: now), '3 months ago');
+      expect(Formatters.ago(now.subtract(const Duration(days: 800)), now: now), '2 years ago');
+      expect(Formatters.ago(now.add(const Duration(minutes: 1)), now: now), 'just now', reason: 'clock skew');
+    });
+
     test('fileName strips illegal characters', () {
       expect(Formatters.fileName('a/b:c*d?"e<f>g|h'), 'abcdefgh');
     });

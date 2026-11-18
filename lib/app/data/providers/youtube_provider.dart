@@ -33,9 +33,17 @@ class VideoPage implements FeedPage {
   }
 }
 
+/// What the watch page shows under the player.
+abstract class WatchSource {
+  Future<Video> video(String videoId);
+  Future<Channel> channel(ChannelId id);
+  Future<List<Video>> related(Video video);
+  Future<({List<Comment> comments, int total})?> comments(Video video); // null: comments are turned off
+}
+
 /// YouTube search, home feed, video details and the fast stream lookup
 /// (youtube_explode_dart). Downloads are done by yt-dlp (YtDlpService).
-class YoutubeProvider {
+class YoutubeProvider implements WatchSource {
   YoutubeProvider() : _yt = YoutubeExplode();
 
   final YoutubeExplode _yt;
@@ -82,7 +90,23 @@ class YoutubeProvider {
     return seconds == 0 ? null : Duration(seconds: seconds);
   }
 
+  @override
   Future<Video> video(String videoId) => _yt.videos.get(videoId);
+
+  @override
+  Future<Channel> channel(ChannelId id) => _yt.channels.get(id);
+
+  @override
+  Future<List<Video>> related(Video video) async => (await _yt.videos.getRelatedVideos(video))?.toList() ?? const [];
+
+  @override
+  Future<({List<Comment> comments, int total})?> comments(Video video) async {
+    // shortcut: youtube_explode deprecated its comments API with no replacement; the watch page hides comments
+    // when this fails. Upgrade to our own InnerTube "next" call (like account_feed) when it stops working.
+    // ignore: deprecated_member_use
+    final list = await _yt.videos.commentsClient.getComments(video);
+    return list == null ? null : (comments: list.toList(), total: list.totalLength);
+  }
 
   Future<List<String>> saveSubtitles(String videoId, String videoPath, List<String> langs) async {
     final cc = _yt.videos.closedCaptions;
