@@ -8,8 +8,8 @@ import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../widgets/segmented_tabs.dart';
-import '../../../widgets/track_artwork.dart';
 import '../../youtube/controllers/youtube_controller.dart';
+import '../../youtube/views/widgets/shorts_shelf.dart';
 import '../../youtube/views/widgets/video_row.dart';
 import '../controllers/channel_controller.dart';
 
@@ -173,7 +173,7 @@ class ChannelView extends GetView<ChannelController> {
                         childAspectRatio: 9 / 16,
                       ),
                       itemCount: controller.videos.length,
-                      itemBuilder: (_, i) => _ShortTile(
+                      itemBuilder: (_, i) => ShortTile(
                         video: controller.videos[i],
                         onTap: () => yt.openShorts(controller.videos.toList(), i),
                       ),
@@ -200,64 +200,6 @@ class ChannelView extends GetView<ChannelController> {
               ],
             );
           }),
-        ),
-      ),
-    );
-  }
-}
-
-class _ShortTile extends StatelessWidget {
-  const _ShortTile({required this.video, required this.onTap});
-
-  final Video video;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final double scale = context.scale;
-    return Material(
-      clipBehavior: Clip.antiAlias,
-      borderRadius: BorderRadius.circular(12 * scale),
-      child: InkWell(
-        onTap: onTap,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            CachedNetworkImage(
-              imageUrl: video.thumbnails.highResUrl,
-              fit: BoxFit.cover,
-              memCacheWidth: (120 * scale * MediaQuery.devicePixelRatioOf(context)).round(),
-              placeholder: (_, _) => const ArtworkPlaceholder(size: 120, radius: 0, icon: Icons.smart_display_rounded),
-              errorWidget: (_, _, _) =>
-                  const ArtworkPlaceholder(size: 120, radius: 0, icon: Icons.smart_display_rounded),
-            ),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[Color(0x00000000), Color(0xB3000000)],
-                  stops: <double>[0.55, 1],
-                ),
-              ),
-            ),
-            Positioned(
-              left: 8 * scale,
-              right: 8 * scale,
-              bottom: 8 * scale,
-              child: Text(
-                video.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12 * scale,
-                  height: 1.25,
-                  fontWeight: FontWeight.w700,
-                  color: ColorConstants.white,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

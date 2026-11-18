@@ -52,7 +52,7 @@ class _FakeSearch {
   static const shared = 'sharedVideo';
 
   Future<FeedPage> call(String query) async {
-    queries.add(query);
+    if (!query.endsWith(" #shorts")) queries.add(query); // the feed's searches, not the Shorts shelf's
     return _page(query, 0);
   }
 
@@ -326,4 +326,29 @@ void main() {
       expect(yt.feedNotice.value, isNull);
     });
   });
+
+  test("each tab's Shorts shelf comes from a Shorts search on its topic, and keeps only Shorts-length videos", () async {
+    final search = _FakeSearch();
+    final yt = Get.put(YoutubeController(
+      random: Random(1),
+      search: (q) async => q.endsWith('#shorts')
+          ? _Page([
+              Video(VideoId('shortaaaaaa'), q, 'Author', ChannelId('UC${'b' * 22}'), null, null, null, '',
+                  const Duration(seconds: 40), ThumbnailSet('shortaaaaaa'), null, const Engagement(1, null, null), false),
+              _video('longaaaaaaa', 'Long one'),
+            ])
+          : search(q),
+    ));
+    final music = yt.categories.indexWhere((c) => c.label == 'Music');
+    yt.selectCategory(music);
+    await yt.loadFeed();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(yt.shorts.map((v) => v.id.value), ['shortaaaaaa']);
+    expect(yt.categories[music].queries, contains(yt.shorts.single.title.replaceAll(' #shorts', '')));
+
+    yt.selectCategory(0);
+    expect(yt.shorts, isEmpty, reason: "another tab doesn't show Music's Shorts");
+  });
 }
+

@@ -273,6 +273,8 @@ class YoutubeController extends GetxController {
   /// Signed in/out: start the feed over with the matching categories.
   Future<void> _resetFeed() {
     _feedCache.clear();
+    _shortsCache.clear();
+    shorts.clear();
     _feedPage = null;
     feed.clear();
     feedIndex.value = 0;
@@ -418,6 +420,7 @@ class YoutubeController extends GetxController {
   void selectCategory(int index) {
     if (index == feedIndex.value && feed.isNotEmpty) return;
     feedIndex.value = index;
+    shorts.assignAll(_shortsCache[index] ?? const <Video>[]);
     final cached = _feedCache[index];
     if (cached != null) {
       feed.assignAll(cached.items);
@@ -446,9 +449,8 @@ class YoutubeController extends GetxController {
     final category = index < categories.length ? categories[index] : null;
     try {
       final load = category?.load;
-      final FeedPage? page = load != null
-          ? await load()
-          : await MixedFeedPage.load(_feedQueries(category), _search);
+      final queries = load == null ? _feedQueries(category) : const <String>[];
+      final FeedPage? page = load != null ? await load() : await MixedFeedPage.load(queries, _search);
       if (page == null ||
           index != feedIndex.value ||
           !identical(category, categories.elementAtOrNull(index))) {
@@ -464,6 +466,8 @@ class YoutubeController extends GetxController {
       _feedCache[index] = (items: feed.toList(), page: page);
       // Next launch opens on this mix, not the one before.
       if (index == 0) unawaited(_feedStore.save(_feedStoreKey, fresh));
+      // Account Home and Subscriptions (tabs 0 and 1) have no topic of their own.
+      unawaited(_loadShorts(index, queries.firstOrNull ?? (index < 2 ? 'trending' : category!.label)));
     } catch (e) {
       debugPrint('[YouTube] feed failed: $e');
       if (index == feedIndex.value) feedError.value = ErrorText.of(e);
@@ -502,7 +506,26 @@ class YoutubeController extends GetxController {
     return videos.where((v) => shown.add(v.id.value));
   }
 
-  void trimFeedCache() => _feedCache.removeWhere((i, _) => i != feedIndex.value);
+  void trimFeedCache() {
+    _feedCache.removeWhere((i, _) => i != feedIndex.value);
+    _shortsCache.removeWhere((i, _) => i != feedIndex.value);
+  }
+
+  final shorts = <Video>[].obs;
+  final _shortsCache = <int, List<Video>>{};
+  static const _shortMax = Duration(minutes: 3);
+
+  // A search: YouTube has no public Shorts feed to read.
+  Future<void> _loadShorts(int index, String topic) async {
+    try {
+      final page = await _search('$topic #shorts');
+      final found = page.videos.where((v) => v.duration != null && v.duration! <= _shortMax).toList();
+      _shortsCache[index] = found;
+      if (index == feedIndex.value) shorts.assignAll(found);
+    } catch (e) {
+      debugPrint('[YouTube] shorts failed: $e');
+    }
+  }
 
   /// Live streams (no duration) can't be downloaded; keep them out.
   static Iterable<Video> _downloadable(Iterable<Video> list) =>

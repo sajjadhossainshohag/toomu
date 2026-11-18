@@ -17,6 +17,7 @@ import '../../../widgets/top_fade.dart';
 import '../../browser/address.dart';
 import '../controllers/youtube_controller.dart';
 import 'widgets/home_sections.dart';
+import 'widgets/shorts_shelf.dart';
 import 'widgets/video_card.dart';
 
 /// Home: search/paste bar, site shortcuts, download progress and a category feed.
@@ -160,19 +161,25 @@ class _HomeFeed extends GetView<YoutubeController> {
                   );
                 }
                 final items = controller.feed;
+                final shorts = controller.shorts.toList();
+                final shelf = shorts.isNotEmpty && items.isNotEmpty ? 1 : 0;
                 return SliverPadding(
                   padding: EdgeInsets.fromLTRB(16 * scale, 4 * scale, 16 * scale, 24 * scale),
                   sliver: SliverList.separated(
-                    itemCount: items.length + (controller.feedLoadingMore.value ? 1 : 0),
+                    itemCount: items.length + shelf + (controller.feedLoadingMore.value ? 1 : 0),
                     separatorBuilder: (_, _) => SizedBox(height: 16 * scale),
                     itemBuilder: (_, i) {
-                      if (i >= items.length) {
+                      if (shelf == 1 && i == 1) {
+                        return ShortsShelf(shorts: shorts, onTap: (j) => controller.openShorts(shorts, j));
+                      }
+                      final at = i > 1 ? i - shelf : i;
+                      if (at >= items.length) {
                         return Padding(
                           padding: EdgeInsets.all(12 * scale),
                           child: const Center(child: CircularProgressIndicator()),
                         );
                       }
-                      final video = items[i];
+                      final video = items[at];
                       return VideoCard(
                         video: video,
                         onTap: () => controller.watchFromCard(video),

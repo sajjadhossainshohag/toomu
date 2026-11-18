@@ -53,6 +53,9 @@ class _Yt extends YoutubeController {
 
   @override
   Future<void> watchFromCard(Video video) async => opened.add(video.id.value);
+
+  @override
+  Future<void> openShorts(List<Video> videos, int index) async => opened.add('shorts ${videos[index].id}');
 }
 
 class _Home extends HomeController {
@@ -224,6 +227,28 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Beta Channel'), findsWidgets, reason: 'not the first channel page again');
+    await settle(tester);
+  });
+
+  testWidgets('a Shorts shelf follows the first video, scrolls sideways and opens the Short tapped', (tester) async {
+    final yt = await open(tester);
+    yt.feed.add(_video('ccccccccccc', 'Second video'));
+    yt.shorts.assignAll([_video('sssssssssss', 'Quick pasta'), _video('ttttttttttt', 'Cat jumps')]);
+    await tester.pump();
+
+    final shelf = tester.getRect(find.text('Shorts'));
+    expect(shelf.top, greaterThan(tester.getRect(find.text('Building a tiny house in 30 days')).bottom));
+    final feedScroll = find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down).first;
+    await tester.scrollUntilVisible(find.text('Second video'), 100, scrollable: feedScroll);
+    expect(tester.getRect(find.text('Second video')).top, greaterThan(tester.getRect(find.text('Cat jumps')).bottom));
+
+    await tester.drag(find.text('Quick pasta'), const Offset(-300, 0));
+    await tester.pumpAndSettle();
+    expect(yt.feedIndex.value, 0, reason: 'swiping the shelf scrolls it, not the feed tabs');
+
+    await tester.tap(find.text('Cat jumps'));
+    await tester.pump();
+    expect(yt.opened, ['shorts ttttttttttt']);
     await settle(tester);
   });
 }
