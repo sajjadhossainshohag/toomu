@@ -42,7 +42,7 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
                       child: Video(
                         // A fresh surface per orientation: some phones kept
                         // the old layout after turning (half the picture).
-                        key: ValueKey(controller.landscape.value),
+                        key: ValueKey(constraints.maxWidth > constraints.maxHeight),
                         controller: controller.video,
                         controls: NoVideoControls,
                         fill: ColorConstants.black,
@@ -86,9 +86,9 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
                             ),
 
                             const _SkipRipples(),
-                            const _GestureFeedbackCard(),
+                            // With the controls up, the play/pause button is the loader.
                             Obx(
-                              () => controller.buffering.value
+                              () => controller.buffering.value && !controller.controlsVisible.value
                                   ? const Center(
                                       child: CircularProgressIndicator(
                                         color: Colors.white,
@@ -97,6 +97,7 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
                                   : const SizedBox.shrink(),
                             ),
                             const _Controls(),
+                            const _GestureFeedbackCard(),
                             const _ResumedChip(),
                           ],
                         ),
@@ -280,6 +281,7 @@ class _FullControls extends GetView<VideoPlaybackController> {
                   onTap: controller.playPause,
                   size: 68,
                   filled: true,
+                  busy: controller.buffering.value,
                 ),
                 const SizedBox(width: 28),
                 _CircleButton(
@@ -545,12 +547,14 @@ class _CircleButton extends StatelessWidget {
     required this.onTap,
     this.size = 48,
     this.filled = false,
+    this.busy = false,
   });
 
   final IconData icon;
   final VoidCallback? onTap;
   final double size;
   final bool filled;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) => Opacity(
@@ -569,7 +573,12 @@ class _CircleButton extends StatelessWidget {
           onTap: onTap,
           child: SizedBox.square(
             dimension: size,
-            child: Icon(icon, color: Colors.white, size: size * 0.55),
+            child: busy
+                ? Padding(
+                    padding: EdgeInsets.all(size * 0.25),
+                    child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                  )
+                : Icon(icon, color: Colors.white, size: size * 0.55),
           ),
         ),
       ),

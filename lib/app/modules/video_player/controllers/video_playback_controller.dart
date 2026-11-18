@@ -84,7 +84,6 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   final locked = false.obs;
   final fit = VideoFit.fit.obs;
   final zoom = 1.0.obs;
-  final landscape = true.obs;
 
   final feedback = Rxn<GestureFeedback>();
   final seekPreview = Rxn<Duration>();
@@ -122,10 +121,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    // Unknown size (a download, a file from another app): stay upright
-    // until the player knows. Turning to landscape first and back made
-    // portrait videos show half their picture on some phones.
-    if (current.hasSize) _setOrientation(current.isLandscape);
+    SystemChrome.setPreferredOrientations(followPhone);
     VolumeController.instance.showSystemUI = false;
 
     // Music and video shouldn't play at once.
@@ -169,12 +165,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
         _lastError = e;
         _streamFailed();
       }),
-      // Orientation from the real frame size when the library didn't know it.
-      player.stream.width.listen((w) {
-        final h = player.state.height;
-        if (w != null && h != null && w > 0 && h > 0 && !current.hasSize) _setOrientation(w >= h);
-        _syncPlatform();
-      }),
+      player.stream.width.listen((_) => _syncPlatform()),
     ]);
     _platform.invokeMethod<bool>('pipSupported').then((v) => pipSupported.value = v ?? false);
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _savePosition(onlyIfMoved: true));
@@ -325,7 +316,6 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     resumedFrom.value = null;
     zoom.value = 1;
     final item = current;
-    if (item.hasSize) _setOrientation(item.isLandscape); // next/previous in a playlist
     // Resume point decided up front so the player starts right there (no
     // load, then seek, then load again).
     final saved = _resume.positionOf(item.resumeKey);
@@ -524,8 +514,18 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     showControls();
   }
 
+  static const followPhone = [
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ];
+
+  bool get _viewIsLandscape => viewSize.width > viewSize.height;
+
   void rotate() {
-    _setOrientation(!landscape.value);
+    SystemChrome.setPreferredOrientations(_viewIsLandscape
+        ? [DeviceOrientation.portraitUp]
+        : [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     showControls();
   }
 
@@ -538,7 +538,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     if (exiting.value) return;
     exiting.value = true;
     FrameProbe.watch('player close', window: const Duration(milliseconds: 1800));
-    if (landscape.value) {
+    if (_viewIsLandscape) {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
       // Until the window is upright (or ~0.5 s at most).
@@ -549,13 +549,6 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       }
     }
     Get.back();
-  }
-
-  void _setOrientation(bool toLandscape) {
-    landscape.value = toLandscape;
-    SystemChrome.setPreferredOrientations(toLandscape
-        ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
-        : [DeviceOrientation.portraitUp]);
   }
 
   Future<void> pickSpeed() async {
