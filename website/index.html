@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toomu: save any video, watch YouTube without ads</title>
+<meta name="description" content="Toomu downloads videos from YouTube, TikTok, Instagram, Facebook and almost any website, plays YouTube without ads and keeps your music offline. Free for Android and Windows.">
+<meta property="og:title" content="Toomu: save any video, watch YouTube without ads">
+<meta property="og:description" content="A downloader, an ad-free YouTube player, a music player and a browser that catches media. Free for Android and Windows.">
+<meta name="theme-color" content="#F6F4FA">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237C4DFF'/%3E%3Cstop offset='.6' stop-color='%234B2BD9'/%3E%3Cstop offset='1' stop-color='%232FD0FF'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23g)' d='M50 0A50 50 0 0 0 0 50a50 50 0 0 0 50 50h36a14 14 0 0 0 14-14V50A50 50 0 0 0 50 0Z'/%3E%3Cpath fill='%23fff' d='M40 29q0-7 7-7t7 7v32q0 6 6 6h3q6.5 0 6.5 6.5T63 80h-6q-17 0-17-17ZM27 42q0-6 6-6h25v-3.5q0-4 3.4-1.8l11.1 7.9q3.5 2.9 0 5.8l-11.1 7.9Q58 54.5 58 50.5V48H33q-6 0-6-6Z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Geist', '"Segoe UI"', 'system-ui', 'sans-serif'],
+        app: ['"Plus Jakarta Sans"', '"Segoe UI"', 'sans-serif'],
+      },
+      fontSize: {
+        display: ['clamp(2.25rem, 1.2rem + 4.6vw, 4.875rem)', { lineHeight: '1.02', letterSpacing: '-0.045em' }],
+        h2: ['clamp(2.125rem, 1.4rem + 2.8vw, 3.5rem)', { lineHeight: '1.04', letterSpacing: '-0.04em' }],
+        h3: ['clamp(1.75rem, 1.4rem + 1vw, 2.25rem)', { lineHeight: '1.1', letterSpacing: '-0.03em' }],
+        h4: ['1.5rem', { lineHeight: '1.2', letterSpacing: '-0.02em' }],
+        title: ['1.0625rem', { lineHeight: '1.35', letterSpacing: '-0.01em' }],
+        lead: ['1.125rem', { lineHeight: '1.6' }],
+        body: ['1rem', { lineHeight: '1.6' }],
+        small: ['0.875rem', { lineHeight: '1.55' }],
+        meta: ['0.8125rem', { lineHeight: '1.45' }],
+      },
+      colors: {
+        ink: '#1C1B1F', page: '#F6F4FA', muted: '#625E78', line: '#E6E1F0',
+        tint: { DEFAULT: '#EFEAFC', line: '#DCD3F5' },
+        brand: { ink: '#5B2BE0', DEFAULT: '#7C4DFF', deep: '#5B2BE0', light: '#9C7DFF', soft: '#B69CFF', tint: '#EFE9FF' },
+      },
+    },
+  },
+};
+</script>
+<style>
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased }
+body { background: #F6F4FA }
+h1, h2, h3 { text-wrap: balance }
+p, dd { text-wrap: pretty }
+main img { background-color: #E6E0F5 }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 52px; padding: 0 22px; border-radius: 12px; font-weight: 600; font-size: 15px; white-space: nowrap; transition: transform .15s ease, box-shadow .2s ease, filter .2s ease }
+.btn:active { transform: translateY(1px) }
+.btn:focus-visible { outline: 2px solid #7C4DFF; outline-offset: 3px }
+.btn-sm { height: 40px; padding: 0 16px; font-size: 14px; border-radius: 12px }
+
+.btn-primary { color: #fff; border: 1px solid transparent; background:
+  linear-gradient(rgba(255, 255, 255, .03), rgba(255, 255, 255, .03)) padding-box,
+  linear-gradient(188deg, #9C7DFF 8%, #5B2BE0 110%) padding-box,
+  linear-gradient(180deg, #E0C0FF, #8254F8) border-box;
+  box-shadow: 0 1px 2px rgba(40, 12, 120, .25), 0 10px 24px -10px rgba(91, 43, 224, .65) }
+.btn-primary:hover { filter: brightness(1.06); box-shadow: 0 1px 2px rgba(40, 12, 120, .25), 0 14px 30px -10px rgba(91, 43, 224, .8) }
+.btn-white { color: #5B2BE0; border: 1px solid transparent; background:
+  linear-gradient(180deg, #fff, #F5F2FF) padding-box,
+  linear-gradient(180deg, #fff, #D9CCFF) border-box;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .08), 0 10px 24px -12px rgba(16, 40, 90, .45) }
+.btn-white:hover { filter: brightness(1.02); box-shadow: 0 1px 2px rgba(16, 24, 40, .08), 0 14px 30px -12px rgba(16, 40, 90, .55) }
+.btn-outline-white { color: #fff; border: 1px solid rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .08) }
+.btn-outline-white:hover { background: rgba(255, 255, 255, .16); border-color: #fff }
+.btn-white:focus-visible, .btn-outline-white:focus-visible { outline-color: #fff }
+#nav:not(.scrolled) .btn-primary { color: #5B2BE0; background: linear-gradient(180deg, #fff, #F5F2FF) padding-box, linear-gradient(180deg, #fff, #D9CCFF) border-box; box-shadow: 0 8px 20px -10px rgba(20, 10, 80, .5) }
+.calm { background: radial-gradient(ellipse 46% 40% at 50% 36%, rgba(58, 32, 184, .6), rgba(58, 32, 184, 0) 75%) }
+.tab { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 14px; border-radius: 12px; font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, .85); overflow: hidden; transition: background-color .3s, color .3s }
+.tab:hover { color: #fff; background: rgba(255, 255, 255, .1) }
+.tab:focus-visible { outline: 2px solid #fff; outline-offset: 2px }
+.tab[aria-pressed="true"] { background: #fff; color: #4A2BD6; box-shadow: 0 6px 16px -8px rgba(20, 10, 80, .5) }
+.tab > i { position: absolute; left: 14px; right: 14px; bottom: 5px; height: 2px; border-radius: 1px; background: rgba(124, 77, 255, .15); opacity: 0 }
+.tab[aria-pressed="true"] > i { opacity: 1 }
+#demo-tabs.held .tab.run > i::after { animation-play-state: paused }
+@media (pointer: coarse) { .tab { height: 44px } }
+.tab > i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 1px; background: #7C4DFF }
+.tab.run > i::after { animation: tabfill var(--dur, 4s) linear forwards }
+@keyframes tabfill { to { width: 100% } }
+.ly { position: absolute; inset: 0; opacity: 0; transition: opacity .5s ease }
+#demo[data-scene="dl"] .ly-home, #demo[data-scene="mini"] .ly-home, #demo[data-scene="noads"] .ly-watch, #demo[data-scene="bg"] .ly-lock { opacity: 1 }
+.sb { transition: color .4s }
+.sb-net { color: #625E78 }
+#demo[data-scene="bg"] .sb, #demo[data-scene="bg"] .sb-net { color: #fff }
+.vid { position: absolute; z-index: 10; left: 0; top: 38px; width: 284px; height: 160px; overflow: hidden; border-radius: 0; opacity: 0; box-shadow: none; transition: top .7s cubic-bezier(.2, .8, .2, 1), left .7s cubic-bezier(.2, .8, .2, 1), width .7s cubic-bezier(.2, .8, .2, 1), height .7s cubic-bezier(.2, .8, .2, 1), border-radius .7s, box-shadow .7s, opacity .45s }
+#demo[data-scene="noads"] .vid { opacity: 1 }
+#demo[data-scene="mini"] .vid { opacity: 1; top: 300px; left: 126px; width: 146px; height: 82px; border-radius: 12px; box-shadow: 0 16px 30px -10px rgba(16, 24, 40, .5) }
+.vid-badge { transition: opacity .3s }
+#demo[data-scene="mini"] .vid-badge { opacity: 0 }
+.sc { opacity: 0; translate: 0 10px; transition: opacity .45s ease, translate .45s ease; pointer-events: none }
+#demo[data-scene="dl"] .sc-dl, #demo[data-scene="noads"] .sc-noads, #demo[data-scene="mini"] .sc-mini, #demo[data-scene="bg"] .sc-bg { opacity: 1; translate: 0 0 }
+.logo { color: rgba(28, 27, 31, .45); transition: color .5s ease var(--d) }
+.logo .mono { transition: opacity .3s ease var(--d) }
+.logo .tint { opacity: 0; transform: scale(.55); transition: opacity .4s ease var(--d), transform .6s cubic-bezier(.3, 1.6, .5, 1) var(--d) }
+.logos.in .logo { color: #1C1B1F }
+.logos.in .logo .mono { opacity: 0 }
+.logos.in .logo .tint { opacity: 1; transform: none }
+.status { display: inline-flex; align-items: center; gap: 4px; border-radius: 9999px; padding: 3px 10px; font-size: .8125rem; font-weight: 500; line-height: 1.4; white-space: nowrap }
+.status.ok { background: #E3F4EA; color: #0F7A3D }
+.status.brand { background: #EFE9FF; color: #5B2BE0 }
+.status.warn { background: #FEF0DC; color: #9A4A06 }
+.status.neutral { background: #EEEBF5; color: #4A4660 }
+.ledger { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; align-items: center }
+@media (min-width: 640px) { .ledger { grid-template-columns: minmax(0, 1fr) 56px 72px 92px } }
+.track { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 4px 16px; padding-bottom: 28px }
+.track:last-child { padding-bottom: 0 }
+.track::before { content: ""; position: absolute; left: 13px; top: 32px; bottom: 4px; width: 2px; border-radius: 1px; background: #7C4DFF }
+.track:last-child::before { display: none }
+.node { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #7C4DFF; color: #fff }
+
+.phone { width: 300px; border-radius: 46px; background: #0E0D12; padding: 8px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1), 0 40px 80px -30px rgba(30, 10, 100, .6) }
+.screen { font-family: "Plus Jakarta Sans", "Segoe UI", sans-serif; border-radius: 38px; overflow: hidden; background: #F6F4FA; color: #1C1B1F; font-size: 11.5px; height: 600px; position: relative }
+.island { position: absolute; top: 9px; left: 50%; width: 84px; height: 24px; margin-left: -42px; border-radius: 14px; background: #000 }
+.prog { height: 4px; border-radius: 2px; background: #ECE7F7; overflow: hidden }
+.prog > i { display: block; height: 100%; border-radius: 2px; background: #7C4DFF }
+.float-card { background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 24px 48px -20px rgba(16, 40, 90, .35) }
+details > summary { list-style: none; cursor: pointer }
+details > summary::-webkit-details-marker { display: none }
+details[open] .chev { transform: rotate(45deg) }
+@media (prefers-reduced-motion: reduce) {
+  .ly, .vid, .sc, .tab, .logo, .logo svg { transition: none }
+  .tab.run > i::after { animation: none; width: 100% }
+  html { scroll-behavior: auto }
+}
+</style>
+</head>
+<body class="font-sans text-ink antialiased">
+
+<svg width="0" height="0" class="absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="stem" gradientUnits="userSpaceOnUse" x1="0" y1="22" x2="0" y2="80"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#E2D5FF"/></linearGradient>
+    <filter id="blur" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="10"/></filter>
+    <linearGradient id="ig" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#FEDA75"/><stop offset=".3" stop-color="#FA7E1E"/><stop offset=".55" stop-color="#D62976"/><stop offset=".8" stop-color="#962FBF"/><stop offset="1" stop-color="#4F5BD5"/></linearGradient>
+    <clipPath id="tear"><path d="M50 0 A50 50 0 0 0 0 50 A50 50 0 0 0 50 100 H86 A14 14 0 0 0 100 86 V50 A50 50 0 0 0 50 0 Z"/></clipPath>
+  </defs>
+  <symbol id="logo" viewBox="0 0 100 100">
+    <g clip-path="url(#tear)">
+      <rect width="100" height="100" fill="#170C40"/>
+      <g filter="url(#blur)"><circle cx="16" cy="16" r="40" fill="#7C4DFF"/><circle cx="90" cy="28" r="30" fill="#FF4FC3" opacity=".85"/><circle cx="72" cy="96" r="38" fill="#2FD0FF" opacity=".7"/><circle cx="8" cy="92" r="24" fill="#4B2BD9"/></g>
+      <path fill="url(#stem)" d="M40 29 Q40 22 47 22 Q54 22 54 29 V61 Q54 67 60 67 H63 Q69.5 67 69.5 73.5 Q69.5 80 63 80 H57 Q40 80 40 63 Z"/>
+      <path fill="#fff" d="M27 42 Q27 36 33 36 H58 V32.5 Q58 28.5 61.4 30.7 L72.5 38.6 Q76 41.5 72.5 44.4 L61.4 52.3 Q58 54.5 58 50.5 V48 H33 Q27 48 27 42 Z"/>
+    </g>
+  </symbol>
+  <!-- UI icons: Lucide (ISC). Brand marks: Simple Icons (CC0); Windows 11 mark drawn as its four squares. -->
+  <symbol id="i-dl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-paste" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1Z"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2M16 4h2a2 2 0 0 1 2 2v2M11 14h10"/><path d="m17 10 4 4-4 4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.950a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-finger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10a2 2 0 0 0-2 2c0 1.020-.1 2.510-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.020c.12-.6.43-2.3.5-3.020"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></symbol>
+  <symbol id="i-pip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.630l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.020A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.630l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.020A1 1 0 0 0 11 14z"/></symbol>
+  <symbol id="i-headphones" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" x2="5" y1="19" y2="5"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/></symbol>
+  <symbol id="i-thumb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></symbol>
+  <symbol id="i-wifi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24" fill="currentColor"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22"/><path d="M2 6h1.972a4 4 0 0 1 3.6 2.2"/><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45"/></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+  <symbol id="i-delete" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/></symbol>
+  <symbol id="i-shield-fill" viewBox="0 0 24 24" fill="currentColor"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-android" viewBox="0 0 24 24" fill="currentColor"><path d="M18.4395 5.5586c-.675 1.1664-1.352 2.3318-2.0274 3.498-.0366-.0155-.0742-.0286-.1113-.043-1.8249-.6957-3.484-.8-4.42-.787-1.8551.0185-3.3544.4643-4.2597.8203-.084-.1494-1.7526-3.021-2.0215-3.4864a1.1451 1.1451 0 0 0-.1406-.1914c-.3312-.364-.9054-.4859-1.379-.203-.475.282-.7136.9361-.3886 1.5019 1.9466 3.3696-.0966-.2158 1.9473 3.3593.0172.031-.4946.2642-1.3926 1.0177C2.8987 12.176.452 14.772 0 18.9902h24c-.119-1.1108-.3686-2.099-.7461-3.0683-.7438-1.9118-1.8435-3.2928-2.7402-4.1836a12.1048 12.1048 0 0 0-2.1309-1.6875c.6594-1.122 1.312-2.2559 1.9649-3.3848.2077-.3615.1886-.7956-.0079-1.1191a1.1001 1.1001 0 0 0-.8515-.5332c-.5225-.0536-.9392.3128-1.0488.5449zm-.0391 8.461c.3944.5926.324 1.3306-.1563 1.6503-.4799.3197-1.188.0985-1.582-.4941-.3944-.5927-.324-1.3307.1563-1.6504.4727-.315 1.1812-.1086 1.582.4941zM7.207 13.5273c.4803.3197.5506 1.0577.1563 1.6504-.394.5926-1.1038.8138-1.584.4941-.48-.3197-.5503-1.0577-.1563-1.6504.4008-.6021 1.1087-.8106 1.584-.4941z"/></symbol>
+  <symbol id="i-windows" viewBox="0 0 24 24" fill="currentColor"><path d="M2 2h9.5v9.5H2zM12.5 2H22v9.5h-9.5zM2 12.5h9.5V22H2zM12.5 12.5H22V22h-9.5z"/></symbol>
+  <symbol id="b-youtube" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.070 0 12 0 12s0 3.930.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.930 24 12 24 12s0-3.930-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></symbol>
+  <symbol id="b-tiktok" viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.110 2.7 1.62 4.24 1.79v4.030c-1.44-.05-2.890-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.580 3.17-5.910 3.21-1.430.08-2.860-.31-4.080-1.030-2.020-1.190-3.440-3.370-3.650-5.710-.02-.5-.03-1-.01-1.490.18-1.9 1.120-3.720 2.580-4.960 1.660-1.440 3.980-2.130 6.150-1.720.02 1.480-.04 2.960-.04 4.440-.99-.32-2.150-.23-3.020.37-.63.41-1.110 1.040-1.360 1.750-.21.51-.15 1.070-.14 1.610.24 1.640 1.820 3.020 3.5 2.870 1.120-.01 2.190-.66 2.770-1.610.19-.33.4-.67.41-1.060.1-1.790.06-3.570.07-5.360.01-4.030-.01-8.050.02-12.070z"/></symbol>
+  <symbol id="b-instagram" viewBox="0 0 24 24" fill="currentColor"><path d="M7.0301.084c-1.2768.0602-2.1487.264-2.911.5634-.7888.3075-1.4575.72-2.1228 1.3877-.6652.6677-1.075 1.3368-1.3802 2.127-.2954.7638-.4956 1.6365-.552 2.914-.0564 1.2775-.0689 1.6882-.0626 4.947.0062 3.2586.0206 3.6671.0825 4.9473.061 1.2765.264 2.1482.5635 2.9107.308.7889.72 1.4573 1.388 2.1228.6679.6655 1.3365 1.0743 2.1285 1.38.7632.295 1.6361.4961 2.9134.552 1.2773.056 1.6884.069 4.9462.0627 3.2578-.0062 3.668-.0207 4.9478-.0814 1.28-.0607 2.147-.2652 2.9098-.5633.7889-.3086 1.4578-.72 2.1228-1.3881.665-.6682 1.0745-1.3378 1.3795-2.1284.2957-.7632.4966-1.636.552-2.9124.056-1.2809.0692-1.6898.063-4.948-.0063-3.2583-.021-3.6668-.0817-4.9465-.0607-1.2797-.264-2.1487-.5633-2.9117-.3084-.7889-.72-1.4568-1.3876-2.1228C21.2982 1.33 20.628.9208 19.8378.6165 19.074.321 18.2017.1197 16.9244.0645 15.6471.0093 15.236-.005 11.977.0014 8.718.0076 8.31.0215 7.0301.0839m.1402 21.6932c-1.17-.0509-1.8053-.2453-2.2287-.408-.5606-.216-.96-.4771-1.3819-.895-.422-.4178-.6811-.8186-.9-1.378-.1644-.4234-.3624-1.058-.4171-2.228-.0595-1.2645-.072-1.6442-.079-4.848-.007-3.2037.0053-3.583.0607-4.848.05-1.169.2456-1.805.408-2.2282.216-.5613.4762-.96.895-1.3816.4188-.4217.8184-.6814 1.3783-.9003.423-.1651 1.0575-.3614 2.227-.4171 1.2655-.06 1.6447-.072 4.848-.079 3.2033-.007 3.5835.005 4.8495.0608 1.169.0508 1.8053.2445 2.228.408.5608.216.96.4754 1.3816.895.4217.4194.6816.8176.9005 1.3787.1653.4217.3617 1.056.4169 2.2263.0602 1.2655.0739 1.645.0796 4.848.0058 3.203-.0055 3.5834-.061 4.848-.051 1.17-.245 1.8055-.408 2.2294-.216.5604-.4763.96-.8954 1.3814-.419.4215-.8181.6811-1.3783.9-.4224.1649-1.0577.3617-2.2262.4174-1.2656.0595-1.6448.072-4.8493.079-3.2045.007-3.5825-.006-4.848-.0608M16.953 5.5864A1.44 1.44 0 1 0 18.39 4.144a1.44 1.44 0 0 0-1.437 1.4424M5.8385 12.012c.0067 3.4032 2.7706 6.1557 6.173 6.1493 3.4026-.0065 6.157-2.7701 6.1506-6.1733-.0065-3.4032-2.771-6.1565-6.174-6.1498-3.403.0067-6.156 2.771-6.1496 6.1738M8 12.0077a4 4 0 1 1 4.008 3.9921A3.9996 3.9996 0 0 1 8 12.0077"/></symbol>
+  <symbol id="b-instagram-g" viewBox="0 0 24 24" fill="url(#ig)"><path d="M7.0301.084c-1.2768.0602-2.1487.264-2.911.5634-.7888.3075-1.4575.72-2.1228 1.3877-.6652.6677-1.075 1.3368-1.3802 2.127-.2954.7638-.4956 1.6365-.552 2.914-.0564 1.2775-.0689 1.6882-.0626 4.947.0062 3.2586.0206 3.6671.0825 4.9473.061 1.2765.264 2.1482.5635 2.9107.308.7889.72 1.4573 1.388 2.1228.6679.6655 1.3365 1.0743 2.1285 1.38.7632.295 1.6361.4961 2.9134.552 1.2773.056 1.6884.069 4.9462.0627 3.2578-.0062 3.668-.0207 4.9478-.0814 1.28-.0607 2.147-.2652 2.9098-.5633.7889-.3086 1.4578-.72 2.1228-1.3881.665-.6682 1.0745-1.3378 1.3795-2.1284.2957-.7632.4966-1.636.552-2.9124.056-1.2809.0692-1.6898.063-4.948-.0063-3.2583-.021-3.6668-.0817-4.9465-.0607-1.2797-.264-2.1487-.5633-2.9117-.3084-.7889-.72-1.4568-1.3876-2.1228C21.2982 1.33 20.628.9208 19.8378.6165 19.074.321 18.2017.1197 16.9244.0645 15.6471.0093 15.236-.005 11.977.0014 8.718.0076 8.31.0215 7.0301.0839m.1402 21.6932c-1.17-.0509-1.8053-.2453-2.2287-.408-.5606-.216-.96-.4771-1.3819-.895-.422-.4178-.6811-.8186-.9-1.378-.1644-.4234-.3624-1.058-.4171-2.228-.0595-1.2645-.072-1.6442-.079-4.848-.007-3.2037.0053-3.583.0607-4.848.05-1.169.2456-1.805.408-2.2282.216-.5613.4762-.96.895-1.3816.4188-.4217.8184-.6814 1.3783-.9003.423-.1651 1.0575-.3614 2.227-.4171 1.2655-.06 1.6447-.072 4.848-.079 3.2033-.007 3.5835.005 4.8495.0608 1.169.0508 1.8053.2445 2.228.408.5608.216.96.4754 1.3816.895.4217.4194.6816.8176.9005 1.3787.1653.4217.3617 1.056.4169 2.2263.0602 1.2655.0739 1.645.0796 4.848.0058 3.203-.0055 3.5834-.061 4.848-.051 1.17-.245 1.8055-.408 2.2294-.216.5604-.4763.96-.8954 1.3814-.419.4215-.8181.6811-1.3783.9-.4224.1649-1.0577.3617-2.2262.4174-1.2656.0595-1.6448.072-4.8493.079-3.2045.007-3.5825-.006-4.848-.0608M16.953 5.5864A1.44 1.44 0 1 0 18.39 4.144a1.44 1.44 0 0 0-1.437 1.4424M5.8385 12.012c.0067 3.4032 2.7706 6.1557 6.173 6.1493 3.4026-.0065 6.157-2.7701 6.1506-6.1733-.0065-3.4032-2.771-6.1565-6.174-6.1498-3.403.0067-6.156 2.771-6.1496 6.1738M8 12.0077a4 4 0 1 1 4.008 3.9921A3.9996 3.9996 0 0 1 8 12.0077"/></symbol>
+  <symbol id="b-facebook" viewBox="0 0 24 24" fill="currentColor"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></symbol>
+</svg>
+
+<header id="nav" class="group fixed inset-x-0 top-0 z-50 border-b border-transparent pt-2 transition-all duration-300 sm:pt-3 [&.scrolled]:border-line [&.scrolled]:bg-page/80 [&.scrolled]:pt-0 [&.scrolled]:backdrop-blur-xl">
+  <div class="mx-auto flex h-[80px] max-w-[1200px] items-center justify-between px-6 transition-[height] duration-300 group-[.scrolled]:h-[64px] sm:px-10">
+    <a href="#top" class="flex items-center gap-2.5 text-[19px] font-semibold tracking-[-0.02em] text-white transition-colors group-[.scrolled]:text-ink">
+      <svg width="30" height="30" aria-hidden="true"><use href="#logo"/></svg>Toomu
+    </a>
+    <nav class="hidden items-center gap-1 text-[14px] font-semibold text-white/75 transition-colors group-[.scrolled]:text-muted md:flex" aria-label="Main">
+      <a class="rounded-[10px] px-3.5 py-2 hover:bg-white/10 hover:text-white group-[.scrolled]:hover:bg-white group-[.scrolled]:hover:text-ink" href="#features">Features</a>
+      <a class="rounded-[10px] px-3.5 py-2 hover:bg-white/10 hover:text-white group-[.scrolled]:hover:bg-white group-[.scrolled]:hover:text-ink" href="#how">How it works</a>
+      <a class="rounded-[10px] px-3.5 py-2 hover:bg-white/10 hover:text-white group-[.scrolled]:hover:bg-white group-[.scrolled]:hover:text-ink" href="#download">Download</a>
+      <a class="rounded-[10px] px-3.5 py-2 hover:bg-white/10 hover:text-white group-[.scrolled]:hover:bg-white group-[.scrolled]:hover:text-ink" href="#faq">FAQ</a>
+    </nav>
+    <a href="#download" class="btn btn-sm btn-primary">Get Toomu</a>
+  </div>
+</header>
+
+<main id="top">
+  <section class="relative mx-2 mt-2 overflow-hidden rounded-t-[24px] bg-[#6B4CF0] sm:mx-3 sm:mt-3 sm:rounded-t-[32px]">
+    <img src="img/hero.jpg" alt="" class="absolute inset-0 h-full w-full object-cover" fetchpriority="high">
+    <div class="absolute inset-x-0 top-0 h-[60%] bg-gradient-to-b from-[#24107A]/30 to-transparent" aria-hidden="true"></div>
+    <div class="calm absolute inset-0" aria-hidden="true"></div>
+    <div class="absolute inset-x-0 bottom-0 h-[42%] bg-gradient-to-b from-transparent via-page/70 to-page" aria-hidden="true"></div>
+
+    <div class="relative mx-auto max-w-[1200px] px-4 pt-[120px] text-center sm:px-6 sm:pt-[144px]">
+            <h1 class="mx-auto max-w-[880px] text-display font-semibold text-white">
+        Watch&nbsp;it. Keep&nbsp;it.<br>No ads in between.
+      </h1>
+      <p class="mx-auto mt-6 max-w-[520px] text-lead text-white/90">Save videos from YouTube, TikTok, Instagram, Facebook and almost any site. Watch YouTube without ads. Keep it all offline.</p>
+      <div class="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <a href="https://github.com/sajjadhossainshohag/toomu/releases/latest/download/toomu-arm64-v8a.apk" class="btn btn-white w-full sm:w-auto">
+          <svg width="19" height="19" aria-hidden="true"><use href="#i-android"/></svg><span>Download for Android</span>
+        </a>
+        <a href="https://github.com/sajjadhossainshohag/toomu/releases/latest/download/toomu-windows-setup.exe" class="btn btn-outline-white w-full sm:w-auto">
+          <svg width="16" height="16" aria-hidden="true"><use href="#i-windows"/></svg><span>Download for Windows</span>
+        </a>
+      </div>
+      <p class="mt-5 text-meta text-white/85">Free · Android 7 or newer · Windows 10 and 11</p>
+
+      <div class="mt-10 flex justify-center px-2">
+        <div id="demo-tabs" class="inline-flex flex-wrap justify-center gap-1 rounded-[16px] bg-white/12 p-1.5 ring-1 ring-inset ring-white/25" role="group" aria-label="See Toomu in action">
+          <button type="button" class="tab" data-go="0" aria-pressed="true"><svg width="15" height="15" aria-hidden="true"><use href="#i-shield"/></svg>No ads<i></i></button>
+          <button type="button" class="tab" data-go="1" aria-pressed="false"><svg width="15" height="15" aria-hidden="true"><use href="#i-zap"/></svg>Fast downloads<i></i></button>
+          <button type="button" class="tab" data-go="2" aria-pressed="false"><svg width="15" height="15" aria-hidden="true"><use href="#i-pip"/></svg>Mini player<i></i></button>
+          <button type="button" class="tab" data-go="3" aria-pressed="false"><svg width="15" height="15" aria-hidden="true"><use href="#i-headphones"/></svg>Background play<i></i></button>
+        </div>
+      </div>
+
+      <div id="demo" data-scene="noads" class="relative mx-auto mt-8 h-[470px] max-w-[1000px] sm:h-[500px]" aria-hidden="true">
+        <div class="absolute left-1/2 top-0 -translate-x-1/2">
+          <div class="phone">
+            <div class="screen text-left">
+              <div class="island z-30"></div>
+              <div class="sb absolute inset-x-0 top-0 z-20 flex justify-between px-6 pt-3 text-[11px] font-bold"><span>9:41</span><span class="sb-net">5G ▮▮▮</span></div>
+
+              <div class="ly ly-home flex flex-col gap-3 pt-[44px]">
+                <div class="flex items-center gap-2 px-3.5">
+                  <span class="flex flex-1 items-center gap-2 text-[17px] font-extrabold tracking-[-0.02em]"><svg width="26" height="26"><use href="#logo"/></svg>Toomu</span>
+                  <span class="grid h-8 w-8 place-items-center rounded-full bg-white text-ink shadow-sm"><svg width="16" height="16"><use href="#i-gear"/></svg></span>
+                </div>
+                <div class="px-3.5">
+                  <div class="flex h-[42px] items-center gap-2 rounded-[21px] bg-white pl-3.5 pr-1.5 text-muted shadow-sm">
+                    <svg width="15" height="15"><use href="#i-search"/></svg><span class="flex-1 truncate">Search or paste any link</span>
+                    <span class="flex h-[30px] items-center gap-1 rounded-[15px] bg-brand-tint px-3 text-[11px] font-bold text-brand"><svg width="12" height="12"><use href="#i-paste"/></svg>Paste</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-5 gap-1 px-3.5 text-center text-[10px] text-muted">
+                  <div class="grid justify-items-center gap-1"><b class="grid h-11 w-11 place-items-center rounded-[15px] bg-[#FF0033] text-white"><svg width="21" height="21"><use href="#b-youtube"/></svg></b>YouTube</div>
+                  <div class="grid justify-items-center gap-1"><b class="grid h-11 w-11 place-items-center rounded-[15px] bg-black text-white"><svg width="18" height="18"><use href="#b-tiktok"/></svg></b>TikTok</div>
+                  <div class="grid justify-items-center gap-1"><b class="grid h-11 w-11 place-items-center rounded-[15px] bg-[#0866FF] text-white"><svg width="20" height="20"><use href="#b-facebook"/></svg></b>Facebook</div>
+                  <div class="grid justify-items-center gap-1"><b class="grid h-11 w-11 place-items-center rounded-[15px] bg-[#E4405F] text-white"><svg width="19" height="19"><use href="#b-instagram"/></svg></b>Instagram</div>
+                  <div class="grid justify-items-center gap-1"><b class="grid h-11 w-11 place-items-center rounded-[15px] bg-white text-ink shadow-sm"><svg width="19" height="19"><use href="#i-globe"/></svg></b>Browser</div>
+                </div>
+                <div class="flex items-baseline justify-between px-3.5 text-[13px] font-extrabold">Downloading <small class="text-[11px] font-bold text-brand">2 of 3</small></div>
+                <div class="px-3.5">
+                  <div class="grid rounded-2xl bg-white px-3 py-1 shadow-sm">
+                    <div class="grid grid-cols-[38px_1fr_auto] items-center gap-2.5 py-2">
+                      <div class="grid h-[38px] w-[38px] place-items-center rounded-[10px] bg-[#FFE9E4] text-[#E5484D]"><svg width="15" height="15"><use href="#i-play"/></svg></div>
+                      <div class="min-w-0"><div class="truncate font-bold">Street food tour of Old Dhaka</div><div class="prog mt-1.5"><i id="d-bar" style="width:0"></i></div></div>
+                      <div class="w-[54px] text-right text-[10px] tabular-nums text-muted">1080p<br><span id="d-rate">0.0 MB/s</span></div>
+                    </div>
+                    <div class="grid grid-cols-[38px_1fr_auto] items-center gap-2.5 border-t border-line py-2">
+                      <div class="grid h-[38px] w-[38px] place-items-center rounded-[10px] bg-[#E3F4EA] text-[#12A150]"><svg width="15" height="15"><use href="#i-music"/></svg></div>
+                      <div class="min-w-0"><div class="truncate font-bold">Ghum Ghum (audio)</div><div class="prog mt-1.5"><i id="a-bar" style="width:34%"></i></div></div>
+                      <div class="w-[54px] text-right text-[10px] tabular-nums text-muted">M4A<br>3.1 MB/s</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-baseline justify-between px-3.5 text-[13px] font-extrabold">Continue watching <small class="text-[11px] font-bold text-brand">See all</small></div>
+                <div class="flex gap-2.5 overflow-hidden pl-3.5">
+                  <div class="relative aspect-video w-[140px] flex-none overflow-hidden rounded-xl bg-[#9DB4C8]"><span class="absolute bottom-1.5 right-1.5 rounded-md bg-black/70 px-1.5 text-[10px] font-bold text-white">42:10</span><div class="absolute inset-x-0 bottom-0 h-[3px] bg-white/25"><i class="block h-full w-[62%] bg-[#FF3D82]"></i></div></div>
+                  <div class="relative aspect-video w-[140px] flex-none overflow-hidden rounded-xl"><img src="img/video.jpg" alt="" class="h-full w-full object-cover"><span class="absolute bottom-1.5 right-1.5 rounded-md bg-black/70 px-1.5 text-[10px] font-bold text-white">18:24</span><div class="absolute inset-x-0 bottom-0 h-[3px] bg-white/25"><i class="block h-full w-1/4 bg-[#FF3D82]"></i></div></div>
+                </div>
+              </div>
+
+              <div class="ly ly-watch bg-page pt-[198px]">
+                <div class="px-3.5 pt-3">
+                  <div class="text-[13px] font-bold leading-snug">Building a tiny house in 30 days, start to finish</div>
+                  <div class="mt-1 text-[10.5px] text-muted">1.2M views · 2 days ago</div>
+                </div>
+                <div class="mt-3 flex items-center gap-2 px-3.5">
+                  <span class="grid h-8 w-8 place-items-center rounded-full bg-[#3A7D44] text-[11px] font-extrabold text-white">CB</span>
+                  <div class="min-w-0 flex-1"><div class="truncate text-[12px] font-bold">Cabin Builders</div><div class="text-[10px] text-muted">412K subscribers</div></div>
+                  <span class="rounded-full bg-white px-3 py-1.5 text-[11px] font-bold shadow-sm ring-1 ring-line">Subscribe</span>
+                </div>
+                <div class="mt-3 flex gap-1.5 overflow-hidden px-3.5 text-[11px] font-bold">
+                  <span class="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm"><svg width="12" height="12"><use href="#i-thumb"/></svg>24K</span>
+                  <span class="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm"><svg width="12" height="12"><use href="#i-share"/></svg>Share</span>
+                  <span class="flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-white"><svg width="12" height="12"><use href="#i-dl"/></svg>Download</span>
+                </div>
+                <div class="mt-4 px-3.5 text-[12px] font-extrabold">Up next</div>
+                <div class="mt-2 grid gap-2 px-3.5">
+                  <div class="flex gap-2.5"><span class="aspect-video w-[96px] flex-none rounded-lg bg-[#C9D6C2]"></span><div class="min-w-0"><div class="text-[11px] font-bold leading-snug">Off-grid solar for beginners</div><div class="mt-0.5 text-[10px] text-muted">Cabin Builders · 14:02</div></div></div>
+                  <div class="flex gap-2.5"><span class="aspect-video w-[96px] flex-none rounded-lg bg-[#E2CFC0]"></span><div class="min-w-0"><div class="text-[11px] font-bold leading-snug">A week of cooking in a tiny kitchen</div><div class="mt-0.5 text-[10px] text-muted">Small Spaces · 21:47</div></div></div>
+                </div>
+              </div>
+
+              <div class="ly ly-lock">
+                <img src="img/hero.jpg" alt="" class="absolute inset-0 h-full w-full object-cover">
+                <div class="relative pt-[66px] text-center text-white">
+                  <div class="text-[12px] font-semibold text-white/85">Thursday, 19 November</div>
+                  <div class="mt-1 text-[64px] font-semibold leading-none tracking-[-0.03em]">9:41</div>
+                </div>
+                <div class="relative mx-3 mt-8 rounded-[20px] bg-white/85 p-3 shadow-[0_16px_34px_-16px_rgba(20,10,80,.6)] backdrop-blur-md">
+                  <div class="flex items-center gap-2.5">
+                    <img src="img/video.jpg" alt="" class="h-11 w-11 flex-none rounded-[10px] object-cover">
+                    <div class="min-w-0 flex-1"><div class="truncate text-[12px] font-bold">Building a tiny house in 30 days</div><div class="flex items-center gap-1 text-[10px] text-muted"><svg width="11" height="11"><use href="#logo"/></svg>Toomu · Playing in background</div></div>
+                  </div>
+                  <div class="prog mt-3"><i id="l-bar" style="width:23%"></i></div>
+                  <div class="mt-1 flex justify-between text-[9.5px] tabular-nums text-muted"><span id="l-time">4:12</span><span>18:24</span></div>
+                  <div class="mt-1 flex items-center justify-center gap-6 text-ink">
+                    <svg width="16" height="16"><use href="#i-prev"/></svg>
+                    <span class="grid h-9 w-9 place-items-center rounded-full bg-brand text-white"><svg width="14" height="14"><use href="#i-pause"/></svg></span>
+                    <svg width="16" height="16"><use href="#i-next"/></svg>
+                  </div>
+                </div>
+              </div>
+
+              <div class="vid">
+                <img src="img/video.jpg" alt="" class="h-full w-full object-cover">
+                <span class="vid-badge absolute left-2 top-2 flex items-center gap-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-[#12A150]"><svg width="11" height="11"><use href="#i-shield"/></svg>No ads</span>
+                <div class="absolute inset-x-0 bottom-0 h-[3px] bg-white/35"><i id="v-bar" class="block h-full bg-[#FF0033]" style="width:23%"></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="float-card sc sc-dl absolute left-1/2 top-[120px] hidden w-[236px] -translate-x-[364px] rounded-[18px] p-4 text-left lg:block">
+          <div class="flex items-center gap-2 text-[13px] font-semibold"><span class="grid h-7 w-7 place-items-center rounded-lg bg-brand-tint text-brand"><svg width="15" height="15"><use href="#i-globe"/></svg></span>3 found on this page</div>
+          <div class="mt-3 grid gap-2 text-[12px]">
+            <div class="flex items-center justify-between rounded-xl bg-page px-3 py-2"><span class="font-medium">1080p · MP4</span><span class="text-muted">186 MB</span></div>
+            <div class="flex items-center justify-between rounded-xl bg-page px-3 py-2"><span class="font-medium">720p · HLS</span><span class="text-muted">4 qualities</span></div>
+            <div class="flex items-center justify-between rounded-xl bg-page px-3 py-2"><span class="font-medium">Audio · M4A</span><span class="text-muted">3.1 MB</span></div>
+          </div>
+        </div>
+        <div class="float-card sc sc-dl absolute left-1/2 top-[292px] hidden w-[236px] translate-x-[124px] rounded-[18px] p-4 text-left lg:block">
+          <div class="flex items-center justify-between text-[12px] text-muted"><span class="flex items-center gap-1 font-medium"><svg class="text-brand" width="13" height="13"><use href="#i-zap"/></svg>8 connections</span><span id="c-speed" class="font-semibold tabular-nums text-ink">0.0 MB/s</span></div>
+          <div class="mt-2 text-[14px] font-semibold">Street food tour.mp4</div>
+          <div id="conns" class="mt-3 grid grid-cols-8 gap-1"><i class="h-1.5 overflow-hidden rounded-full bg-[#ECE7F7]"><b class="block h-full w-0 bg-brand"></b></i><i class="h-1.5 overflow-hidden rounded-full bg-[#ECE7F7]"><b class="block h-full w-0 bg-brand"></b></i><i class="h-1.5 overflow-hidden rounded-full bg-[#ECE7F7]"><b class="block h-full w-0 bg-brand"></b></i><i class="h-1.5 overflow-hidden rounded-full bg-[#ECE7F7]"><b class="block h-full w-0 bg-brand"></b></i><i class="h-1.5 overflow-hidden rounded-full bg-[#ECE7F7]"><b class="block h-full w-0 bg-brand"></b></i><i class="h-1.5 overflow-hidden rounded-full bg-[#ECE7F7]"><b class="block h-full w-0 bg-brand"></b></i><i class="h-1.5 overflow-hidden rounded-full bg-[#ECE7F7]"><b class="block h-full w-0 bg-brand"></b></i><i class="h-1.5 overflow-hidden rounded-full bg-[#ECE7F7]"><b class="block h-full w-0 bg-brand"></b></i></div>
+          <div class="mt-2 flex justify-between text-[11px] text-muted"><span id="c-state">0% of 186 MB</span><span>1080p</span></div>
+        </div>
+
+        <div class="float-card sc sc-noads absolute left-1/2 top-[120px] hidden w-[236px] -translate-x-[364px] rounded-[18px] p-4 text-left lg:block">
+          <div class="flex items-center gap-2.5"><span class="grid h-9 w-9 place-items-center rounded-xl bg-[#E3F4EA] text-[#12A150]"><svg width="18" height="18"><use href="#i-shield"/></svg></span><div><div class="text-[13px] font-semibold">Ad-free player</div><div class="text-[12px] text-muted">Nothing before, during or after</div></div></div>
+          <div class="mt-3 grid grid-cols-3 gap-1.5 text-center text-[11px]">
+            <div class="rounded-xl bg-page py-2"><div class="text-[15px] font-semibold">0</div><div class="text-muted">Pre-roll</div></div>
+            <div class="rounded-xl bg-page py-2"><div class="text-[15px] font-semibold">0</div><div class="text-muted">Mid-roll</div></div>
+            <div class="rounded-xl bg-page py-2"><div class="text-[15px] font-semibold">0</div><div class="text-muted">Banners</div></div>
+          </div>
+        </div>
+        <div class="float-card sc sc-noads absolute left-1/2 top-[292px] hidden w-[236px] translate-x-[124px] rounded-[18px] p-4 text-left lg:block">
+          <div class="text-[12px] font-medium text-muted">Save it for offline</div>
+          <div class="mt-2 flex gap-1.5 text-[12px] font-semibold"><span class="rounded-[10px] bg-page px-2.5 py-1">4K</span><span class="rounded-[10px] bg-brand px-2.5 py-1 text-white">1080p</span><span class="rounded-[10px] bg-page px-2.5 py-1">720p</span><span class="rounded-[10px] bg-page px-2.5 py-1">Audio</span></div>
+          <div class="mt-2 text-[11px] text-muted">One tap from the player</div>
+        </div>
+
+        <div class="float-card sc sc-mini absolute left-1/2 top-[120px] hidden w-[236px] -translate-x-[364px] items-center gap-2.5 rounded-[18px] p-4 text-left lg:flex">
+          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-brand-tint text-brand"><svg width="18" height="18"><use href="#i-pip"/></svg></span>
+          <div><div class="text-[13px] font-semibold">Mini player</div><div class="text-[12px] text-muted">Keeps playing while you browse or download</div></div>
+        </div>
+
+        <div class="float-card sc sc-bg absolute left-1/2 top-[120px] hidden w-[236px] -translate-x-[364px] items-center gap-2.5 rounded-[18px] p-4 text-left lg:flex">
+          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-[#FFEDE3] text-[#E5732E]"><svg width="18" height="18"><use href="#i-headphones"/></svg></span>
+          <div><div class="text-[13px] font-semibold">Background play</div><div class="text-[12px] text-muted">Lock your phone, it keeps playing</div></div>
+        </div>
+        <div class="float-card sc sc-bg absolute left-1/2 top-[292px] hidden w-[236px] translate-x-[124px] items-center gap-2.5 rounded-[18px] p-4 text-left lg:flex">
+          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-brand-tint text-brand"><svg width="15" height="15"><use href="#i-pause"/></svg></span>
+          <div><div class="text-[13px] font-semibold">Lock-screen controls</div><div class="text-[12px] text-muted">Pause or skip without unlocking</div></div>
+        </div>
+
+        <div class="pointer-events-none absolute bottom-0 left-1/2 h-28 w-[320px] -translate-x-1/2 bg-gradient-to-b from-transparent to-page"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="relative mx-auto max-w-[1200px] px-4 pt-16 sm:px-6">
+    <p class="text-center text-small font-medium text-muted">Paste a link from</p>
+    <div class="logos mt-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-5 text-[19px] font-semibold tracking-[-0.02em] sm:gap-x-14 sm:text-[21px]">
+      <span class="logo flex items-center gap-2.5" style="--d:0ms"><span class="relative grid"><svg class="mono" width="26" height="26" aria-hidden="true"><use href="#b-youtube"/></svg><svg class="tint absolute inset-0" style="color:#FF0033" width="26" height="26" aria-hidden="true"><use href="#b-youtube"/></svg></span>YouTube</span>
+      <span class="logo flex items-center gap-2.5" style="--d:180ms"><span class="relative grid"><svg class="mono" width="21" height="21" aria-hidden="true"><use href="#b-tiktok"/></svg><svg class="tint absolute inset-0" style="color:#000;filter:drop-shadow(-1.5px -1px 0 #25F4EE) drop-shadow(1.5px 1px 0 #FE2C55)" width="21" height="21" aria-hidden="true"><use href="#b-tiktok"/></svg></span>TikTok</span>
+      <span class="logo flex items-center gap-2.5" style="--d:360ms"><span class="relative grid"><svg class="mono" width="22" height="22" aria-hidden="true"><use href="#b-instagram"/></svg><svg class="tint absolute inset-0" style="" width="22" height="22" aria-hidden="true"><use href="#b-instagram-g"/></svg></span>Instagram</span>
+      <span class="logo flex items-center gap-2.5" style="--d:540ms"><span class="relative grid"><svg class="mono" width="23" height="23" aria-hidden="true"><use href="#b-facebook"/></svg><svg class="tint absolute inset-0" style="color:#0866FF" width="23" height="23" aria-hidden="true"><use href="#b-facebook"/></svg></span>Facebook</span>
+      <span class="logo flex items-center gap-2.5" style="--d:720ms"><span class="relative grid"><svg class="mono" width="23" height="23" aria-hidden="true"><use href="#i-globe"/></svg><svg class="tint absolute inset-0" style="color:#7C4DFF" width="23" height="23" aria-hidden="true"><use href="#i-globe"/></svg></span>Any website</span>
+    </div>
+  </section>
+
+  <section id="features" class="mx-auto max-w-[1200px] scroll-mt-24 px-4 pt-24 sm:px-6 sm:pt-32">
+    <div class="grid gap-6 border-b border-line pb-10 lg:grid-cols-[1.15fr_.85fr] lg:items-end lg:gap-16">
+      <h2 class="text-h2 font-semibold">Everything you save,<br class="hidden sm:block"> in plain sight.</h2>
+      <p class="max-w-[440px] text-lead text-muted lg:pb-1">Toomu always shows what it's doing: what's saved, what's still coming down, what got blocked and what's locked away.</p>
+    </div>
+
+    <div class="mt-10 grid grid-cols-1 gap-5 xl:grid-cols-12">
+      <article class="rounded-[32px] bg-tint p-7 sm:p-10 xl:col-span-7">
+        <div class="flex items-center justify-between gap-4">
+          <h3 class="text-title font-semibold">Offline library</h3>
+          <span class="rounded-full bg-white px-2.5 py-1 text-meta text-muted ring-1 ring-tint-line">Example</span>
+        </div>
+        <p class="mt-6 text-[clamp(2.75rem,2rem+2.6vw,4rem)] font-semibold leading-none tracking-[-0.04em] tabular-nums">24.6<span class="ml-1.5 text-[0.45em] tracking-normal text-muted">GB</span></p>
+        <p class="mt-2 text-small text-muted">174 videos and songs, ready without a connection</p>
+        <div class="mt-7 flex h-3 gap-1 overflow-hidden rounded-full" aria-hidden="true"><i class="block h-full w-[74%] rounded-full bg-brand"></i><i class="block h-full w-[17%] rounded-full bg-[#E5732E]"></i><i class="block h-full flex-1 rounded-full bg-[#27727E]"></i></div>
+        <dl class="mt-4 grid grid-cols-3 gap-4 text-small">
+          <div><dt class="flex items-center gap-2 text-muted"><i class="h-2.5 w-2.5 rounded-full bg-brand" aria-hidden="true"></i>Videos</dt><dd class="mt-1 font-semibold tabular-nums">18.2 GB</dd></div>
+          <div><dt class="flex items-center gap-2 text-muted"><i class="h-2.5 w-2.5 rounded-full bg-[#E5732E]" aria-hidden="true"></i>Music</dt><dd class="mt-1 font-semibold tabular-nums">4.1 GB</dd></div>
+          <div><dt class="flex items-center gap-2 text-muted"><i class="h-2.5 w-2.5 rounded-full bg-[#27727E]" aria-hidden="true"></i>Private</dt><dd class="mt-1 font-semibold tabular-nums">2.3 GB</dd></div>
+        </dl>
+        <div class="mt-9 border-t border-tint-line pt-6">
+          <p class="text-meta text-muted">Last saved</p>
+          <div class="mt-3 flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
+            <img src="img/concert.jpg" alt="" class="aspect-video w-16 flex-none rounded-lg object-cover" loading="lazy">
+            <div class="min-w-0 flex-1"><p class="truncate text-small font-medium">Live at the arena, full set</p><p class="text-meta text-muted">4K · 2.1 GB · 2 min ago</p></div>
+            <span class="status ok">Saved</span>
+          </div>
+          <p class="mt-5 flex items-center gap-2 text-small text-muted"><svg class="flex-none text-brand" width="16" height="16" aria-hidden="true"><use href="#i-lock"/></svg>Files stay on your device. No account, nothing to sync.</p>
+        </div>
+      </article>
+
+      <article class="rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10 xl:col-span-5">
+        <div class="flex items-center gap-3">
+          <span class="grid h-10 w-10 flex-none place-items-center rounded-xl bg-[#FFEDE3] text-[13px] font-bold text-[#C2410C]" aria-hidden="true">SE</span>
+          <div class="min-w-0 flex-1"><h3 class="truncate text-title font-semibold">streeteats.example</h3><p class="text-meta text-muted">Open in Toomu's browser</p></div>
+          <span class="flex flex-none items-center gap-1 rounded-full bg-[#E3F4EA] px-2.5 py-1 text-meta font-medium text-[#0F7A3D]"><svg width="12" height="12" aria-hidden="true"><use href="#i-shield-fill"/></svg>Protected</span>
+        </div>
+        <dl class="mt-7 grid grid-cols-2 divide-x divide-line rounded-2xl bg-page py-4">
+          <div class="px-5"><dt class="text-meta text-muted">Ads blocked</dt><dd class="mt-1 text-[32px] font-semibold leading-none tracking-[-0.03em] tabular-nums">23</dd></div>
+          <div class="px-5"><dt class="text-meta text-muted">Videos found</dt><dd class="mt-1 text-[32px] font-semibold leading-none tracking-[-0.03em] tabular-nums">3</dd></div>
+        </dl>
+        <ul class="mt-5 divide-y divide-line text-small" aria-label="Found on this page">
+          <li class="flex items-center gap-3 py-3"><img src="img/food.jpg" alt="" class="aspect-video w-14 flex-none rounded-lg object-cover" loading="lazy"><div class="min-w-0 flex-1"><p class="truncate font-medium">Night market tour</p><p class="text-meta text-muted">1080p · MP4 · 186 MB</p></div></li>
+          <li class="flex items-center gap-3 py-3"><img src="img/food.jpg" alt="" class="aspect-video w-14 flex-none rounded-lg object-cover object-right" loading="lazy"><div class="min-w-0 flex-1"><p class="truncate font-medium">Night market tour</p><p class="text-meta text-muted">HLS stream · 4 qualities</p></div></li>
+          <li class="flex items-center gap-3 py-3"><span class="grid aspect-video w-14 flex-none place-items-center rounded-lg bg-[#FFEDE3] text-[#E5732E]" aria-hidden="true"><svg width="15" height="15"><use href="#i-music"/></svg></span><div class="min-w-0 flex-1"><p class="truncate font-medium">Grill sounds, 1 hour</p><p class="text-meta text-muted">Audio · 3.1 MB</p></div></li>
+        </ul>
+        <p class="mt-2 flex items-start gap-2 border-t border-line pt-4 text-small text-muted"><svg class="mt-0.5 flex-none text-brand" width="16" height="16" aria-hidden="true"><use href="#i-shield-fill"/></svg>Site not working? Allow its ads from the shield in the address bar.</p>
+      </article>
+
+      <article class="rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10 xl:col-span-5">
+        <h3 class="text-title font-semibold">At a glance</h3>
+        <ul class="mt-3 divide-y divide-line">
+          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-shield"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Ad blocker</p><p class="text-meta text-muted">EasyList filters, the ones AdBlock uses</p></div><span class="status ok"><svg width="12" height="12" aria-hidden="true"><use href="#i-check-circle"/></svg>On</span></li>
+          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-ban"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Ad redirects</p><p class="text-meta text-muted">Pop-ups stopped before they load</p></div><span class="status ok"><svg width="12" height="12" aria-hidden="true"><use href="#i-check-circle"/></svg>Blocked</span></li>
+          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-refresh"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Auto-resume</p><p class="text-meta text-muted">When a connection drops mid-download</p></div><span class="status brand"><svg width="12" height="12" aria-hidden="true"><use href="#i-zap"/></svg>Always</span></li>
+          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-finger"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Private folder</p><p class="text-meta text-muted">Opens with your PIN or fingerprint</p></div><span class="status neutral"><svg width="12" height="12" aria-hidden="true"><use href="#i-lock"/></svg>Locked</span></li>
+          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-dl"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Downloader</p><p class="text-meta text-muted">Checks for updates every day</p></div><span class="status ok"><svg width="12" height="12" aria-hidden="true"><use href="#i-check-circle"/></svg>Up to date</span></li>
+        </ul>
+      </article>
+
+      <article class="rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10 xl:col-span-7">
+        <div class="flex items-baseline justify-between gap-4">
+          <h3 class="text-title font-semibold">Activity</h3>
+          <span class="text-meta text-muted">Example · 5 items</span>
+        </div>
+        <div class="mt-4 text-small" role="table" aria-label="Example downloads">
+          <div class="ledger border-b border-line pb-2 text-meta text-muted" role="row"><span role="columnheader">Item</span><span class="hidden sm:block" role="columnheader">Quality</span><span class="text-right" role="columnheader">Size</span><span class="text-right" role="columnheader">Status</span></div>
+          <div class="ledger border-b border-line py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/concert.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Live at the arena, full set</span><span class="block truncate text-meta text-muted">youtube.com</span></span></span><span class="hidden text-muted sm:block" role="cell">4K</span><span class="text-right tabular-nums" role="cell">2.1 GB</span><span class="text-right" role="cell"><span class="status ok">Saved</span></span></div>
+          <div class="ledger border-b border-line py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/food.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Street food tour of Old Dhaka</span><span class="block truncate text-meta text-muted">streeteats.example</span></span></span><span class="hidden text-muted sm:block" role="cell">1080p</span><span class="text-right tabular-nums" role="cell">186 MB</span><span class="text-right" role="cell"><span class="status brand tabular-nums">63%</span></span></div>
+          <div class="ledger border-b border-line py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/lecture.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Lecture 12: Heat engines</span><span class="block truncate text-meta text-muted">lectures.example</span></span></span><span class="hidden text-muted sm:block" role="cell">720p</span><span class="text-right tabular-nums" role="cell">412 MB</span><span class="text-right" role="cell"><span class="status warn">Resuming</span></span></div>
+          <div class="ledger border-b border-line py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/album.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Ghum Ghum</span><span class="block truncate text-meta text-muted">youtube.com</span></span></span><span class="hidden text-muted sm:block" role="cell">Audio</span><span class="text-right tabular-nums" role="cell">3.9 MB</span><span class="text-right" role="cell"><span class="status ok">Saved</span></span></div>
+          <div class="ledger py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/video.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Building a tiny house in 30 days</span><span class="block truncate text-meta text-muted">youtube.com</span></span></span><span class="hidden text-muted sm:block" role="cell">1080p</span><span class="text-right tabular-nums" role="cell">640 MB</span><span class="text-right" role="cell"><span class="status neutral">Private</span></span></div>
+        </div>
+      </article>
+    </div>
+
+    <article class="mt-5 rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10">
+      <h3 class="text-h4 font-semibold">The details, in plain words.</h3>
+      <dl class="mt-6 grid gap-x-16 text-small lg:grid-cols-2">
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Price</dt><dd class="font-medium">Free. No ads, no account, no trial.</dd></div>
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Platforms</dt><dd class="font-medium">Android 7.0 or newer · Windows 10 and 11</dd></div>
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Sources</dt><dd class="font-medium">YouTube, TikTok, Instagram, Facebook and almost any site</dd></div>
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Quality</dt><dd class="font-medium">Up to 4K, or audio only</dd></div>
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Streams</dt><dd class="font-medium">HLS and DASH, saved as one file</dd></div>
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Speed</dt><dd class="font-medium">Up to 8 connections per file</dd></div>
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Music</dt><dd class="font-medium">Queue, favourites, equalizer, sleep timer</dd></div>
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Sharing</dt><dd class="font-medium">Share sheet, plus a bubble over the YouTube app</dd></div>
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-y border-line py-3.5 lg:border-b"><dt class="text-muted">Privacy</dt><dd class="font-medium">Private folder with PIN or fingerprint</dd></div>
+        <div class="grid grid-cols-[112px_1fr] gap-4 border-y border-line py-3.5"><dt class="text-muted">Updates</dt><dd class="font-medium">The app and its downloader update themselves</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section id="how" class="mx-auto max-w-[1200px] scroll-mt-24 px-4 pt-24 sm:px-6 sm:pt-32">
+    <div class="grid gap-6 border-b border-line pb-10 lg:grid-cols-[1.15fr_.85fr] lg:items-end lg:gap-16">
+      <h2 class="text-h2 font-semibold">Follow a download<br class="hidden sm:block"> from start to finish.</h2>
+      <p class="max-w-[440px] text-lead text-muted lg:pb-1">Every download shows exactly where it is. Here's one, from the moment it's shared to the moment it plays.</p>
+    </div>
+
+    <div class="mt-10 grid grid-cols-1 gap-5 lg:grid-cols-[1.15fr_.85fr]">
+      <article class="flex flex-col rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10">
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0"><h3 class="text-title font-semibold">Live at the arena, full set</h3><p class="mt-0.5 text-meta text-muted">Shared from the YouTube app</p></div>
+          <span class="status ok flex-none"><svg width="12" height="12" aria-hidden="true"><use href="#i-check-circle"/></svg>Saved</span>
+        </div>
+        <ol class="relative mt-8">
+          <li class="track"><span class="node" aria-hidden="true"><svg width="14" height="14"><use href="#i-check"/></svg></span><div class="min-w-0"><h4 class="text-body font-semibold">Link received</h4><p class="mt-1 text-small text-muted">Tap Share in YouTube, TikTok or any app and pick Toomu. Or paste the link on Home.</p></div><time class="text-meta tabular-nums text-muted">10:42:01</time></li>
+          <li class="track"><span class="node" aria-hidden="true"><svg width="14" height="14"><use href="#i-check"/></svg></span><div class="min-w-0"><h4 class="text-body font-semibold">Quality picked</h4><p class="mt-1 text-small text-muted">1080p, 640 MB. Every size is shown before you start, from 4K down to audio only.</p></div><time class="text-meta tabular-nums text-muted">10:42:04</time></li>
+          <li class="track"><span class="node" aria-hidden="true"><svg width="14" height="14"><use href="#i-check"/></svg></span><div class="min-w-0"><h4 class="text-body font-semibold">Downloaded</h4><p class="mt-1 text-small text-muted">8 connections at 23.5 MB/s. If the signal drops, it waits and carries on.</p></div><time class="text-meta tabular-nums text-muted">10:42:32</time></li>
+          <li class="track"><span class="node" aria-hidden="true"><svg width="14" height="14"><use href="#i-check"/></svg></span><div class="min-w-0"><h4 class="text-body font-semibold">Saved to Videos</h4><p class="mt-1 text-small text-muted">Ready offline. Toomu remembers where you stop watching.</p></div><time class="text-meta tabular-nums text-muted">10:42:32</time></li>
+        </ol>
+        <div class="mt-auto pt-8">
+          <div class="flex items-center justify-between gap-4 border-t border-line pt-5 text-small"><span class="text-muted">Shared to saved in</span><span class="font-semibold tabular-nums">31 seconds</span></div>
+          <div class="mt-3 h-1.5 rounded-full bg-brand" aria-hidden="true"></div>
+        </div>
+      </article>
+
+      <article class="rounded-[32px] bg-tint p-7 sm:p-10">
+        <h3 class="text-title font-semibold">Download details</h3>
+        <img src="img/concert.jpg" alt="" class="mt-5 aspect-video w-full rounded-2xl object-cover" loading="lazy">
+        <dl class="mt-6 border-t border-dashed border-tint-line pt-2 text-small">
+          <div class="flex justify-between gap-4 py-2"><dt class="text-muted">Source</dt><dd class="font-medium">youtube.com</dd></div>
+          <div class="flex justify-between gap-4 py-2"><dt class="text-muted">Quality</dt><dd class="font-medium">1080p · MP4</dd></div>
+          <div class="flex justify-between gap-4 py-2"><dt class="text-muted">Size</dt><dd class="font-medium tabular-nums">640 MB</dd></div>
+          <div class="flex justify-between gap-4 py-2"><dt class="text-muted">Connections</dt><dd class="font-medium tabular-nums">8</dd></div>
+          <div class="flex justify-between gap-4 py-2"><dt class="text-muted">Time</dt><dd class="font-medium tabular-nums">28 seconds</dd></div>
+          <div class="flex justify-between gap-4 py-2"><dt class="text-muted">Ads shown</dt><dd class="font-medium tabular-nums">0</dd></div>
+        </dl>
+        <div class="mt-2 flex items-center justify-between gap-4 border-t border-dashed border-tint-line pt-4 text-small"><span class="text-muted">Saved to</span><span class="font-semibold">Videos</span></div>
+      </article>
+    </div>
+  </section>
+
+  <section id="download" class="mx-auto max-w-[1200px] scroll-mt-24 px-4 pt-24 sm:px-6 sm:pt-32">
+    <div class="relative overflow-hidden rounded-[32px] bg-[#6B4CF0] px-6 py-14 text-white sm:px-12 sm:py-20">
+      <img src="img/hero.jpg" alt="" class="absolute inset-0 h-full w-full object-cover object-[50%_70%]" loading="lazy">
+      <div class="calm absolute inset-0" aria-hidden="true"></div>
+      <div class="relative mx-auto max-w-[640px] text-center">
+        <svg class="mx-auto" width="64" height="64" aria-hidden="true"><use href="#logo"/></svg>
+        <h2 class="mt-6 text-h2 font-semibold">Get Toomu. It's free.</h2>
+        <p class="mt-4 text-lead text-white/90">No ads, no account, no trial. Pick your device.</p>
+      </div>
+
+      <div class="relative mx-auto mt-12 grid max-w-[880px] gap-4 md:grid-cols-2">
+        <div class="rounded-[24px] bg-white p-7 text-left text-ink shadow-[0_30px_60px_-30px_rgba(10,40,90,.55)]">
+          <div class="flex items-center gap-3">
+            <span class="grid h-12 w-12 place-items-center rounded-[14px] bg-page text-[#3DDC84]"><svg width="26" height="26" aria-hidden="true"><use href="#i-android"/></svg></span>
+            <div><h3 class="text-title font-semibold">Android</h3><p class="text-meta text-muted">Android 7.0 or newer · APK</p></div>
+          </div>
+          <a href="https://github.com/sajjadhossainshohag/toomu/releases/latest/download/toomu-arm64-v8a.apk" class="btn btn-primary mt-7 w-full">
+            <svg width="18" height="18" aria-hidden="true"><use href="#i-dl"/></svg>Download APK
+          </a>
+          <p class="mt-4 text-meta text-muted">For almost every phone from 2017 on. Older 32-bit phone? Get the <a class="font-semibold text-brand-ink underline decoration-brand/30 underline-offset-2 hover:decoration-brand" href="https://github.com/sajjadhossainshohag/toomu/releases">armeabi-v7a build</a>.</p>
+        </div>
+        <div class="rounded-[24px] bg-white p-7 text-left text-ink shadow-[0_30px_60px_-30px_rgba(10,40,90,.55)]">
+          <div class="flex items-center gap-3">
+            <span class="grid h-12 w-12 place-items-center rounded-[14px] bg-page text-[#0078D4]"><svg width="24" height="24" aria-hidden="true"><use href="#i-windows"/></svg></span>
+            <div><h3 class="text-title font-semibold">Windows</h3><p class="text-meta text-muted">Windows 10 &amp; 11 · 64-bit</p></div>
+          </div>
+          <a href="https://github.com/sajjadhossainshohag/toomu/releases/latest/download/toomu-windows-setup.exe" class="btn btn-primary mt-7 w-full">
+            <svg width="18" height="18" aria-hidden="true"><use href="#i-dl"/></svg>Download installer
+          </a>
+          <p class="mt-4 text-meta text-muted">Rather not install? Get the <a class="font-semibold text-brand-ink underline decoration-brand/30 underline-offset-2 hover:decoration-brand" href="https://github.com/sajjadhossainshohag/toomu/releases/latest/download/toomu-windows-x64.zip">portable .zip</a>, unzip anywhere and run toomu.exe.</p>
+        </div>
+      </div>
+    </div>
+    <p class="mx-auto mt-6 max-w-[620px] text-center text-small text-muted">Toomu isn't on the Play Store. Every version is published on <a class="font-semibold text-brand-ink underline decoration-brand/30 underline-offset-2 hover:decoration-brand" href="https://github.com/sajjadhossainshohag/toomu/releases">GitHub Releases</a>, and the app updates itself from there.</p>
+  </section>
+
+  <section id="faq" class="mx-auto max-w-[1200px] scroll-mt-24 px-4 py-24 sm:px-6 sm:py-32">
+    <div class="grid gap-12 lg:grid-cols-[0.8fr_1.2fr]">
+      <div>
+        <h2 class="text-h2 font-semibold">Questions, answered.</h2>
+        <p class="mt-4 max-w-[360px] text-body text-muted">Something missing? Open an issue on <a class="font-semibold text-brand-ink underline decoration-brand/30 underline-offset-2 hover:decoration-brand" href="https://github.com/sajjadhossainshohag/toomu/issues">GitHub</a>.</p>
+      </div>
+      <div class="divide-y divide-line rounded-[24px] border border-line bg-white px-6 sm:px-8">
+        <details class="group py-5" open>
+          <summary class="flex items-center justify-between gap-6 text-body font-semibold">Is Toomu really free?<span class="chev grid h-8 w-8 flex-none place-items-center rounded-full bg-page text-[18px] font-semibold text-brand transition-transform">+</span></summary>
+          <p class="mt-3 pr-12 text-body text-muted">Yes. No ads, no subscriptions, no paid tier and no account to create.</p>
+        </details>
+        <details class="group py-5">
+          <summary class="flex items-center justify-between gap-6 text-body font-semibold">How do I install the APK?<span class="chev grid h-8 w-8 flex-none place-items-center rounded-full bg-page text-[18px] font-semibold text-brand transition-transform">+</span></summary>
+          <p class="mt-3 pr-12 text-body text-muted">Download it on your phone and open the file. Android asks once to allow installs from your browser; say yes, then tap Install. From then on Toomu installs its own updates.</p>
+        </details>
+        <details class="group py-5">
+          <summary class="flex items-center justify-between gap-6 text-body font-semibold">Why isn't it on the Play Store?<span class="chev grid h-8 w-8 flex-none place-items-center rounded-full bg-page text-[18px] font-semibold text-brand transition-transform">+</span></summary>
+          <p class="mt-3 pr-12 text-body text-muted">Google doesn't allow apps that download from YouTube. Every release is published on GitHub instead.</p>
+        </details>
+        <details class="group py-5">
+          <summary class="flex items-center justify-between gap-6 text-body font-semibold">Which sites does it work with?<span class="chev grid h-8 w-8 flex-none place-items-center rounded-full bg-page text-[18px] font-semibold text-brand transition-transform">+</span></summary>
+          <p class="mt-3 pr-12 text-body text-muted">YouTube, TikTok, Instagram and Facebook links download straight away. For other sites, open the page in Toomu's browser and it picks up the videos and audio that play there. Protected (DRM) streams such as Netflix can't be saved.</p>
+        </details>
+        <details class="group py-5">
+          <summary class="flex items-center justify-between gap-6 text-body font-semibold">Can I download in 4K or as MP3?<span class="chev grid h-8 w-8 flex-none place-items-center rounded-full bg-page text-[18px] font-semibold text-brand transition-transform">+</span></summary>
+          <p class="mt-3 pr-12 text-body text-muted">Yes, whenever the video is available in 4K. Pick "Audio only" to save just the sound for the Music tab.</p>
+        </details>
+        <details class="group py-5">
+          <summary class="flex items-center justify-between gap-6 text-body font-semibold">Does the Windows app need anything else?<span class="chev grid h-8 w-8 flex-none place-items-center rounded-full bg-page text-[18px] font-semibold text-brand transition-transform">+</span></summary>
+          <p class="mt-3 pr-12 text-body text-muted">No. On first launch Toomu fetches the tools it needs to download and convert video, then keeps them up to date by itself.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="border-t border-line">
+  <div class="mx-auto flex max-w-[1200px] flex-col items-center justify-between gap-5 px-4 py-10 text-small text-muted sm:flex-row sm:px-6">
+    <a href="#top" class="flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.02em] text-ink"><svg width="26" height="26" aria-hidden="true"><use href="#logo"/></svg>Toomu</a>
+    <nav class="flex flex-wrap justify-center gap-6 font-semibold" aria-label="Footer">
+      <a class="hover:text-ink" href="#features">Features</a>
+      <a class="hover:text-ink" href="#download">Download</a>
+      <a class="hover:text-ink" href="https://github.com/sajjadhossainshohag/toomu/releases">Releases</a>
+      <a class="hover:text-ink" href="#faq">FAQ</a>
+    </nav>
+    <p>© 2026 Toomu</p>
+  </div>
+</footer>
+
+<script>
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+const demo = document.getElementById('demo');
+const scenes = ['noads', 'dl', 'mini', 'bg'];
+const durations = [4200, 4800, 4000, 4400];
+const tabs = [...document.querySelectorAll('[data-go]')];
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const el = id => document.getElementById(id);
+const connBars = [...document.querySelectorAll('#conns b')];
+const connRates = [1.35, 1.05, 1.2, .9, 1.15, 1, 1.25, .95];
+const videoLength = 1104;
+const tabBar = document.getElementById('demo-tabs');
+let scene = 0, sceneTime = 0, lastFrame = 0, lastText = 0, playhead = 252, auto = !still, held = false;
+
+const clock = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+function renderDownload(p, speed, text) {
+  el('d-bar').style.width = p * 100 + '%';
+  el('a-bar').style.width = 34 + p * 38 + '%';
+  connBars.forEach((b, i) => b.style.width = Math.min(1, p ** (1 / connRates[i])) * 100 + '%');
+  if (!text) return;
+  if (p >= 1) {
+    el('d-rate').innerHTML = '<span class="font-bold text-[#12A150]">Saved</span>';
+    el('c-speed').textContent = 'Done';
+    el('c-state').textContent = 'Saved to Videos';
+  } else {
+    el('d-rate').textContent = el('c-speed').textContent = speed.toFixed(1) + ' MB/s';
+    el('c-state').textContent = Math.round(p * 100) + '% of 186 MB';
+  }
+}
+
+function renderPlayhead() {
+  const w = playhead / videoLength * 100 + '%';
+  el('v-bar').style.width = el('l-bar').style.width = w;
+  el('l-time').textContent = clock(playhead);
+}
+
+function go(n) {
+  scene = n;
+  sceneTime = 0;
+  demo.dataset.scene = scenes[n];
+  tabs.forEach((t, i) => {
+    t.setAttribute('aria-pressed', i === n);
+    t.classList.remove('run');
+    if (i === n && auto) { t.style.setProperty('--dur', durations[n] + 'ms'); void t.offsetWidth; t.classList.add('run'); }
+  });
+  if (scenes[n] === 'dl') renderDownload(still ? 1 : 0, 0, true);
+}
+
+function tick(now) {
+  const dt = Math.min(.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+  if (!held) sceneTime += dt * 1000;
+  if (scenes[scene] === 'dl') {
+    const k = Math.min(1, sceneTime / 3000);
+    const p = k < .5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+    const text = now - lastText > 120 || k === 1;
+    if (text) lastText = now;
+    renderDownload(p, (4 + 19 * Math.min(1, k * 2.5)) * (.94 + Math.random() * .12), text);
+  } else {
+    playhead = Math.min(videoLength - 1, playhead + dt);
+    renderPlayhead();
+  }
+  if (auto && !held && sceneTime > durations[scene]) go((scene + 1) % scenes.length);
+  requestAnimationFrame(tick);
+}
+
+// Moving content must be pausable (WCAG 2.2.2): hover or focus pauses it, choosing a scene stops it.
+tabs.forEach((t, i) => t.addEventListener('click', () => { auto = false; go(i); }));
+const hold = on => { held = on; tabBar.classList.toggle('held', on); };
+for (const area of [demo, tabBar]) {
+  area.addEventListener('pointerenter', () => hold(true));
+  area.addEventListener('pointerleave', () => hold(false));
+}
+tabBar.addEventListener('focusin', () => hold(true));
+tabBar.addEventListener('focusout', () => hold(false));
+renderPlayhead();
+if (still) renderDownload(1, 0, true);
+go(0);
+if (!still) requestAnimationFrame(now => { lastFrame = now; tick(now); });
+
+const logos = document.querySelector('.logos');
+new IntersectionObserver(([entry], observer) => {
+  if (entry.isIntersecting) { logos.classList.add('in'); observer.disconnect(); }
+}, { threshold: 1 }).observe(logos);
+</script>
+</body>
+</html>
