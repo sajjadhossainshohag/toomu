@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -154,7 +155,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     final rejoined = _session.attach(args, _screenHandler);
     WidgetsBinding.instance.addObserver(this);
 
-    SystemChrome.setPreferredOrientations(followPhone);
+    _followPhone();
     VolumeController.instance.showSystemUI = false;
 
     // Music and video shouldn't play at once.
@@ -232,6 +233,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     final keepPlaying = _minimizing || (backgroundPlay.value && playing.value);
     _session.detach(keepPlaying: keepPlaying, minimize: _minimizing, screen: _screenHandler);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _stopFollowingPhone();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     ScreenBrightness.instance.resetApplicationScreenBrightness();
     VolumeController.instance.showSystemUI = true;
@@ -616,6 +618,28 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
 
   bool get _viewIsLandscape => screenSize.width > screenSize.height;
 
+  /// Turns with the phone when its auto-rotate is on, stays upright when off. On Android the app reads
+  /// that setting itself (MainActivity.followPhone): Flutter's own "follow the phone" left YouTube
+  /// videos upright on some phones with auto-rotate on.
+  void _followPhone() {
+    if (!Platform.isAndroid) {
+      SystemChrome.setPreferredOrientations(followPhone);
+      return;
+    }
+    _platform.invokeMethod<bool>('followPhone', {'on': true}).then(
+      (auto) => debugPrint('[Video] follows the phone (auto-rotate ${auto == true ? 'on' : 'off'})'),
+      onError: (Object e) {
+        debugPrint('[Video] follow the phone failed: $e');
+        SystemChrome.setPreferredOrientations(followPhone);
+      },
+    );
+  }
+
+  /// Before the player sets the orientation itself (rotate button, leaving).
+  void _stopFollowingPhone() {
+    if (Platform.isAndroid) unawaited(_platform.invokeMethod<void>('followPhone', {'on': false}).catchError((_) {}));
+  }
+
   bool? _systemBars;
 
   void showSystemBars(bool show) {
@@ -625,6 +649,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   }
 
   void rotate() {
+    _stopFollowingPhone();
     SystemChrome.setPreferredOrientations(
       _viewIsLandscape
           ? [DeviceOrientation.portraitUp]
@@ -668,6 +693,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     FrameProbe.watch('player close', window: const Duration(milliseconds: 1800));
     if (_viewIsLandscape) {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      _stopFollowingPhone();
       await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
       // Until the window is upright (or ~0.5 s at most).
       for (var i = 0; i < 10; i++) {

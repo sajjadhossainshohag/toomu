@@ -399,7 +399,7 @@ class _TopBar extends StatelessWidget {
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
                           contentPadding: EdgeInsets.zero,
-                          hintText: 'Search or type web address',
+                          hintText: 'Search Google or type web address',
                           hintStyle: TextStyle(fontSize: 14 * scale, color: ink.withValues(alpha: 0.45)),
                         ),
                       ),

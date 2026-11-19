@@ -33,9 +33,18 @@ class RedirectGuard {
     _tapAt = DateTime.now();
   }
 
+  /// Sites that move the page between their own domains (TikTok's feed and
+  /// short links go through tiktokv.com, vm.tiktok.com…): never blocked, even
+  /// when a blocklist has one of them.
+  static const allowedSites = {
+    'tiktok.com', 'tiktokv.com', 'tiktokcdn.com', 'tiktokcdn-us.com', 'tiktokw.us', 'ttwstatic.com', //
+    'byteoversea.com', 'ibytedtos.com', 'musical.ly',
+  };
+
   bool blocks({required String from, required Uri to, bool redirect = false, DateTime? now}) {
     final site = siteOf(to.host);
     if (site.isEmpty || site == siteOf(Uri.tryParse(from)?.host ?? '')) return false;
+    if (allowedSites.contains(site)) return false;
     if (isListed(to.host)) return true;
     // Ad scripts send the page elsewhere when the user taps anything; jumps
     // without a tap (sign-in flows, server redirects) only stop for listed hosts.

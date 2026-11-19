@@ -79,6 +79,11 @@ class VideoSessionService extends GetxService {
     // Buttons from the PiP window / background notification land here even
     // when no player screen is open.
     _platform.setMethodCallHandler((call) async {
+      // Native notes for the diagnostics log (MainActivity).
+      if (call.method == 'log') {
+        debugPrint('${call.arguments}');
+        return;
+      }
       final screen = _screen;
       if (screen != null) return screen(call);
       if (call.method == 'action' && _active) {

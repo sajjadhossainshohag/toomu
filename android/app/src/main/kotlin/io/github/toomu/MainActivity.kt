@@ -13,6 +13,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.Settings
+import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -23,7 +24,10 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Size
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import io.flutter.embedding.android.FlutterView
 import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -43,6 +47,40 @@ class MainActivity : AudioServiceFragmentActivity() {
     }
 
     private val main = Handler(Looper.getMainLooper())
+
+    // ------------------------------------------------------------ player orientation
+
+    private var followingPhone = false
+
+    /** Auto-rotate switched while the player follows the phone. */
+    private val autoRotateSetting = object : ContentObserver(main) {
+        override fun onChange(selfChange: Boolean) {
+            if (followingPhone) applyFollow()
+        }
+    }
+
+    private fun autoRotateOn() =
+        Settings.System.getInt(contentResolver, Settings.System.ACCELEROMETER_ROTATION, 0) == 1
+
+    private fun applyFollow(): Boolean {
+        val auto = autoRotateOn()
+        requestedOrientation = PlayerOrientation.forAutoRotate(auto)
+        return auto
+    }
+
+    /** Returns whether auto-rotate is on (null when stopping). */
+    private fun followPhone(on: Boolean): Boolean? {
+        if (on == followingPhone) return if (on) applyFollow() else null
+        followingPhone = on
+        val uri = Settings.System.getUriFor(Settings.System.ACCELEROMETER_ROTATION)
+        return if (on) {
+            contentResolver.registerContentObserver(uri, false, autoRotateSetting)
+            applyFollow()
+        } else {
+            contentResolver.unregisterContentObserver(autoRotateSetting)
+            null
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -118,6 +156,42 @@ class MainActivity : AudioServiceFragmentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (pipAutoEnter && Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S) enterPip()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        checkFlutterFillsWindow(0)
+    }
+
+    /**
+     * After a turn, some phones left Flutter's view at its old size (see [StaleLayout]); lays it
+     * out again, checking a few times as the window settles.
+     */
+    private fun checkFlutterFillsWindow(attempt: Int) {
+        val content = findViewById<View>(android.R.id.content) ?: return
+        content.postDelayed({
+            val flutter = flutterViewIn(content) ?: return@postDelayed
+            if (!StaleLayout.isStale(flutter.width, flutter.height, content.width, content.height)) return@postDelayed
+            videoChannel?.invokeMethod(
+                "log",
+                "[Screen] Flutter view ${flutter.width}x${flutter.height} in a ${content.width}x${content.height} window after turning: laid out again",
+            )
+            var v: View? = flutter
+            while (v != null) {
+                v.forceLayout()
+                v = v.parent as? View
+            }
+            content.requestLayout()
+            if (attempt < 3) checkFlutterFillsWindow(attempt + 1)
+        }, if (attempt == 0) 300L else 250L)
+    }
+
+    private fun flutterViewIn(v: View): View? {
+        if (v is FlutterView) return v
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) flutterViewIn(v.getChildAt(i))?.let { return it }
+        }
+        return null
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
@@ -276,6 +350,8 @@ class MainActivity : AudioServiceFragmentActivity() {
             ch.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "pipSupported" -> result.success(pipSupported())
+                    // The player follows the phone (on) or stops before it locks the screen itself (off).
+                    "followPhone" -> result.success(followPhone(call.argument<Boolean>("on") == true))
                     "clock" -> result.success(
                         mapOf(
                             "elapsed" to SystemClock.elapsedRealtime(),
@@ -727,6 +803,7 @@ class MainActivity : AudioServiceFragmentActivity() {
 
     override fun onDestroy() {
         VideoMediaBridge.listener = null
+        if (followingPhone) contentResolver.unregisterContentObserver(autoRotateSetting)
         stopService(Intent(this, VideoBackgroundService::class.java))
         super.onDestroy()
     }

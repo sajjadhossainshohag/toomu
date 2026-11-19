@@ -101,9 +101,13 @@ class NewTabPage extends StatelessWidget {
                 children: <Widget>[
                   Icon(Icons.search_rounded, size: 22 * scale, color: ink.withValues(alpha: 0.5)),
                   SizedBox(width: 10 * scale),
-                  Text(
-                    'Search or type web address',
-                    style: TextStyle(fontSize: 14.5 * scale, color: ink.withValues(alpha: 0.5)),
+                  Expanded(
+                    child: Text(
+                      'Search Google or type web address',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14.5 * scale, color: ink.withValues(alpha: 0.5)),
+                    ),
                   ),
                 ],
               ),

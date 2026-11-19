@@ -87,4 +87,30 @@ example.com/path
       expect(g.blocks(from: 'https://movies.example/', to: Uri.parse('https://other.example/'), now: DateTime.now().add(const Duration(seconds: 5))), isFalse);
     });
   });
+
+  group('tiktok', () {
+    final guard = RedirectGuard(isListed: (h) => h.endsWith('tiktokv.com') || h == 'ads.example.net');
+    final now = DateTime.now();
+
+    test('tiktok videos load after a tap: its jumps between its own domains are not blocked', () {
+      guard.onTap(''); // a tap on a video, not a link
+      for (final to in [
+        'https://www.tiktokv.com/share/video/123',
+        'https://v16-webapp.tiktokcdn.com/x.mp4',
+        'https://vm.tiktok.com/ZS123/',
+      ]) {
+        expect(guard.blocks(from: 'https://www.tiktok.com/foryou', to: Uri.parse(to), now: now), isFalse, reason: to);
+      }
+    });
+
+    test('a short link from another page may open tiktok even when its host is listed', () {
+      guard.onTap('');
+      expect(guard.blocks(from: 'https://example.com/', to: Uri.parse('https://www.tiktokv.com/v/1'), now: now), isFalse);
+    });
+
+    test('tiktok pages still cannot send you to an ad site', () {
+      guard.onTap('');
+      expect(guard.blocks(from: 'https://www.tiktok.com/', to: Uri.parse('https://ads.example.net/win'), now: now), isTrue);
+    });
+  });
 }
