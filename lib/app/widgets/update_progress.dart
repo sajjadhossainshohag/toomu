@@ -5,19 +5,23 @@ import '../core/theme/design_metrics.dart';
 import '../core/utils/formatters.dart';
 import 'gradient_progress_bar.dart';
 
-/// The update download's bar with "42% · 12.3 MB of 30.0 MB" under it.
+/// The update download's bar with "42% · 12.3 MB of 30.0 MB · 2.3 MB/s" under it.
 class UpdateProgress extends StatelessWidget {
-  const UpdateProgress({required this.received, required this.total, super.key});
+  const UpdateProgress({required this.received, required this.total, this.speed = 0, super.key});
 
   final int received;
 
   /// 0 while the size isn't known yet.
   final int total;
 
-  static String label(int received, int total) {
-    if (total <= 0) return received > 0 ? Formatters.bytes(received) : 'Starting…';
+  /// Bytes per second; 0 hides it.
+  final int speed;
+
+  static String label(int received, int total, [int speed = 0]) {
+    final rate = speed > 0 ? ' · ${Formatters.speed(speed)}' : '';
+    if (total <= 0) return received > 0 ? '${Formatters.bytes(received)}$rate' : 'Starting…';
     final percent = (received * 100 ~/ total).clamp(0, 100);
-    return '$percent% · ${Formatters.bytes(received)} of ${Formatters.bytes(total)}';
+    return '$percent% · ${Formatters.bytes(received)} of ${Formatters.bytes(total)}$rate';
   }
 
   @override
@@ -29,7 +33,7 @@ class UpdateProgress extends StatelessWidget {
         GradientProgressBar(value: total > 0 ? received / total : 0),
         SizedBox(height: 10 * scale),
         Text(
-          label(received, total),
+          label(received, total, speed),
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 13 * scale,

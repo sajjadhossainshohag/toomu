@@ -61,6 +61,8 @@ class DownloadProgressService : Service() {
         const val ACTION_PAUSE = "io.github.toomu.downloads.PAUSE"
         const val ACTION_CANCEL = "io.github.toomu.downloads.CANCEL"
         const val EXTRA_ID = "id"
+        /** Same as DownloadService.appUpdateId in Dart. */
+        const val APP_UPDATE_ID = "toomu-app-update"
 
         private const val CHANNEL_PROGRESS = "toomu_downloads"
         private const val CHANNEL_DONE = "toomu_downloads_done"
@@ -212,8 +214,11 @@ class DownloadProgressService : Service() {
                 .setShowWhen(false)
                 .setCategory(Notification.CATEGORY_PROGRESS)
                 .withProgress(context, item.progress)
-                .addAction(button(context, "Pause", ACTION_PAUSE, item.id, android.R.drawable.ic_media_pause))
-                .addAction(button(context, "Cancel", ACTION_CANCEL, item.id, android.R.drawable.ic_menu_close_clear_cancel))
+            // The app update can't pause, only cancel.
+            if (item.id != APP_UPDATE_ID) {
+                b.addAction(button(context, "Pause", ACTION_PAUSE, item.id, android.R.drawable.ic_media_pause))
+            }
+            b.addAction(button(context, "Cancel", ACTION_CANCEL, item.id, android.R.drawable.ic_menu_close_clear_cancel))
             thumb(context, item.thumb)?.let { b.setLargeIcon(it) }
             if (grouped) b.setGroup(GROUP_ACTIVE)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

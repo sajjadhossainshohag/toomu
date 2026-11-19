@@ -134,10 +134,18 @@ Future<void> showNoticeDialog({required String title, required String message}) 
       barrierColor: ColorConstants.black.withValues(alpha: 0.4),
     );
 
-/// Generic container in the dialog style for custom content.
-Future<T?> showAppDialog<T>({required String title, required Widget child}) =>
+/// Generic container in the dialog style for custom content. With
+/// [dismissible] false, neither a tap outside nor Back closes it: only
+/// [actions] do.
+Future<T?> showAppDialog<T>({
+  required String title,
+  required Widget child,
+  bool dismissible = true,
+  List<Widget> Function(BuildContext)? actions,
+}) =>
     Get.dialog<T>(
-      _AppDialog(title: title, body: child),
+      PopScope(canPop: dismissible, child: _AppDialog(title: title, body: child, actions: actions)),
+      barrierDismissible: dismissible,
       barrierColor: ColorConstants.black.withValues(alpha: 0.4),
     );
 

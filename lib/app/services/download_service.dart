@@ -814,12 +814,39 @@ class DownloadService extends GetxService {
 
   // ------------------------------------------------------------ notification
 
+  /// Id of the app update's card in the download notification.
+  static const appUpdateId = 'toomu-app-update';
+  Map<String, Object?>? _appUpdateCard;
+  void Function()? _onAppUpdateCancel;
+
+  /// Shows the app update's download as a card in the download notification,
+  /// whose foreground service keeps Toomu running while the screen is off.
+  /// [progress] is 0..1000, or -1 while the size is unknown; null [status]
+  /// removes the card.
+  void showAppUpdate({String? status, int progress = -1, void Function()? onCancel}) {
+    _appUpdateCard = status == null
+        ? null
+        : {'id': appUpdateId, 'title': 'Toomu update', 'thumb': null, 'progress': progress, 'status': status, 'kind': 'App update'};
+    _onAppUpdateCancel = status == null ? null : onCancel;
+    _updateNotification();
+  }
+
   /// Snapshot for the notification bar (about once a second): a summary
   /// plus one card per running download.
   void _updateNotification() {
     final active = tasks
         .where((t) => t.status.value == DownloadStatus.running)
         .toList();
+    final update = _appUpdateCard;
+    if (active.isEmpty && update != null) {
+      _notify.invokeMethod<void>('update', {
+        'title': 'Downloading Toomu update',
+        'text': update['status'],
+        'progress': update['progress'],
+        'items': [update],
+      });
+      return;
+    }
     if (active.isEmpty) {
       _notifyTimer?.cancel();
       _notifyTimer = null;
@@ -855,6 +882,7 @@ class DownloadService extends GetxService {
             'status': _cardStatus(t, queued: active.length == 1 ? queued : 0),
             'kind': _kindLabel(t),
           },
+        ?update,
       ],
     });
   }
@@ -920,6 +948,10 @@ class DownloadService extends GetxService {
     final sep = action.indexOf(':');
     if (sep < 0) return;
     final id = action.substring(sep + 1);
+    if (id == appUpdateId) {
+      if (action.startsWith('cancel:')) _onAppUpdateCancel?.call();
+      return;
+    }
     final task = tasks.firstWhereOrNull((t) => t.id == id);
     if (task == null) return;
     switch (action.substring(0, sep)) {

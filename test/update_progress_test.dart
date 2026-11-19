@@ -8,6 +8,10 @@ void main() {
     expect(UpdateProgress.label(60 << 20, 60 << 20), startsWith('100% · '));
   });
 
+  test('update download shows its speed once it is known', () {
+    expect(UpdateProgress.label(15 << 20, 60 << 20, (23 << 20) ~/ 10), '25% · 15.0 MB of 60.0 MB · 2.3 MB/s');
+  });
+
   test('update download before the size is known', () {
     expect(UpdateProgress.label(0, 0), 'Starting…');
     expect(UpdateProgress.label(3 << 20, 0), '3.0 MB');

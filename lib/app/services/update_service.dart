@@ -3,18 +3,24 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../core/theme/design_metrics.dart';
 import '../core/utils/app_release.dart';
 import '../core/utils/error_text.dart';
 import '../core/utils/formatters.dart';
+import '../core/utils/parallel_download.dart';
+import '../core/utils/speed_meter.dart';
 import '../core/values/app_constants.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_snackbar.dart';
+import '../widgets/gradient_pill.dart';
+import '../widgets/outline_pill.dart';
 import '../widgets/update_progress.dart';
+import 'download_service.dart';
 import 'storage_service.dart';
 
 class UpdateService extends GetxService {
@@ -32,8 +38,13 @@ class UpdateService extends GetxService {
   final progress = RxnDouble();
   final _received = 0.obs;
   final _total = 0.obs;
+  final _speed = 0.obs;
 
-  final _storage = StorageService.to;
+  late final _storage = StorageService.to;
+  CancelToken? _cancel;
+  bool _dialogOpen = false;
+
+  bool get downloading => progress.value != null;
   final _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 10)));
 
   UpdateService init() {
@@ -45,6 +56,7 @@ class UpdateService extends GetxService {
     final last = _storage.read<int>(AppConstants.kUpdateCheckedAt) ?? 0;
     if (DateTime.now().millisecondsSinceEpoch - last < const Duration(days: 1).inMilliseconds) return;
     await Future<void>.delayed(const Duration(seconds: 5));
+    if (downloading) return;
     try {
       final release = await _latest();
       await _storage.write(AppConstants.kUpdateCheckedAt, DateTime.now().millisecondsSinceEpoch);
@@ -55,7 +67,10 @@ class UpdateService extends GetxService {
   }
 
   Future<void> checkNow() async {
-    if (checking.value || progress.value != null) return;
+    // Already downloading (the dialog was hidden): show its progress again
+    // instead of offering the same update.
+    if (downloading) return showProgress();
+    if (checking.value) return;
     checking.value = true;
     try {
       final release = await _latest();
@@ -116,37 +131,87 @@ class UpdateService extends GetxService {
       confirmLabel: 'Update',
       cancelLabel: 'Later',
     );
-    if (ok) await _install(release);
+    if (ok && !downloading) await _install(release);
+  }
+
+  /// The download's dialog. A tap outside or Back doesn't close it, only
+  /// Hide (the download goes on, in the notification too) or Cancel.
+  @visibleForTesting
+  void showProgress() {
+    if (_dialogOpen || !downloading) return;
+    _dialogOpen = true;
+    showAppDialog<void>(
+      title: 'Downloading update',
+      dismissible: false,
+      child: Obx(() => UpdateProgress(received: _received.value, total: _total.value, speed: _speed.value)),
+      actions: (context) => <Widget>[
+        Expanded(child: OutlinePill(label: 'Cancel', height: 40, onTap: cancel)),
+        SizedBox(width: 13 * context.scale),
+        Expanded(child: GradientPill(label: 'Hide', height: 40, onTap: _closeProgress)),
+      ],
+    ).whenComplete(() => _dialogOpen = false);
+  }
+
+  void _closeProgress() {
+    if (_dialogOpen) Get.back<void>();
+  }
+
+  void cancel() {
+    _cancel?.cancel('canceled');
+    _closeProgress();
   }
 
   Future<void> _install(AppRelease release) async {
     progress.value = 0;
     _received.value = 0;
+    _speed.value = 0;
     _total.value = release.apkSize;
-    unawaited(showAppDialog<void>(
-      title: 'Downloading update',
-      child: Obx(() => UpdateProgress(received: _received.value, total: _total.value)),
-    ));
+    final cancelToken = _cancel = CancelToken();
+    showProgress();
+    final notify = Platform.isAndroid && Get.isRegistered<DownloadService>() ? DownloadService.to : null;
     try {
       final path = '${(await getTemporaryDirectory()).path}/toomu-update.apk';
-      await _dio.download(
-        release.apkUrl!,
-        path,
-        onReceiveProgress: (got, total) {
-          _received.value = got;
-          if (total > 0) {
-            _total.value = total;
-            progress.value = got / total;
-          }
-        },
-      );
-      if (Get.isDialogOpen ?? false) Get.back();
+      final clock = Stopwatch()..start();
+      final meter = SpeedMeter(0, Duration.zero);
+      var got = 0;
+      // Redraws 4× a second, not on every network chunk; the notification
+      // (which keeps Toomu running with the screen off) once a second.
+      final ticker = Timer.periodic(DownloadService.progressTick, (t) {
+        _received.value = got;
+        _speed.value = meter.add(got, clock.elapsed);
+        if (_total.value > 0) progress.value = got / _total.value;
+        if (t.tick % 4 == 1) {
+          notify?.showAppUpdate(
+            status: UpdateProgress.label(got, _total.value, _speed.value),
+            progress: _total.value > 0 ? got * 1000 ~/ _total.value : -1,
+            onCancel: cancel,
+          );
+        }
+      });
+      try {
+        await parallelDownload(
+          _dio,
+          release.apkUrl!,
+          path,
+          cancelToken: cancelToken,
+          onProgress: (received, total) {
+            got = received;
+            if (total > 0) _total.value = total;
+          },
+        );
+      } finally {
+        ticker.cancel();
+        notify?.showAppUpdate();
+      }
+      debugPrint('[Update] ${Formatters.bytes(_total.value)} in ${clock.elapsed.inSeconds} s');
+      _closeProgress();
       showSnack('Installing update', 'Toomu closes when it is done. Open it again to use the new version.');
       await _channel.invokeMethod<void>('install', {'path': path});
     } catch (e) {
-      if (Get.isDialogOpen ?? false) Get.back();
-      showSnack("Couldn't update Toomu", ErrorText.of(e));
+      _closeProgress();
+      if (!cancelToken.isCancelled) showSnack("Couldn't update Toomu", ErrorText.of(e));
     } finally {
+      _cancel = null;
       progress.value = null;
     }
   }
