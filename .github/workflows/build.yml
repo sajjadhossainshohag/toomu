@@ -8,6 +8,9 @@
 #    tag (vYYYY.MM.DD-HHMM, Bangladesh time) with the APK; a pushed v* tag
 #    publishes one under that tag with all APKs. The release doesn't wait for
 #    the slower Windows build: that job attaches its zip when it's done.
+#  - "[skip build]" in the pushed commit's message: only the checks run (no
+#    APK, Windows build or release), e.g. for a change already tested on a
+#    phone with a local build. Tags always build. "[skip ci]" skips it all.
 #
 # Release signing (optional, recommended — phones only update an app signed
 # with the same key), repository Secrets:
@@ -96,6 +99,8 @@ jobs:
           cd android && ./gradlew :app:testDebugUnitTest
 
   android:
+    # Skipped by "[skip build]" (see the top); the release then skips too.
+    if: github.ref_type == 'tag' || !contains(github.event.head_commit.message, '[skip build]')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
@@ -173,6 +178,7 @@ jobs:
   # Windows x64: the app folder zipped (unzip anywhere, run toomu.exe).
   # yt-dlp, FFmpeg and Deno download on first launch (WindowsYtDlp).
   windows:
+    if: github.ref_type == 'tag' || !contains(github.event.head_commit.message, '[skip build]')
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
