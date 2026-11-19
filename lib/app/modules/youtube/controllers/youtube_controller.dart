@@ -552,8 +552,7 @@ class YoutubeController extends GetxController {
     if (id != null) return openVideo(id);
     final list = LinkParser.youtubeCollection(text);
     if (list != null) return openCollection(list);
-    // A TikTok link: downloaded as is (no watermark).
-    if (TiktokService.linkIn(text) != null) {
+    if (TiktokService.linkIn(text) != null || LinkParser.socialVideo(text) != null) {
       await Get.find<HomeController>().openLinkFrom(text);
       return;
     }

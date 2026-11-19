@@ -31,6 +31,26 @@ abstract class LinkParser {
 
   static bool isYoutubeLink(String text) => youtubeVideoId(text) != null;
 
+  static const _socialVideoPaths = {
+    'instagram.com': {'reel', 'reels', 'p', 'tv'},
+    'facebook.com': {'reel', 'videos', 'watch', 'share'},
+  };
+
+  static String? socialVideo(String text) {
+    for (final m in RegExp(r'https?://\S+', caseSensitive: false).allMatches(text)) {
+      final link = m.group(0)!.replaceFirst(RegExp(r'[)\].,!?]+$'), '');
+      final uri = Uri.tryParse(link);
+      if (uri == null) continue;
+      final host = uri.host.toLowerCase();
+      if (host == 'fb.watch') return link;
+      final segments = uri.pathSegments.map((s) => s.toLowerCase());
+      for (final MapEntry(key: site, value: paths) in _socialVideoPaths.entries) {
+        if ((host == site || host.endsWith('.$site')) && segments.any(paths.contains)) return link;
+      }
+    }
+    return null;
+  }
+
   static final _listId = RegExp(r'^[A-Za-z0-9_-]{2,}$');
   static const _channelPaths = <String>{'channel', 'user', 'c'};
 

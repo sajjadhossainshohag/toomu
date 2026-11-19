@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 
 import '../../../services/download_service.dart';
 import '../../../services/tiktok_service.dart';
+import '../../../services/ytdlp_service.dart';
 
 import '../../../core/utils/link_parser.dart';
 import '../../../data/models/video_item.dart';
@@ -228,12 +229,49 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _downloadSocial(String url) async {
+    final site = url.contains('instagram.com') ? 'Instagram' : 'Facebook';
+    showSnack(site, 'Getting the video…', duration: const Duration(seconds: 2));
+    try {
+      final cookies = await DownloadService.webCookies(url);
+      final info = await YtDlpService.to.pageInfo(
+        url,
+        DownloadService.headerArgs({if (cookies.isNotEmpty) 'Cookie': cookies}),
+      );
+      await DownloadService.to.enqueueStream(
+        url: url,
+        title: info.title,
+        // H.264 first: older phones can't decode VP9 in hardware.
+        format: 'bv*[vcodec^=avc1]+ba/b[vcodec^=avc1]/bv*+ba/b',
+        thumbnailUrl: info.thumbnail ?? '',
+        pageUrl: url,
+      );
+      openTab(HomeTabs.downloads);
+      showSnack('Download started', info.title, duration: const Duration(seconds: 2));
+    } catch (e) {
+      debugPrint('[Download] $site link failed: $e');
+      // Usually a sign-in wall: signing in in the browser gives yt-dlp the cookies it needs.
+      showSnack(
+        "Can't get this $site video yet",
+        'Opening it in the browser. Sign in if $site asks, then tap Download.',
+        duration: const Duration(seconds: 5),
+      );
+      await Get.toNamed<void>(Routes.browser, arguments: url);
+    }
+  }
+
   /// Opens the download flow for the first supported link in [text].
   Future<bool> openLinkFrom(String text) async {
     final tiktok = TiktokService.linkIn(text);
     if (tiktok != null) {
       Get.closeAllSnackbars();
       unawaited(_downloadTiktok(tiktok));
+      return true;
+    }
+    final social = LinkParser.socialVideo(text);
+    if (social != null) {
+      Get.closeAllSnackbars();
+      unawaited(_downloadSocial(social));
       return true;
     }
     final list = LinkParser.youtubeCollection(text);
