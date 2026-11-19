@@ -17,11 +17,29 @@ tool/build_release.sh                             # release APKs per ABI (arm64,
 flutter build windows --release                   # Windows x64 (needs a Windows PC with Visual Studio's C++ workload)
 ```
 
-- CI (`.github/workflows/build.yml`, Flutter 3.41.1): push to `main` builds the arm64 APK (armv7 too on tags) and Windows x64 as a zip plus an Inno Setup installer (`windows/installer/toomu.iss`; the Windows job attaches both to the release when done), while parallel jobs run `flutter analyze`, the Dart tests split by file into 3 shards (`tool/test_shard.sh`, all CPU cores each) and the Kotlin tests; every successful main build publishes a GitHub Release under a new tag (`vYYYY.MM.DD-HHMM`, Bangladesh time); a pushed `v*` tag publishes one under that tag with armv7 too. `[skip build]` in the pushed commit's message runs only the checks (no builds, no release; tags always build); `[skip ci]` skips everything.
+- CI (`.github/workflows/build.yml`, Flutter 3.41.1): push to `main` builds the arm64 APK (armv7 too on tags) and Windows x64 as a zip plus an Inno Setup installer (`windows/installer/toomu.iss`; the Windows job attaches both to the release when done), while parallel jobs run `flutter analyze`, the Dart tests split by file into 3 shards (`tool/test_shard.sh`, all CPU cores each) and the Kotlin tests; every successful main build publishes a GitHub Release under a new tag (`vYYYY.MM.DD-HHMM`, Bangladesh time); a pushed `v*` tag publishes one under that tag with armv7 too. The repo is public, so Actions minutes are free (Linux and Windows runners).
 - `--dart-define=TOOMU_BUILD=...` labels the build in Settings → Diagnostics.
 - Release signing: `android/key.properties` or `ANDROID_KEYSTORE_*` env/secrets; otherwise the debug key.
 - The Gradle `merge*NativeLibs` tasks run `tool/trim_ytdlp_bundles.py` (needs `python3`; skipped with a warning if missing) to strip unused files from yt-dlp's bundled Python/FFmpeg archives.
 - Debug builds package only `arm64-v8a` (add `x86_64` in `android/app/build.gradle.kts` for Intel emulators).
+
+## Releases
+
+What a push to `main` does depends on the newest pushed commit's message (CI reads only that one):
+
+| Push | Checks (analyze, Dart + Kotlin tests) | APK + Windows builds | Release / phones update |
+|---|---|---|---|
+| Normal commit | yes | yes | yes, new `vYYYY.MM.DD-HHMM` tag |
+| `[skip build]` in the message | yes | no | no |
+| `[skip ci]` in the message | no | no | no |
+| `v*` tag | yes | yes, armv7 too | yes, under that tag |
+| By hand: `gh workflow run build.yml --ref main` | yes | yes (ignores messages) | yes |
+
+- Skipped commits aren't lost: every build compiles all of `main`, so the next full build releases everything since the last release. Use `[skip build]` for in-between work (tests, docs, a run of small commits, a change already tried with a local APK); leave it off the commit people should get.
+- The flag matches anywhere in the message, so never write it just to describe it; if a release was skipped by mistake, start the build by hand.
+- A newer push cancels an older run of the same kind only: a `[skip build]` run never cancels a full build, but a full build cancels an older full build still running (its commits ship in the newer one).
+- Phones compare their `TOOMU_TAG` with GitHub's latest release (daily, or Settings → Check for updates); they only get builds signed with the release key, so CI needs the `ANDROID_KEYSTORE_*` secrets. Windows users download the zip/installer from the release.
+- The release publishes once Android and the checks pass (~5 min); the Windows job attaches its zip and installer a few minutes later.
 
 ## Bug fixes
 
