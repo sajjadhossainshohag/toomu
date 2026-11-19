@@ -18,6 +18,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
@@ -42,6 +43,19 @@ class MainActivity : AudioServiceFragmentActivity() {
     }
 
     private val main = Handler(Looper.getMainLooper())
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Full-screen landscape video: Android 9-14's default mode keeps the window out of the camera
+        // cutout, a black band down one side (Realme and other punch-hole phones). Short edges lets
+        // Flutter draw there; the player's controls already stay inside SafeArea. Android 15+ does this
+        // itself for apps targeting it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.also {
+                it.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+    }
 
     private var intents: MethodChannel? = null
 
