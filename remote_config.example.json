@@ -7,6 +7,7 @@
     { "name": "YouTube", "url": "https://m.youtube.com/", "icon": "video", "color": "#FF0033" },
     { "name": "YT Music", "url": "https://music.youtube.com/", "icon": "music", "color": "#E5484D" },
     { "name": "Facebook", "url": "https://m.facebook.com/", "icon": "facebook", "color": "#0866FF" },
+    { "name": "TikTok", "url": "https://www.tiktok.com/", "icon": "tiktok", "color": "#FE2C55" },
     { "name": "Google", "url": "https://www.google.com/", "icon": "search", "color": "#3D63DD" }
   ],
   "feedCategories": [

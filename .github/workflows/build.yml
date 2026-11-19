@@ -24,8 +24,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# A newer push cancels an older run of the same kind only: a "[skip build]"
+# push (checks only) never cancels a build that's about to release.
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.ref }}-${{ github.ref_type != 'tag' && contains(github.event.head_commit.message, '[skip build]') && 'checks' || 'build' }}
   cancel-in-progress: true
 
 env:

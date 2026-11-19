@@ -81,6 +81,7 @@ class ColorConstants {
   static const Color siteYoutubeMusic = Color(0xFFE5484D);
   static const Color siteGoogle       = Color(0xFF3D63DD);
   static const Color siteFacebook     = Color(0xFF0866FF);
+  static const Color siteTiktok       = Color(0xFFFE2C55); // TikTok's pink: its black would vanish in dark mode
 
   // ─── Gradients ──────────────────────────────────────────────────────────
 

@@ -43,6 +43,12 @@ abstract class Extractors {
       color: ColorConstants.siteFacebook,
     ),
     SiteShortcut(
+      name: 'TikTok',
+      url: 'https://www.tiktok.com/',
+      icon: Icons.tiktok,
+      color: ColorConstants.siteTiktok,
+    ),
+    SiteShortcut(
       name: 'Google',
       url: 'https://www.google.com/',
       icon: Iconsax.global_search_copy,

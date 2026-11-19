@@ -48,5 +48,6 @@ class SiteShortcut {
     'search': Iconsax.global_search_copy,
     'globe': Iconsax.global_copy,
     'facebook': Icons.facebook,
+    'tiktok': Icons.tiktok,
   };
 }
