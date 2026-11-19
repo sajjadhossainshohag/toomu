@@ -73,7 +73,7 @@ void main() {
   }
 
   test('the tabs are Home, YouTube, Downloads, Videos and Music; Settings left the bar', () {
-    expect(HomeTabs.all.map((t) => t.nav.label), ['Home', 'YouTube', 'TikTok', 'Downloads', 'Videos', 'Music']);
+    expect(HomeTabs.all.map((t) => t.nav.label), ['Home', 'YouTube', 'Downloads', 'Videos', 'Music']);
   });
 
   testWidgets('Continue watching shows YouTube videos left part way and opens them', (tester) async {

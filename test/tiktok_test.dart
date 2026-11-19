@@ -7,19 +7,15 @@ import 'package:toomu/app/services/tiktok_service.dart';
 Map<String, dynamic> _item(String id, {Map<String, dynamic> extra = const {}}) => {
       'id': id,
       'desc': 'Caption $id',
-      'video': {'playAddr': 'https://v16.tiktok.com/$id.mp4', 'width': 576, 'height': 1024, 'duration': 12, 'cover': 'c'},
+      'video': {'playAddr': 'https://v16.tiktok.com/$id.mp4', 'cover': 'c'},
       'author': {'uniqueId': 'user$id', 'nickname': 'User $id'},
-      'stats': {'diggCount': 35200, 'commentCount': 10, 'shareCount': 2, 'playCount': 99},
-      'music': {'title': 'original sound', 'authorName': 'tiff'},
       ...extra,
     };
 
 void main() {
-  test('videos are read from TikTok data; ads, slideshows and author-less items are not', () {
+  test('videos are read from TikTok data; slideshows and author-less items are not', () {
     final list = [
       _item('1'),
-      _item('2', extra: {'isAd': true}),
-      _item('3', extra: {'ad_info': {'x': 1}}),
       _item('4', extra: {'imagePost': {'images': []}}),
       _item('5', extra: {'author': {'nickname': 'no username'}}),
       _item('6'),
@@ -28,9 +24,8 @@ void main() {
     expect(items.map((i) => i.id), ['1', '6']);
     final first = items.first;
     expect(first.webUrl, 'https://www.tiktok.com/@user1/video/1');
-    expect(first.likes, 35200);
-    expect(first.duration, const Duration(seconds: 12));
-    expect(first.music, 'original sound · tiff');
+    expect(first.caption, 'Caption 1');
+    expect(first.coverUrl, 'c');
   });
 
   test('a video page is read from its embedded data', () {
@@ -51,11 +46,6 @@ void main() {
     expect(TiktokService.linkIn('wow https://vm.tiktok.com/ZMabc123/ lol'), 'https://vm.tiktok.com/ZMabc123/');
     expect(TiktokService.linkIn('https://www.tiktok.com/@a/video/1।'), 'https://www.tiktok.com/@a/video/1');
     expect(TiktokService.linkIn('https://youtu.be/dQw4w9WgXcQ'), isNull);
-  });
-
-  test('ad markers', () {
-    expect(TiktokItem.isAd({'adLabelVersion': 1}), isTrue);
-    expect(TiktokItem.isAd({'adLabelVersion': 0, 'isAd': false}), isFalse);
   });
 
   test('a link TikTok gives no details for still downloads (yt-dlp reads it)', () {

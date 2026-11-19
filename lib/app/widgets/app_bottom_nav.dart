@@ -1,22 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/theme/brand_colors.dart';
 import '../core/theme/color_constants.dart';
 import '../core/theme/design_metrics.dart';
 
 class AppNavItem {
-  const AppNavItem({required this.label, required this.icon, required this.activeIcon, this.logoPath});
+  const AppNavItem({required this.label, required this.icon, required this.activeIcon});
 
   final String label;
 
   /// Outline icon (inactive) and filled icon (active).
   final IconData icon;
   final IconData activeIcon;
-
-  /// A brand's logo instead of the icons (SVG path data in a 24×24 box),
-  /// drawn in the same colours (e.g. TikTok's note).
-  final String? logoPath;
 }
 
 /// Floating bottom bar: equal-width slots with icon + one-line label; the
@@ -133,23 +128,12 @@ class _NavSlot extends StatelessWidget {
                   child: AnimatedSwitcher(
                     duration: _motion,
                     transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
-                    child: item.logoPath != null
-                        ? SvgPicture.string(
-                            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${item.logoPath}"/></svg>',
-                            key: ValueKey<bool>(active),
-                            width: 19 * scale,
-                            height: 19 * scale,
-                            colorFilter: ColorFilter.mode(
-                              active ? ColorConstants.white : ink.withValues(alpha: 0.55),
-                              BlendMode.srcIn,
-                            ),
-                          )
-                        : Icon(
-                            active ? item.activeIcon : item.icon,
-                            key: ValueKey<bool>(active),
-                            size: 21 * scale,
-                            color: active ? ColorConstants.white : ink.withValues(alpha: 0.55),
-                          ),
+                    child: Icon(
+                      active ? item.activeIcon : item.icon,
+                      key: ValueKey<bool>(active),
+                      size: 21 * scale,
+                      color: active ? ColorConstants.white : ink.withValues(alpha: 0.55),
+                    ),
                   ),
                 ),
                 if (badge > 0)
