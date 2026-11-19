@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Sign-in cookies stay on this phone (Android 12+ backups and transfers). -->
+<!-- Sign-in cookies stay on this phone; private folder files stay out of the cloud but move to a new phone
+     (Android 12+ backups and transfers). -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="youtube_account.txt"/>
         <exclude domain="file" path="tiktok_cookies.txt"/>
+        <exclude domain="file" path="private/"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="youtube_account.txt"/>

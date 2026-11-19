@@ -15,6 +15,7 @@ class AppHeader extends StatelessWidget {
     this.subtitle,
     this.actions = const <Widget>[],
     this.onBack,
+    this.backIcon = Icons.arrow_back_rounded,
     this.bottom,
     super.key,
   });
@@ -23,6 +24,7 @@ class AppHeader extends StatelessWidget {
   final String? subtitle;
   final List<Widget> actions;
   final VoidCallback? onBack;
+  final IconData backIcon;
   final Widget? bottom;
 
   @override
@@ -50,8 +52,10 @@ class AppHeader extends StatelessWidget {
                       if (onBack != null)
                         IconButton(
                           onPressed: onBack,
-                          icon: Icon(Icons.arrow_back_rounded, color: ink),
-                          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                          icon: Icon(backIcon, color: ink),
+                          tooltip: backIcon == Icons.close_rounded
+                              ? MaterialLocalizations.of(context).closeButtonTooltip
+                              : MaterialLocalizations.of(context).backButtonTooltip,
                         ),
                       Expanded(
                         child: Column(

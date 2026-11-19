@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/download_service.dart';
@@ -8,10 +9,11 @@ import '../models/track.dart';
 
 Future<List<Map<String, dynamic>>> appFolderItems(String sub) {
   final path = '${DownloadService.to.downloadRoot}/$sub';
-  return Isolate.run(() => _folderItems(path, sub));
+  return Isolate.run(() => folderItems(path, sub));
 }
 
-List<Map<String, dynamic>> _folderItems(String path, String sub) {
+@visibleForTesting
+List<Map<String, dynamic>> folderItems(String path, String sub) {
   final dir = Directory(path);
   if (!dir.existsSync()) return const [];
   return [
@@ -23,7 +25,7 @@ List<Map<String, dynamic>> _folderItems(String path, String sub) {
           return <String, dynamic>{
             // Relative key: the app container path changes between installs.
             'id': '$sub/$name'.codeUnits.fold<int>(0, (h, c) => (h * 31 + c) & 0x7fffffffffff),
-            'path': f.path,
+            'path': '$path/$name', // Not f.path: on Windows it joins with a backslash, which the subtitle lookup doesn't split on.
             'uri': Uri.file(f.path).toString(),
             'name': name,
             'title': dot > 0 ? name.substring(0, dot) : name,

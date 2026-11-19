@@ -9,14 +9,16 @@ import '../../../../data/models/track.dart';
 import '../../../../services/audio_player_service.dart';
 import '../../../../widgets/option_sheet.dart';
 import '../../../../widgets/round_icon_button.dart';
+import '../../../../widgets/selection_header.dart';
 import '../../../../widgets/track_artwork.dart';
 import '../../controllers/music_controller.dart';
 
 class SongTile extends StatelessWidget {
-  const SongTile({required this.track, required this.onTap, super.key});
+  const SongTile({required this.track, required this.onTap, this.selection, super.key});
 
   final Track track;
   final VoidCallback onTap;
+  final Selection? selection;
 
   @override
   Widget build(BuildContext context) {
@@ -27,11 +29,13 @@ class SongTile extends StatelessWidget {
 
     return Obx(() {
       final bool current = audio.current?.id == track.id;
+      final bool selecting = selection?.active ?? false;
       final Color titleColor = current
           ? (context.isDark ? brand.accent : brand.primary)
           : ink;
       return InkWell(
-        onTap: onTap,
+        onTap: selecting ? () => selection!.toggle(track.id) : onTap,
+        onLongPress: selection == null ? null : () => selection!.toggle(track.id),
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             16 * scale,
@@ -101,11 +105,14 @@ class SongTile extends StatelessWidget {
                   size: 16 * scale,
                   color: ColorConstants.tileFavorite,
                 ),
-              RoundIconButton(
-                icon: Icons.more_vert_rounded,
-                size: 36,
-                onTap: () => showSongMenu(track),
-              ),
+              if (selecting)
+                SelectionMark(selected: selection!.contains(track.id))
+              else
+                RoundIconButton(
+                  icon: Icons.more_vert_rounded,
+                  size: 36,
+                  onTap: () => showSongMenu(track),
+                ),
             ],
           ),
         ),
@@ -142,6 +149,12 @@ Future<void> showSongMenu(Track track) async {
       ),
       if (track.localSongId != null)
         const SheetOption(
+          value: 'private',
+          label: 'Move to private folder',
+          icon: Icons.lock_outline_rounded,
+        ),
+      if (track.localSongId != null)
+        const SheetOption(
           value: 'delete',
           label: 'Delete from device',
           icon: Icons.delete_outline_rounded,
@@ -157,7 +170,9 @@ Future<void> showSongMenu(Track track) async {
       music.toggleFavorite(track);
     case 'share':
       music.share(track);
+    case 'private':
+      music.moveToPrivate([track]);
     case 'delete':
-      music.delete(track);
+      music.delete([track]);
   }
 }

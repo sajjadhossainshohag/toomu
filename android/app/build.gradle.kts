@@ -145,6 +145,8 @@ dependencies {
 
     // FileProvider for "Copy image" (plugins already bring it in).
     implementation("androidx.core:core:1.13.1")
+    // AppCompat themes: the fingerprint prompt crashes without one on Android 7-8.
+    implementation("androidx.appcompat:appcompat:1.7.0")
 
     testImplementation("junit:junit:4.13.2")
 }

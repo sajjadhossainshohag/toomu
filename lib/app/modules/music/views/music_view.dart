@@ -11,6 +11,7 @@ import '../../../widgets/gradient_pill.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/outline_pill.dart';
 import '../../../widgets/segmented_tabs.dart';
+import '../../../widgets/selection_header.dart';
 import '../../../widgets/swipe_tab_view.dart';
 import '../../../widgets/top_fade.dart';
 import '../controllers/music_controller.dart';
@@ -26,8 +27,12 @@ class MusicView extends GetView<MusicController> {
 
     return Column(
       children: <Widget>[
-        Obx(
-          () => AppHeader(
+        SelectionHeader(
+          selection: controller.selection,
+          onSelectAll: controller.selectAll,
+          onPrivate: controller.moveSelectedToPrivate,
+          onDelete: controller.deleteSelected,
+          header: () => AppHeader(
             title: 'Music',
             subtitle: '${controller.totalSongs} songs on this device',
             actions: <Widget>[
@@ -183,7 +188,7 @@ class _SongList extends GetView<MusicController> {
           );
         }
         final t = tracks[i - 1];
-        return SongTile(track: t, onTap: () => controller.play(tracks, t));
+        return SongTile(track: t, onTap: () => controller.play(tracks, t), selection: controller.selection);
       },
     );
   }

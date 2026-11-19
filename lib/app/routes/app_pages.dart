@@ -11,6 +11,8 @@ import '../modules/music/bindings/collection_binding.dart';
 import '../modules/music/views/collection_view.dart';
 import '../modules/player/bindings/player_binding.dart';
 import '../modules/player/views/player_view.dart';
+import '../modules/private_folder/controllers/private_folder_controller.dart';
+import '../modules/private_folder/views/private_folder_view.dart';
 import '../modules/shorts/bindings/shorts_binding.dart';
 import '../modules/shorts/views/shorts_view.dart';
 import '../modules/video_player/bindings/video_player_binding.dart';
@@ -79,5 +81,10 @@ class AppPages {
       binding: ShortsBinding(),
     ),
     GetPage(name: _Paths.library, page: () => const LibraryView()),
+    GetPage(
+      name: _Paths.privateFolder,
+      page: () => const PrivateFolderView(),
+      binding: BindingsBuilder.put(PrivateFolderController.new),
+    ),
   ];
 }

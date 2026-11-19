@@ -12,6 +12,7 @@ abstract class Routes {
   static const channel = _Paths.channel;
   static const shorts = _Paths.shorts;
   static const library = _Paths.library;
+  static const privateFolder = _Paths.privateFolder;
 }
 
 abstract class _Paths {
@@ -26,4 +27,5 @@ abstract class _Paths {
   static const channel = '/youtube/channel';
   static const shorts = '/youtube/shorts';
   static const library = '/youtube/library';
+  static const privateFolder = '/private';
 }

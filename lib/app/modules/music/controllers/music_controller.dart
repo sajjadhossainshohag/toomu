@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,7 +14,9 @@ import '../../../services/permission_service.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../home/home_tabs.dart';
+import '../../private_folder/controllers/private_folder_controller.dart';
 import '../../../widgets/app_snackbar.dart';
+import '../../../widgets/selection_header.dart';
 
 enum SongSort { title, recent, duration }
 
@@ -35,6 +39,8 @@ class MusicController extends GetxController {
   final loading = false.obs;
   final hasPermission = true.obs;
   final query = ''.obs;
+  final selection = Selection();
+  List<Worker> _clearers = const [];
   final sort = SongSort.title.obs;
   final _all = <Track>[].obs;
   // Sorting thousands of titles on every search keystroke stutters; the
@@ -47,9 +53,18 @@ class MusicController extends GetxController {
   String? _filteredFor;
 
   @override
+  void onClose() {
+    for (final w in _clearers) {
+      w.dispose();
+    }
+    super.onClose();
+  }
+
+  @override
   void onInit() {
     super.onInit();
     debounce(query, (String q) => _filter.value = q, time: const Duration(milliseconds: 200));
+    _clearers = selection.clearOnChange([tab, if (Get.isRegistered<HomeController>()) Get.find<HomeController>().tabIndex]);
   }
 
   @override
@@ -161,28 +176,69 @@ class MusicController extends GetxController {
     await SharePlus.instance.share(ShareParams(files: [XFile(t.path!)], text: t.title));
   }
 
-  /// Deletes the song file from the device after confirmation.
-  Future<void> delete(Track t) async {
-    final id = t.localSongId;
-    if (id == null) return;
+  List<Track> get _selected => selection.pick(_all, (t) => t.id).where((t) => t.localSongId != null).toList();
+
+  void selectAll() => selection.selectAll((tab.value == 3 ? favorites : songs).map((t) => t.id));
+
+  Future<void> deleteSelected() async {
+    if (await delete(_selected)) selection.clear();
+  }
+
+  Future<void> moveSelectedToPrivate() async {
+    if (await moveToPrivate(_selected)) selection.clear();
+  }
+
+  Future<bool> delete(List<Track> list) async {
+    if (list.isEmpty) return false;
+    final one = list.length == 1;
     final ok = await showConfirmDialog(
-      title: 'Delete song?',
-      message: '"${t.title}" will be permanently deleted from this device.',
+      title: one ? 'Delete song?' : 'Delete ${list.length} songs?',
+      message: '${one ? '"${list.first.title}"' : 'These songs'} will be permanently deleted from this device.',
       confirmLabel: 'Delete',
       destructive: true,
     );
-    if (!ok) return;
+    if (!ok) return false;
+    var accepted = false;
     try {
-      if (!await _provider.delete([id])) return; // declined in Android's dialog
-      _sorted = null;
-      _all.removeWhere((s) => s.id == t.id);
-      await audio.removeTrack(t.id);
-      if (audio.favorites.contains(t.id)) audio.toggleFavorite(t);
-      if (t.path != null) await DownloadService.to.forgetFile(t.path!);
-      showSnack('Deleted', t.title, duration: const Duration(seconds: 2));
+      accepted = await _provider.delete([for (final t in list) t.localSongId!]);
     } catch (e) {
       showSnack('Could not delete', ErrorText.of(e));
     }
+    // Judged on disk: Android deletes Toomu's own files even when its dialog for the others is declined.
+    final gone = list.where((t) => t.path == null ? accepted : !File(t.path!).existsSync()).toList();
+    for (final t in gone) {
+      await _forget(t);
+    }
+    if (gone.isEmpty) return false;
+    final failed = list.length - gone.length;
+    showSnack(
+      one ? 'Deleted' : 'Deleted ${gone.length}',
+      failed > 0 ? "$failed couldn't be deleted" : (one ? list.first.title : 'Songs removed from this device'),
+      duration: const Duration(seconds: 2),
+    );
+    return true;
+  }
+
+  Future<bool> moveToPrivate(List<Track> list) async {
+    final moved = await moveToPrivateFolder(
+      [for (final t in list) (path: t.path, title: t.title)],
+      (paths) => _provider.delete([
+        for (final t in list)
+          if (paths.contains(t.path)) t.localSongId!,
+      ]),
+    );
+    for (final t in list) {
+      if (moved.contains(t.path)) await _forget(t);
+    }
+    return moved.isNotEmpty;
+  }
+
+  Future<void> _forget(Track t) async {
+    _sorted = null;
+    _all.removeWhere((s) => s.id == t.id);
+    await audio.removeTrack(t.id);
+    if (audio.favorites.contains(t.id)) audio.toggleFavorite(t);
+    if (t.path != null) await DownloadService.to.forgetFile(t.path!);
   }
 
   void openCollection(MusicCollection c) =>

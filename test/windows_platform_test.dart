@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:toomu/app/core/utils/host_os.dart';
@@ -103,6 +106,12 @@ void main() {
       await openFile('/storage/emulated/0/Download/Toomu/Audio/Song.m4a');
       expect(androidOpened, ['/storage/emulated/0/Download/Toomu/Audio/Song.m4a']);
       expect(started, isEmpty);
+    });
+
+    test('a file no app can open says so instead of doing nothing', () async {
+      HostOs.override = 'android';
+      openWithAndroid = (path) async => OpenResult(type: ResultType.noAppToOpen, message: 'No APP found to open this file');
+      await expectLater(openFile('/storage/emulated/0/Download/Toomu/Files/a.xyz'), throwsA(isA<FileSystemException>()));
     });
 
     test('Settings "Download location" opens the folder in Explorer', () async {

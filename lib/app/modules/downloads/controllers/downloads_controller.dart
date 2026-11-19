@@ -11,17 +11,38 @@ import '../../../data/models/track.dart';
 import '../../../data/models/video_item.dart';
 import '../../../routes/app_pages.dart';
 import '../../browser/controllers/browser_session.dart';
+import '../../home/controllers/home_controller.dart';
+import '../../private_folder/controllers/private_folder_controller.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
 import '../../../services/audio_player_service.dart';
 import '../../../services/download_service.dart';
+import '../../../services/media_scanner_service.dart';
+import '../../../services/video_session_service.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../../widgets/app_snackbar.dart';
+import '../../../widgets/selection_header.dart';
 
 class DownloadsController extends GetxController {
   final DownloadService _service = DownloadService.to;
 
   /// 0 = Active, 1 = Completed
   final tab = 0.obs;
+  final selection = Selection();
+  List<Worker> _clearers = const [];
+
+  @override
+  void onClose() {
+    for (final w in _clearers) {
+      w.dispose();
+    }
+    super.onClose();
+  }
+
+  @override
+  void onInit() {
+    super.onInit();
+    _clearers = selection.clearOnChange([tab, if (Get.isRegistered<HomeController>()) Get.find<HomeController>().tabIndex]);
+  }
 
   RxList<DownloadTask> get tasks => _service.tasks;
 
@@ -115,32 +136,93 @@ class DownloadsController extends GetxController {
     ShareParams(files: [XFile(t.filePath)], text: t.title),
   );
 
-  /// Long-press menu "Delete" / "Cancel download": confirm, then remove.
-  Future<void> delete(DownloadTask t) async {
-    final choice = await _confirmDelete(t);
-    if (choice == null) return;
-    final freed = await _service.remove(t, deleteFile: choice);
-    _reportFreed(freed, fallback: 'Removed from downloads');
+  List<DownloadTask> get _shown => tab.value == 0 ? active : completed;
+
+  List<DownloadTask> get _selected {
+    // A download that finished while selected moved to the other tab, out of sight: it's dropped, never acted on.
+    final picked = selection.pick(_shown, (t) => t.id);
+    selection.ids.retainAll(picked.map((t) => t.id));
+    return picked;
   }
 
-  /// Asks how to delete [t]. Returns whether to delete the file too, or
-  /// null if the user cancelled.
-  Future<bool?> _confirmDelete(DownloadTask t) async {
-    final finished = t.status.value == DownloadStatus.completed;
-    final stat = finished ? await FileStat.stat(t.filePath) : null;
-    final exists = stat != null && stat.type != FileSystemEntityType.notFound;
-    final size = exists ? ' (${Formatters.bytes(stat.size)})' : '';
-    final choice = await showDeleteDialog(
-      title: finished ? 'Delete download?' : 'Cancel download?',
-      message: finished
-          ? '"${t.title}" will be removed from your downloads.'
-          : 'The download stops and its partial files are removed.',
-      confirmLabel: finished ? 'Delete' : 'Cancel download',
-      // Partial files are always cleaned; only finished files are optional.
-      fileToggleLabel: exists ? 'Also delete file from device$size' : null,
+  void selectAll() => selection.selectAll(_shown.map((t) => t.id));
+
+  Future<void> deleteSelected() async {
+    if (await delete(_selected)) selection.clear();
+  }
+
+  Future<void> moveSelectedToPrivate() async {
+    if (await moveToPrivate(_selected)) selection.clear();
+  }
+
+  Future<bool> moveToPrivate(List<DownloadTask> list) async {
+    final done = list.where((t) => t.status.value == DownloadStatus.completed).toSet();
+    if (done.isEmpty) {
+      showSnack('Nothing to move', 'Only finished downloads can be moved to the private folder.');
+      return false;
+    }
+    // Only the files are deleted here: a task leaves the list once its file is really gone.
+    final moved = await moveToPrivateFolder(
+      [for (final t in list) (path: done.contains(t) ? t.filePath : null, title: t.title)],
+      (paths) async {
+        for (final p in paths) {
+          try {
+            await File(p).delete();
+          } on FileSystemException catch (e) {
+            debugPrint('[Downloads] private move: $e');
+          }
+          await MediaScannerService.to.scan(p);
+        }
+      },
     );
-    if (choice == null) return null;
-    return finished ? choice.deleteFiles : true;
+    if (moved.isNotEmpty) reloadLibraries();
+    return moved.isNotEmpty;
+  }
+
+  /// Long-press menu "Delete" / "Cancel download": confirm, then remove.
+  Future<bool> delete(List<DownloadTask> list) async {
+    if (list.isEmpty) return false;
+    final choice = await _confirmDelete(list);
+    if (choice == null) return false;
+    final finished = list.where((t) => t.status.value == DownloadStatus.completed).toList();
+    final unfinished = list.where((t) => !finished.contains(t)).toList();
+    // Partial files are always cleaned; only finished files are optional.
+    final freed = await _service.removeMany(unfinished, deleteFiles: true) +
+        await _service.removeMany(finished, deleteFiles: choice);
+    if (choice) await VideoSessionService.to.stopIfPlaying(finished.map((t) => t.filePath));
+    if (list.length == 1) {
+      _reportFreed(freed, fallback: 'Removed from downloads');
+    } else {
+      Get.closeAllSnackbars();
+      showSnack(
+        'Deleted ${list.length}',
+        freed > 0 ? '${Formatters.bytes(freed)} cleaned up' : 'Removed from downloads',
+        duration: const Duration(seconds: 2),
+      );
+    }
+    return true;
+  }
+
+  Future<bool?> _confirmDelete(List<DownloadTask> list) async {
+    final finished = list.where((t) => t.status.value == DownloadStatus.completed).toList();
+    final stats = await Future.wait(finished.map((t) => FileStat.stat(t.filePath)));
+    final onDisk = stats.where((s) => s.type != FileSystemEntityType.notFound).toList();
+    final size = onDisk.fold<int>(0, (sum, s) => sum + s.size);
+    final one = list.length == 1;
+    final allDone = finished.length == list.length;
+    final choice = await showDeleteDialog(
+      title: !one ? 'Delete ${list.length} downloads?' : (allDone ? 'Delete download?' : 'Cancel download?'),
+      message: !one
+          ? 'They will be removed from your downloads.${allDone ? '' : ' Unfinished ones stop and their partial files are removed.'}'
+          : allDone
+              ? '"${list.first.title}" will be removed from your downloads.'
+              : 'The download stops and its partial files are removed.',
+      confirmLabel: one && !allDone ? 'Cancel download' : 'Delete',
+      fileToggleLabel: onDisk.isEmpty
+          ? null
+          : 'Also delete ${onDisk.length == 1 ? 'file' : 'files'} from device (${Formatters.bytes(size)})',
+    );
+    return choice?.deleteFiles;
   }
 
   Future<void> clearCompleted() async {

@@ -52,6 +52,7 @@ dependencies:
   iconsax_flutter: ^1.0.1
   xml: ^6.6.1
   just_audio_media_kit: ^2.1.0
+  local_auth: ^3.0.2
 
 dev_dependencies:
   flutter_test:

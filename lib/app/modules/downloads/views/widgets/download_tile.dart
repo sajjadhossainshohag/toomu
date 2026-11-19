@@ -9,14 +9,16 @@ import '../../../../data/models/download_task.dart';
 import '../../../../widgets/gradient_progress_bar.dart';
 import '../../../../widgets/option_sheet.dart';
 import '../../../../widgets/round_icon_button.dart';
+import '../../../../widgets/selection_header.dart';
 import '../../../../widgets/track_artwork.dart';
 import '../../controllers/downloads_controller.dart';
 
 class DownloadTile extends StatelessWidget {
-  const DownloadTile({required this.task, required this.controller, super.key});
+  const DownloadTile({required this.task, required this.controller, this.selection, super.key});
 
   final DownloadTask task;
   final DownloadsController controller;
+  final Selection? selection;
 
   @override
   Widget build(BuildContext context) {
@@ -27,16 +29,19 @@ class DownloadTile extends StatelessWidget {
     return Obx(() {
       final status = task.status.value;
       final done = status == DownloadStatus.completed;
+      final selecting = selection?.active ?? false;
 
       return Material(
         color: ColorConstants.groupOn(dark),
         borderRadius: BorderRadius.circular(16 * scale),
         child: InkWell(
           borderRadius: BorderRadius.circular(16 * scale),
-          onTap: done
+          onTap: selecting
+              ? () => selection!.toggle(task.id)
+              : done
               ? () => controller.open(task)
               : () => controller.toggle(task),
-          onLongPress: () => _menu(done),
+          onLongPress: selection == null ? () => _menu(done) : () => selection!.toggle(task.id),
           child: Padding(
             padding: EdgeInsets.all(10 * scale),
             child: Row(
@@ -80,13 +85,22 @@ class DownloadTile extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: 6 * scale),
-                if (done)
+                if (selecting)
+                  SelectionMark(selected: selection!.contains(task.id))
+                else if (done)
                   RoundIconButton(
                     icon: Icons.more_vert_rounded,
                     size: 36,
                     onTap: () => _menu(done),
                   )
-                else
+                else ...<Widget>[
+                  // Long-press selects here, so the menu (Refresh link, Cancel) needs its own button.
+                  if (selection != null)
+                    RoundIconButton(
+                      icon: Icons.more_vert_rounded,
+                      size: 36,
+                      onTap: () => _menu(done),
+                    ),
                   RoundIconButton(
                     icon: switch (status) {
                       DownloadStatus.running ||
@@ -103,6 +117,7 @@ class DownloadTile extends StatelessWidget {
                         status == DownloadStatus.failed,
                     onTap: () => controller.toggle(task),
                   ),
+                ],
               ],
             ),
           ),
@@ -126,6 +141,11 @@ class DownloadTile extends StatelessWidget {
             label: 'Share',
             icon: Icons.share_rounded,
           ),
+          SheetOption(
+            value: 'private',
+            label: 'Move to private folder',
+            icon: Icons.lock_outline_rounded,
+          ),
         ],
         if (!done && !task.isActive && task.pageUrl != null && task.url != task.pageUrl)
           const SheetOption(
@@ -148,8 +168,10 @@ class DownloadTile extends StatelessWidget {
         controller.share(task);
       case 'refresh':
         controller.refreshLink(task);
+      case 'private':
+        controller.moveToPrivate([task]);
       case 'delete':
-        controller.delete(task);
+        controller.delete([task]);
     }
   }
 }

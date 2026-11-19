@@ -15,6 +15,16 @@ class LocalVideoProvider {
         : await appFolderItems('Video');
     return raw.map((m) => VideoItem.fromMediaStore(Map<String, dynamic>.from(m))).toList();
   }
+
+  Future<bool> delete(List<int> ids) async {
+    if (!Platform.isAndroid) {
+      for (final m in await appFolderItems('Video')) {
+        if (ids.contains(m['id'])) await File(m['path'] as String).delete();
+      }
+      return true;
+    }
+    return (await _channel.invokeMethod<bool>('delete', {'ids': ids, 'kind': 'video'})) ?? false;
+  }
 }
 
 /// In-memory cache of video thumbnails so scrolling doesn't re-decode.

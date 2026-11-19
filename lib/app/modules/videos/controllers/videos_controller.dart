@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -5,12 +7,17 @@ import '../../../core/utils/error_text.dart';
 import '../../../data/models/video_item.dart';
 import '../../../data/providers/local_video_provider.dart';
 import '../../../routes/app_pages.dart';
+import '../../../services/download_service.dart';
 import '../../../services/permission_service.dart';
+import '../../../services/video_session_service.dart';
+import '../../../widgets/app_dialog.dart';
 import '../../../widgets/option_sheet.dart';
+import '../../private_folder/controllers/private_folder_controller.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
 import '../../home/controllers/home_controller.dart';
 import '../../home/home_tabs.dart';
 import '../../../widgets/app_snackbar.dart';
+import '../../../widgets/selection_header.dart';
 
 enum VideoSort { recent, name, size, duration }
 
@@ -33,6 +40,8 @@ class VideosController extends GetxController {
   final loading = false.obs;
   final hasPermission = true.obs;
   final query = ''.obs;
+  final selection = Selection();
+  List<Worker> _clearers = const [];
   final sort = VideoSort.recent.obs;
   final _all = <VideoItem>[].obs;
   final _filter = ''.obs;
@@ -45,9 +54,18 @@ class VideosController extends GetxController {
   final watchedVersion = 0.obs;
 
   @override
+  void onClose() {
+    for (final w in _clearers) {
+      w.dispose();
+    }
+    super.onClose();
+  }
+
+  @override
   void onInit() {
     super.onInit();
     debounce(query, (String q) => _filter.value = q, time: const Duration(milliseconds: 200));
+    _clearers = selection.clearOnChange([tab, if (Get.isRegistered<HomeController>()) Get.find<HomeController>().tabIndex]);
   }
 
   @override
@@ -139,5 +157,78 @@ class VideosController extends GetxController {
     watchedVersion.value++;
   }
 
-  void openFolder(VideoFolder folder) => Get.toNamed(Routes.videoFolder, arguments: folder);
+  void openFolder(VideoFolder folder) {
+    selection.clear();
+    Get.toNamed(Routes.videoFolder, arguments: folder);
+  }
+
+  Future<void> showMenu(VideoItem v) async {
+    final action = await showOptionSheet<String>(
+      title: v.title,
+      options: const <SheetOption<String>>[
+        SheetOption(value: 'private', label: 'Move to private folder', icon: Icons.lock_outline_rounded),
+      ],
+    );
+    if (action == 'private' && v.id != null) await moveToPrivate([v]);
+  }
+
+  List<VideoItem> get _selected => selection.pick(_all, (v) => v.uri).where((v) => v.id != null).toList();
+
+  void selectAll(Iterable<VideoItem> list) => selection.selectAll(list.map((v) => v.uri));
+
+  Future<void> deleteSelected() async {
+    final list = _selected;
+    if (list.isEmpty) return;
+    final one = list.length == 1;
+    final ok = await showConfirmDialog(
+      title: one ? 'Delete video?' : 'Delete ${list.length} videos?',
+      message: '${one ? '"${list.first.title}"' : 'These videos'} will be permanently deleted from this device.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (!ok) return;
+    var accepted = false;
+    try {
+      accepted = await _provider.delete([for (final v in list) v.id!]);
+    } catch (e) {
+      showSnack('Could not delete', ErrorText.of(e));
+    }
+    // Judged on disk: Android deletes Toomu's own files even when its dialog for the others is declined.
+    final gone = list.where((v) => v.path == null ? accepted : !File(v.path!).existsSync()).toList();
+    if (gone.isEmpty) return;
+    _forget(gone);
+    await VideoSessionService.to.stopIfPlaying([for (final v in gone) ?v.path]);
+    for (final v in gone) {
+      if (v.path != null) await DownloadService.to.forgetFile(v.path!);
+    }
+    selection.clear();
+    final failed = list.length - gone.length;
+    showSnack(
+      one ? 'Deleted' : 'Deleted ${gone.length}',
+      failed > 0 ? "$failed couldn't be deleted" : (one ? list.first.title : 'Videos removed from this device'),
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  Future<void> moveSelectedToPrivate() async {
+    if (await moveToPrivate(_selected)) selection.clear();
+  }
+
+  Future<bool> moveToPrivate(List<VideoItem> list) async {
+    final moved = await moveToPrivateFolder(
+      [for (final v in list) (path: v.path, title: v.title)],
+      (paths) => _provider.delete([
+        for (final v in list)
+          if (paths.contains(v.path)) v.id!,
+      ]),
+    );
+    _forget(list.where((v) => moved.contains(v.path)));
+    return moved.isNotEmpty;
+  }
+
+  void _forget(Iterable<VideoItem> gone) {
+    final uris = {for (final v in gone) v.uri};
+    _sorted = null;
+    _all.removeWhere((v) => uris.contains(v.uri));
+  }
 }

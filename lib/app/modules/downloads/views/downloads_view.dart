@@ -6,6 +6,7 @@ import '../../../widgets/app_header.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../data/models/download_task.dart';
 import '../../../widgets/segmented_tabs.dart';
+import '../../../widgets/selection_header.dart';
 import '../../../widgets/swipe_tab_view.dart';
 import '../../../widgets/top_fade.dart';
 import '../../home/controllers/home_controller.dart';
@@ -27,28 +28,34 @@ class DownloadsView extends GetView<DownloadsController> {
 
       return Column(
         children: <Widget>[
-          AppHeader(
-            title: 'Downloads',
-            subtitle:
-                '${active.length} in progress · ${completed.length} completed',
-            actions: <Widget>[
-              if (showingActive && active.isNotEmpty)
-                HeaderAction(
-                  icon: controller.anyRunning
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                  tooltip: controller.anyRunning ? 'Pause all' : 'Resume all',
-                  onTap: controller.anyRunning
-                      ? controller.pauseAll
-                      : controller.resumeAll,
-                ),
-              if (!showingActive && completed.isNotEmpty)
-                HeaderAction(
-                  icon: Icons.delete_sweep_rounded,
-                  tooltip: 'Clear completed',
-                  onTap: controller.clearCompleted,
-                ),
-            ],
+          SelectionHeader(
+            selection: controller.selection,
+            onSelectAll: controller.selectAll,
+            onPrivate: controller.moveSelectedToPrivate,
+            onDelete: controller.deleteSelected,
+            header: () => AppHeader(
+              title: 'Downloads',
+              subtitle:
+                  '${active.length} in progress · ${completed.length} completed',
+              actions: <Widget>[
+                if (showingActive && active.isNotEmpty)
+                  HeaderAction(
+                    icon: controller.anyRunning
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    tooltip: controller.anyRunning ? 'Pause all' : 'Resume all',
+                    onTap: controller.anyRunning
+                        ? controller.pauseAll
+                        : controller.resumeAll,
+                  ),
+                if (!showingActive && completed.isNotEmpty)
+                  HeaderAction(
+                    icon: Icons.delete_sweep_rounded,
+                    tooltip: 'Clear completed',
+                    onTap: controller.clearCompleted,
+                  ),
+              ],
+            ),
           ),
           SizedBox(height: 4 * scale),
           SegmentedTabs(
@@ -106,6 +113,7 @@ class DownloadsView extends GetView<DownloadsController> {
           key: ValueKey(items[i].id),
           task: items[i],
           controller: controller,
+          selection: controller.selection,
         ),
       ),
     );

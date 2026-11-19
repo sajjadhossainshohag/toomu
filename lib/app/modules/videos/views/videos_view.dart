@@ -6,8 +6,10 @@ import '../../../widgets/app_header.dart';
 import '../../../widgets/app_search_field.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/segmented_tabs.dart';
+import '../../../widgets/selection_header.dart';
 import '../../../widgets/swipe_tab_view.dart';
 import '../../../widgets/top_fade.dart';
+import '../../private_folder/controllers/private_folder_controller.dart';
 import '../controllers/videos_controller.dart';
 import 'widgets/video_tile.dart';
 
@@ -19,11 +21,20 @@ class VideosView extends GetView<VideosController> {
     final double scale = context.scale;
     return Column(
       children: <Widget>[
-        Obx(
-          () => AppHeader(
+        SelectionHeader(
+          selection: controller.selection,
+          onSelectAll: () => controller.selectAll(controller.videos),
+          onPrivate: controller.moveSelectedToPrivate,
+          onDelete: controller.deleteSelected,
+          header: () => AppHeader(
             title: 'Videos',
             subtitle: '${controller.total} videos on this device',
             actions: <Widget>[
+              const HeaderAction(
+                icon: Icons.lock_outline_rounded,
+                tooltip: 'Private folder',
+                onTap: openPrivateFolder,
+              ),
               HeaderAction(
                 icon: Icons.sort_rounded,
                 tooltip: 'Sort',
@@ -118,6 +129,8 @@ class _AllVideos extends GetView<VideosController> {
       itemBuilder: (_, i) => VideoTile(
         video: list[i],
         onTap: () => controller.play(list, list[i]),
+        onMenu: () => controller.showMenu(list[i]),
+        selection: controller.selection,
       ),
     );
   });

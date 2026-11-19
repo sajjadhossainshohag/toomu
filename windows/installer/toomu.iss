@@ -58,3 +58,17 @@ Filename: "{app}\toomu.exe"; Description: "{cm:LaunchProgram,Toomu}"; Flags: now
 ; yt-dlp, FFmpeg and Deno (a few hundred MB) download on first launch into the app's support folder
 ; (%APPDATA%\<CompanyName>\<ProductName>, from Runner.rc); settings beside them are kept.
 Type: filesandordirs; Name: "{userappdata}\Toomu\Toomu\tools"
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Dir: String;
+begin
+  Dir := ExpandConstant('{userappdata}\Toomu\Toomu\private');
+  // Kept unless the user says otherwise; a silent uninstall never deletes it.
+  if (CurUninstallStep = usPostUninstall) and DirExists(Dir) and not UninstallSilent and
+     (MsgBox('Also delete the files in Toomu''s private folder?' + #13#10#13#10 +
+             'Choose No to keep them; they come back when you install Toomu again.',
+             mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES) then
+    DelTree(Dir, True, True, True);
+end;

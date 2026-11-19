@@ -11,6 +11,7 @@ import android.content.ComponentName
 import android.content.ContentUris
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.Settings
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -21,15 +22,16 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Size
-import com.ryanheise.audioservice.AudioServiceActivity
+import android.view.WindowManager
+import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
-// AudioServiceActivity (instead of FlutterActivity) keeps the Flutter engine
-// alive for background playback via just_audio_background / audio_service.
-class MainActivity : AudioServiceActivity() {
+// audio_service's activity keeps the Flutter engine alive for background playback; its Fragment variant
+// because local_auth's fingerprint prompt (private folder) needs a FragmentActivity.
+class MainActivity : AudioServiceFragmentActivity() {
 
     // audio_service keeps the Flutter engine (and queued downloads) running
     // after the activity is destroyed, so these live as long as the process.
@@ -260,6 +262,18 @@ class MainActivity : AudioServiceActivity() {
             ch.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "pipSupported" -> result.success(pipSupported())
+                    "clock" -> result.success(
+                        mapOf(
+                            "elapsed" to SystemClock.elapsedRealtime(),
+                            "boot" to runCatching { Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT) }.getOrNull(),
+                        ),
+                    )
+                    "secure" -> {
+                        // Keeps the private folder out of the Recents thumbnail and screenshots.
+                        if (call.argument<Boolean>("on") == true) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        result.success(null)
+                    }
                     "enterPip" -> {
                         updatePipParams(call)
                         result.success(enterPip())
@@ -406,7 +420,12 @@ class MainActivity : AudioServiceActivity() {
                 "delete" -> {
                     val ids = call.argument<List<Number>>("ids")?.map { it.toLong() }
                     if (ids.isNullOrEmpty()) result.error("ARG", "ids are required", null)
-                    else deleteSongs(ids, result)
+                    else deleteMedia(
+                        ids,
+                        if (call.argument<String>("kind") == "video") MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        else MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                        result,
+                    )
                 }
                 "videos" -> runAsync(result) { queryVideos() }
                 "videoThumb" -> {
@@ -430,45 +449,51 @@ class MainActivity : AudioServiceActivity() {
 
     private val deleteRequestCode = 4711
     private var pendingDelete: MethodChannel.Result? = null
-    private var pendingDeleteUris: List<Uri> = emptyList()
+    private val deleteQueue = ArrayDeque<Uri>()
+    private var askedUri: Uri? = null
+    private val deleteBlocked = mutableListOf<Uri>() // kept across Android 10's one-file-at-a-time dialogs
 
-    /**
-     * Deletes songs from the device. Files Toomu created are deleted
-     * directly; for other apps' files Android (10+) requires the user to
-     * confirm in a system dialog. Replies true (deleted) / false (declined).
-     */
-    private fun deleteSongs(ids: List<Long>, result: MethodChannel.Result) {
+    private fun deleteMedia(ids: List<Long>, collection: Uri, result: MethodChannel.Result) {
         if (pendingDelete != null) {
             result.error("BUSY", "Another delete is waiting for confirmation", null)
             return
         }
-        val uris = ids.map { ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it) }
-        val blocked = mutableListOf<Uri>()
-        for (uri in uris) {
+        pendingDelete = result
+        deleteQueue.clear()
+        deleteBlocked.clear()
+        ids.mapTo(deleteQueue) { ContentUris.withAppendedId(collection, it) }
+        continueDelete()
+    }
+
+    private fun continueDelete() {
+        val result = pendingDelete ?: return
+        // Toomu's own files go directly; other apps' files need the user's OK in a system dialog (Android 10+).
+        while (deleteQueue.isNotEmpty()) {
+            val uri = deleteQueue.removeFirst()
             try {
                 contentResolver.delete(uri, null, null)
             } catch (e: SecurityException) {
                 if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && e is RecoverableSecurityException) {
-                    // Android 10: ask for this file, then retry in onActivityResult.
-                    pendingDelete = result
-                    pendingDeleteUris = listOf(uri)
+                    // Android 10 asks one file at a time: the rest carry on in onActivityResult.
+                    askedUri = uri
                     @Suppress("DEPRECATION")
                     startIntentSenderForResult(e.userAction.actionIntent.intentSender, deleteRequestCode, null, 0, 0, 0)
                     return
                 }
-                blocked += uri
+                deleteBlocked += uri
             }
         }
-        if (blocked.isEmpty()) {
+        if (deleteBlocked.isEmpty()) {
+            pendingDelete = null
             result.success(true)
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11+: one system dialog for all of them; it deletes on "Allow".
-            pendingDelete = result
-            pendingDeleteUris = emptyList()
-            val request = MediaStore.createDeleteRequest(contentResolver, blocked)
+            val request = MediaStore.createDeleteRequest(contentResolver, deleteBlocked.toList())
             @Suppress("DEPRECATION")
             startIntentSenderForResult(request.intentSender, deleteRequestCode, null, 0, 0, 0)
         } else {
+            pendingDelete = null
+            deleteBlocked.clear()
             result.error("PERMISSION", "Not allowed to delete this file", null)
         }
     }
@@ -477,14 +502,21 @@ class MainActivity : AudioServiceActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != deleteRequestCode) return
         val result = pendingDelete ?: return
-        pendingDelete = null
-        if (resultCode == RESULT_OK) {
-            pendingDeleteUris.forEach { runCatching { contentResolver.delete(it, null, null) } }
-            result.success(true)
-        } else {
+        val asked = askedUri
+        askedUri = null
+        if (resultCode != RESULT_OK) {
+            pendingDelete = null
+            deleteQueue.clear()
+            deleteBlocked.clear()
             result.success(false)
+        } else if (asked != null) {
+            runCatching { contentResolver.delete(asked, null, null) }
+            continueDelete()
+        } else {
+            pendingDelete = null
+            deleteBlocked.clear()
+            result.success(true)
         }
-        pendingDeleteUris = emptyList()
     }
 
     private fun runAsync(result: MethodChannel.Result, block: () -> Any?) {

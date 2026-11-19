@@ -11,17 +11,26 @@ import '../../../../data/providers/local_video_provider.dart';
 import '../../../../data/repositories/video_resume_repository.dart';
 import '../../../../widgets/app_group.dart';
 import '../../../../widgets/track_artwork.dart';
+import '../../../../widgets/round_icon_button.dart';
+import '../../../../widgets/selection_header.dart';
 import '../../controllers/videos_controller.dart';
 
 /// Thumbnail with duration badge and watched-progress bar, title, details.
 class VideoTile extends StatelessWidget {
-  const VideoTile({required this.video, required this.onTap, super.key});
+  const VideoTile({required this.video, required this.onTap, this.onMenu, this.selection, super.key});
 
   final VideoItem video;
   final VoidCallback onTap;
+  final VoidCallback? onMenu;
+  final Selection? selection;
 
   @override
   Widget build(BuildContext context) {
+    final selection = this.selection;
+    return selection == null ? _tile(context, false) : Obx(() => _tile(context, selection.active));
+  }
+
+  Widget _tile(BuildContext context, bool selecting) {
     final double scale = context.scale;
     final Color ink = ColorConstants.textOn(context.isDark);
     final details = [
@@ -30,7 +39,8 @@ class VideoTile extends StatelessWidget {
     ].whereType<String>().join(' • ');
 
     return InkWell(
-      onTap: onTap,
+      onTap: selecting ? () => selection!.toggle(video.uri) : onTap,
+      onLongPress: selection == null ? onMenu : () => selection!.toggle(video.uri),
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: 16 * scale,
@@ -69,6 +79,10 @@ class VideoTile extends StatelessWidget {
                 ],
               ),
             ),
+            if (selecting)
+              SelectionMark(selected: selection!.contains(video.uri))
+            else if (onMenu != null)
+              RoundIconButton(icon: Icons.more_vert_rounded, size: 36, tooltip: 'More', onTap: onMenu!),
           ],
         ),
       ),

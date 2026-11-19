@@ -44,6 +44,7 @@ class VideoSessionService extends GetxService {
 
   /// A video is loaded (player screen open, or playing in the background).
   bool _active = false;
+  bool private = false; // private folder: nothing of it may outlive the player or show outside the PIN
 
   final items = <VideoItem>[].obs;
   final index = 0.obs;
@@ -133,6 +134,7 @@ class VideoSessionService extends GetxService {
     }
 
     if (_active) _savePosition();
+    private = args.private;
     _releaseDetails(args.items);
     items.assignAll(args.items);
     index.value = args.index.clamp(0, args.items.length - 1);
@@ -240,13 +242,18 @@ class VideoSessionService extends GetxService {
     // Up next: the new screen attaches before the replaced one closes; that one must not end the new video.
     if (screen != null && !identical(screen, _screen)) return;
     _screen = null;
-    if (keepPlaying && _active) {
+    if (keepPlaying && _active && !private) {
       inBackground.value = true;
       minimized.value = minimize;
       if (!minimize) setVideoEnabled(false); // audio only until the player is reopened
       return;
     }
     await stop();
+  }
+
+  Future<void> stopIfPlaying(Iterable<String> paths) async {
+    final path = current?.path;
+    if (_active && path != null && paths.contains(path)) await stop();
   }
 
   /// Ends the session (mini bar ✕, notification Close, music starting…).
@@ -471,7 +478,7 @@ class VideoSessionService extends GetxService {
   Future<void> _syncMediaOnce() async {
     final item = current;
     if (!_active || item == null) return;
-    final enabled = SettingsService.to.videoBackgroundPlay.value;
+    final enabled = SettingsService.to.videoBackgroundPlay.value && !private;
     if (!enabled) {
       if (_mediaOn) await _stopMedia();
       return;
@@ -538,7 +545,8 @@ class VideoSessionService extends GetxService {
 
   void _savePosition({bool finished = false}) {
     final item = current;
-    if (!_active || item == null) return;
+    // Private files leave no trace in the resume positions, which Android backs up.
+    if (!_active || item == null || private) return;
     final total = player.state.duration;
     VideoResumeRepository.instance.save(item.resumeKey, finished ? total : player.state.position, total);
   }

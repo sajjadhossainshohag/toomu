@@ -25,5 +25,6 @@ Future<void> openInExplorer(String path) async {
 /// Opens a finished download with the app the system picks for it.
 Future<void> openFile(String path) async {
   if (HostOs.isWindows) return openInExplorer(path);
-  await openWithAndroid(path);
+  final result = await openWithAndroid(path);
+  if (result is OpenResult && result.type != ResultType.done) throw FileSystemException(result.message, path);
 }

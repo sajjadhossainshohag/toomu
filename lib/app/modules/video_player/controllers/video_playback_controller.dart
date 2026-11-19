@@ -26,10 +26,15 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart' show ClosedCapti
 
 /// What to play: a list (e.g. a folder) and where to start.
 class VideoPlaylist {
-  const VideoPlaylist(this.items, [this.index = 0, this.resolve]);
+  const VideoPlaylist(this.items, [this.index = 0, this.resolve]) : private = false;
+
+  const VideoPlaylist.private(this.items, this.index)
+      : resolve = null,
+        private = true;
 
   final List<VideoItem> items;
   final int index;
+  final bool private;
 
   // Set when items[index] is only a placeholder (title and YouTube id): the player opens at once and looks up
   // the stream itself.
@@ -182,7 +187,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
           _streamFailed(force: true);
           return;
         }
-        _resume.save(current.resumeKey, duration.value, duration.value); // finished
+        if (!_session.private) _resume.save(current.resumeKey, duration.value, duration.value); // finished
         if (hasNext) next();
       }),
       player.stream.error.listen((e) {
@@ -196,7 +201,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       }),
       player.stream.height.listen((_) => _syncAspect()),
     ]);
-    _platform.invokeMethod<bool>('pipSupported').then((v) => pipSupported.value = v ?? false);
+    _platform.invokeMethod<bool>('pipSupported').then((v) => pipSupported.value = (v ?? false) && !_session.private);
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (_) => _savePosition(onlyIfMoved: true));
     if (rejoined) {
       // Back from the mini bar: same file, keep playing where it is.
@@ -245,7 +250,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     // really gone (Home without PiP, screen off): keep playing only with
     // background play on, otherwise pause like MX.
     if (inPip.value) return;
-    if (!backgroundPlay.value) {
+    if (!backgroundPlay.value || _session.private) {
       player.pause();
     } else {
       // Audio only while nobody can see it: decoding and drawing frames
@@ -266,7 +271,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       'width': w == 0 ? 16 : w,
       'height': h == 0 ? 9 : h,
       'playing': playing.value,
-      'autoEnter': _settings.videoAutoPip.value && playing.value,
+      'autoEnter': _settings.videoAutoPip.value && playing.value && !_session.private,
     });
     _session.syncMedia();
   }
@@ -280,7 +285,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       'width': w == 0 ? 16 : w,
       'height': h == 0 ? 9 : h,
       'playing': playing.value,
-      'autoEnter': _settings.videoAutoPip.value && playing.value,
+      'autoEnter': _settings.videoAutoPip.value && playing.value && !_session.private,
     });
   }
 
@@ -479,7 +484,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   // Each save rewrites the whole storage file, so a paused video isn't
   // saved again and again.
   void _savePosition({bool onlyIfMoved = false}) {
-    if (items.isEmpty || duration.value == Duration.zero) return;
+    if (_session.private || items.isEmpty || duration.value == Duration.zero) return;
     final key = current.resumeKey;
     final at = position.value;
     if (onlyIfMoved && key == _savedKey && at == _savedAt) return;
@@ -642,8 +647,8 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   void back() => watching ? minimize() : exit();
 
   void minimize() {
-    // Still looking the stream up: there is nothing to keep playing in the corner yet.
-    if (current.uri.isEmpty) {
+    // Still looking the stream up: there is nothing to keep playing in the corner yet. Private files never go there.
+    if (current.uri.isEmpty || _session.private) {
       exit();
       return;
     }

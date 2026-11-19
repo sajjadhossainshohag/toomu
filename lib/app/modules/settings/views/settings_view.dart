@@ -5,6 +5,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:get/get.dart';
 
 import '../../../core/utils/host_os.dart';
+import '../../private_folder/controllers/private_folder_controller.dart';
 import '../../../core/theme/color_constants.dart';
 import '../../../core/theme/design_metrics.dart';
 import '../../../core/values/app_constants.dart';
@@ -135,6 +136,12 @@ class SettingsView extends GetView<SettingsController> {
                         onTap: controller.showFolder,
                       ),
                       ],
+                      const AppRow(
+                        icon: Icons.lock_rounded,
+                        tint: ColorConstants.tileFolder,
+                        label: 'Private folder',
+                        onTap: openPrivateFolder,
+                      ),
                       AppRow(
                         icon: Icons.cleaning_services_rounded,
                         tint: ColorConstants.tileFolder,
