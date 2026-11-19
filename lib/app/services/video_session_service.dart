@@ -184,17 +184,7 @@ class VideoSessionService extends GetxService {
         bufferSize: DeviceProfile.lowEnd ? 16 << 20 : 32 << 20,
       ),
     );
-    // media_kit's Android default (vo=gpu, hwdec=auto-safe) can't hand the decoder a surface ("h264_mediacodec:
-    // Both surface and native_window are NULL") and falls back to copying every frame. Direct has no software
-    // fallback: a codec the phone can't decode in hardware shows no picture, hence a test switch for now.
-    final direct = Platform.isAndroid && SettingsService.to.directVideoDecoding.value;
-    _video = VideoController(
-      _player!,
-      configuration: direct
-          ? const VideoControllerConfiguration(vo: 'mediacodec_embed', hwdec: 'mediacodec')
-          : const VideoControllerConfiguration(),
-    );
-    if (direct) debugPrint('[Video] direct hardware decoding (test switch)');
+    _video = VideoController(_player!);
     _configure(_player!);
     String? lastLog;
     _subs.addAll([

@@ -14,7 +14,7 @@ import '../core/utils/formatters.dart';
 import '../core/values/app_constants.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_snackbar.dart';
-import '../widgets/gradient_progress_bar.dart';
+import '../widgets/update_progress.dart';
 import 'storage_service.dart';
 
 class UpdateService extends GetxService {
@@ -30,6 +30,8 @@ class UpdateService extends GetxService {
 
   final checking = false.obs;
   final progress = RxnDouble();
+  final _received = 0.obs;
+  final _total = 0.obs;
 
   final _storage = StorageService.to;
   final _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 10)));
@@ -119,9 +121,11 @@ class UpdateService extends GetxService {
 
   Future<void> _install(AppRelease release) async {
     progress.value = 0;
+    _received.value = 0;
+    _total.value = release.apkSize;
     unawaited(showAppDialog<void>(
       title: 'Downloading update',
-      child: Obx(() => GradientProgressBar(value: progress.value ?? 1)),
+      child: Obx(() => UpdateProgress(received: _received.value, total: _total.value)),
     ));
     try {
       final path = '${(await getTemporaryDirectory()).path}/toomu-update.apk';
@@ -129,7 +133,11 @@ class UpdateService extends GetxService {
         release.apkUrl!,
         path,
         onReceiveProgress: (got, total) {
-          if (total > 0) progress.value = got / total;
+          _received.value = got;
+          if (total > 0) {
+            _total.value = total;
+            progress.value = got / total;
+          }
         },
       );
       if (Get.isDialogOpen ?? false) Get.back();

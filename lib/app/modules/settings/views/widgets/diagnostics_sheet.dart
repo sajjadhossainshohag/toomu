@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,7 +6,6 @@ import 'package:get/get.dart';
 import '../../../../core/theme/color_constants.dart';
 import '../../../../core/theme/design_metrics.dart';
 import '../../../../services/diagnostics_service.dart';
-import '../../../../services/settings_service.dart';
 import '../../../../services/ytdlp_service.dart';
 import '../../../../widgets/gradient_pill.dart';
 import '../../../../widgets/option_sheet.dart';
@@ -78,16 +76,6 @@ class DiagnosticsSheet extends StatelessWidget {
                 }),
               ),
             ),
-            if (Platform.isAndroid)
-              Obx(
-                () => SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Direct hardware decoding (test)'),
-                  subtitle: const Text('Less heat if it works. Restart the app after changing it.'),
-                  value: SettingsService.to.directVideoDecoding.value,
-                  onChanged: SettingsService.to.setDirectVideoDecoding,
-                ),
-              ),
             SizedBox(height: 12 * scale),
             Row(
               children: <Widget>[

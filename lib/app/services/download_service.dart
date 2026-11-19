@@ -15,6 +15,7 @@ import '../core/utils/error_text.dart';
 import '../core/utils/formatters.dart';
 import '../core/utils/host_os.dart';
 import '../core/utils/media_manifest.dart';
+import '../core/utils/speed_meter.dart';
 import '../core/utils/subtitles.dart';
 import '../core/values/app_constants.dart';
 import '../data/models/download_task.dart';
@@ -100,6 +101,9 @@ class DownloadService extends GetxService {
   static const linkExpiredText =
       'The link expired. Open the menu and tap "Refresh link".';
   static const _maxNetworkRetries = 20;
+
+  /// How often running downloads refresh their bytes and speed.
+  static const progressTick = Duration(milliseconds: 250);
 
   @visibleForTesting
   static Duration stallLimit = const Duration(seconds: 30);
@@ -651,20 +655,22 @@ class DownloadService extends GetxService {
     task.status.value = DownloadStatus.running;
     task.error.value = null;
     // After the status change, so the first snapshot sees this task.
-    _notifyTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+    // Progress moves 4× a second; the notification stays at once a second
+    // (Android drops faster updates).
+    _notifyTimer ??= Timer.periodic(progressTick, (t) {
       for (final tick in _speedTicks.values.toList()) {
         tick();
       }
-      _updateNotification();
+      if (t.tick % 4 == 0) _updateNotification();
     });
     _updateNotification();
 
     var current = task.receivedBytes.value;
     final startBytes = current;
-    var lastTick = current;
+    final clock = Stopwatch()..start();
+    final meter = SpeedMeter(current, Duration.zero);
     _speedTicks[task.id] = () {
-      task.speed.value = (current - lastTick).clamp(0, 1 << 40);
-      lastTick = current;
+      task.speed.value = meter.add(current, clock.elapsed);
       task.receivedBytes.value = current;
     };
     void onBytes(int b) => current = b;

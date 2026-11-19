@@ -19,7 +19,6 @@ class SettingsService extends GetxService {
   final videoAutoPip = true.obs;
 
   /// Test switch (Diagnostics): Android's decoder draws straight to the screen instead of copying every frame.
-  final directVideoDecoding = false.obs;
 
   final captureMedia = true.obs;
   final clipboardLinks = true.obs;
@@ -44,7 +43,6 @@ class SettingsService extends GetxService {
         AppConstants.defaultConnectionsPerDownload;
     videoBackgroundPlay.value = _storage.read<bool>(AppConstants.kVideoBackgroundPlay) ?? false;
     videoAutoPip.value = _storage.read<bool>(AppConstants.kVideoAutoPip) ?? true;
-    directVideoDecoding.value = _storage.read<bool>(AppConstants.kDirectVideoDecoding) ?? false;
     captureMedia.value = _storage.read<bool>(AppConstants.kCaptureMedia) ?? true;
     clipboardLinks.value = _storage.read<bool>(AppConstants.kClipboardLinks) ?? true;
     blockRedirects.value = _storage.read<bool>(AppConstants.kBlockRedirects) ?? true;
@@ -78,11 +76,6 @@ class SettingsService extends GetxService {
   void setClipboardLinks(bool v) {
     clipboardLinks.value = v;
     _storage.write(AppConstants.kClipboardLinks, v);
-  }
-
-  void setDirectVideoDecoding(bool v) {
-    directVideoDecoding.value = v;
-    _storage.write(AppConstants.kDirectVideoDecoding, v);
   }
 
   void setVideoBackgroundPlay(bool v) {
