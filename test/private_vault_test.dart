@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:toomu/app/data/models/download_task.dart';
 import 'package:toomu/app/services/private_vault.dart';
 import 'package:toomu/app/services/storage_service.dart';
@@ -12,14 +13,19 @@ void main() {
   late PrivateVault vault;
   late Directory outside;
   late StorageService store;
+  late GetStorage box;
 
   setUp(() async {
     tmp = await useTempStorageDir();
-    store = StorageService(await tempBox('private_${DateTime.now().microsecondsSinceEpoch}', tmp));
+    box = await tempBox('private_${DateTime.now().microsecondsSinceEpoch}', tmp);
+    store = StorageService(box);
     vault = PrivateVault(await Directory('${tmp.path}/private').create(), store);
     outside = await Directory('${tmp.path}/Download/Toomu/Video').create(recursive: true);
   });
-  tearDown(() => deleteTempStorageDir(tmp));
+  tearDown(() async {
+    await flushBox(box);
+    await deleteTempStorageDir(tmp);
+  });
 
   File make(String name, [String body = 'data']) => File('${outside.path}/$name')..writeAsStringSync(body);
 

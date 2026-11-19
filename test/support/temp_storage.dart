@@ -28,3 +28,12 @@ Future<GetStorage> tempBox(String name, Directory dir) async {
   await box.initStorage;
   return box;
 }
+
+/// Waits until [box] has written everything to disk. GetStorage's write()
+/// returns before its file is written (the flush runs in a later microtask,
+/// then on the box's queue), so a test that deletes the folder right after
+/// gets "Cannot create file ….bak" from the late flush.
+Future<void> flushBox(GetStorage box) async {
+  await Future<void>.delayed(Duration.zero); // lets the scheduled flush join the queue
+  await box.queue.add(() async {}); // the queue runs jobs in order
+}
