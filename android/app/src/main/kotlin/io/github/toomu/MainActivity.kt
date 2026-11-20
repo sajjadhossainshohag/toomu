@@ -24,9 +24,12 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Size
+import android.view.OrientationEventListener
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import io.flutter.embedding.android.FlutterSurfaceView
+import io.flutter.embedding.android.FlutterTextureView
 import io.flutter.embedding.android.FlutterView
 import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -64,8 +67,37 @@ class MainActivity : AudioServiceFragmentActivity() {
 
     private fun applyFollow(): Boolean {
         val auto = autoRotateOn()
-        requestedOrientation = PlayerOrientation.forAutoRotate(auto)
+        val lock = lockedLandscape
+        requestedOrientation = if (lock != null) PlayerOrientation.locked(lock) else PlayerOrientation.forAutoRotate(auto)
         return auto
+    }
+
+    /** The rotate button's choice, held until the phone is turned the same way (null: none). */
+    private var lockedLandscape: Boolean? = null
+
+    private val phoneTurns by lazy {
+        object : OrientationEventListener(this) {
+            override fun onOrientationChanged(degrees: Int) {
+                val lock = lockedLandscape ?: return disable()
+                if (!PlayerOrientation.releasesLock(lock, degrees, autoRotateOn())) return
+                lockedLandscape = null
+                disable()
+                if (followingPhone) applyFollow()
+            }
+        }
+    }
+
+    /** The rotate button: turns the screen now, follows the phone again once it is held that way. */
+    private fun rotateTo(landscape: Boolean) {
+        lockedLandscape = landscape
+        if (!followingPhone) followPhone(true) else applyFollow()
+        if (phoneTurns.canDetectOrientation()) phoneTurns.enable()
+        checkFlutterFillsWindow(0)
+    }
+
+    private fun releaseLock() {
+        lockedLandscape = null
+        phoneTurns.disable()
     }
 
     /** Returns whether auto-rotate is on (null when stopping). */
@@ -78,6 +110,7 @@ class MainActivity : AudioServiceFragmentActivity() {
             applyFollow()
         } else {
             contentResolver.unregisterContentObserver(autoRotateSetting)
+            releaseLock()
             null
         }
     }
@@ -184,27 +217,49 @@ class MainActivity : AudioServiceFragmentActivity() {
             val flutter = flutterViewIn(content) ?: return@postDelayed
             val (ww, wh) = windowBounds()
             val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-            if (StaleLayout.needsLayout(flutter.width, flutter.height, ww, wh, landscape)) {
+            val viewStale = StaleLayout.needsLayout(flutter.width, flutter.height, ww, wh, landscape)
+            val surfaces = renderSurfacesIn(flutter).filter {
+                StaleLayout.surfaceNeedsLayout(it.width, it.height, flutter.width, flutter.height)
+            }
+            if (viewStale || surfaces.isNotEmpty()) {
                 videoChannel?.invokeMethod(
                     "log",
-                    "[Screen] Flutter view ${flutter.width}x${flutter.height}, content ${content.width}x${content.height}, " +
-                        "window ${ww}x$wh, ${if (landscape) "landscape" else "portrait"} after turning: laid out again (try ${attempt + 1})",
+                    "[Screen] Flutter view ${flutter.width}x${flutter.height}" +
+                        surfaces.joinToString("") { ", surface ${it.width}x${it.height}" } +
+                        ", window ${ww}x$wh, ${if (landscape) "landscape" else "portrait"} after turning: laid out again (try ${attempt + 1})",
                 )
-                relayout(flutter, attempt)
+                relayout(flutter, surfaces, viewStale, attempt)
             }
             if (attempt + 1 < checkDelays.size) checkFlutterFillsWindow(attempt + 1, run)
         }, checkDelays[attempt])
     }
 
-    private fun relayout(flutter: View, attempt: Int) {
+    private fun relayout(flutter: View, surfaces: List<View>, viewStale: Boolean, attempt: Int) {
+        for (s in surfaces) s.forceLayout()
         var v: View? = flutter
         while (v != null) {
             v.forceLayout()
             v = v.parent as? View
         }
         window.decorView.requestLayout()
-        // Still stale: have the window manager lay the window out again (the frame itself was old).
-        if (attempt >= 1) window.attributes = window.attributes
+        if (attempt < 1) return
+        // Still stale after a layout pass. The surface: size it to the view directly (its parent's
+        // layout skipped it). The view itself: have the window manager lay the window out again.
+        for (s in surfaces) {
+            s.measure(
+                View.MeasureSpec.makeMeasureSpec(flutter.width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(flutter.height, View.MeasureSpec.EXACTLY),
+            )
+            s.layout(0, 0, flutter.width, flutter.height)
+        }
+        if (viewStale) window.attributes = window.attributes
+    }
+
+    /** What Flutter draws into; FlutterView's other children (platform views) have their own sizes. */
+    private fun renderSurfacesIn(flutter: View): List<View> {
+        val group = flutter as? ViewGroup ?: return emptyList()
+        return (0 until group.childCount).map { group.getChildAt(it) }
+            .filter { it is FlutterSurfaceView || it is FlutterTextureView }
     }
 
     private fun flutterViewIn(v: View): View? {
@@ -373,9 +428,9 @@ class MainActivity : AudioServiceFragmentActivity() {
                     "pipSupported" -> result.success(pipSupported())
                     // The player follows the phone (on) or stops before it locks the screen itself (off).
                     "followPhone" -> result.success(followPhone(call.argument<Boolean>("on") == true))
-                    // The rotate button: also checked when no configuration change arrives.
-                    "checkLayout" -> {
-                        checkFlutterFillsWindow(0)
+                    // The rotate button on Android: held until the phone is turned that way.
+                    "rotateTo" -> {
+                        rotateTo(call.argument<Boolean>("landscape") == true)
                         result.success(null)
                     }
                     "clock" -> result.success(
@@ -830,6 +885,7 @@ class MainActivity : AudioServiceFragmentActivity() {
     override fun onDestroy() {
         VideoMediaBridge.listener = null
         if (followingPhone) contentResolver.unregisterContentObserver(autoRotateSetting)
+        releaseLock()
         stopService(Intent(this, VideoBackgroundService::class.java))
         super.onDestroy()
     }

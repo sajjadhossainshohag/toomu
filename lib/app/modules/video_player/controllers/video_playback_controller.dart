@@ -635,7 +635,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     );
   }
 
-  /// Before the player sets the orientation itself (rotate button, leaving).
+  /// Before the player sets the orientation itself (leaving; the rotate button off Android).
   void _stopFollowingPhone() {
     if (Platform.isAndroid) unawaited(_platform.invokeMethod<void>('followPhone', {'on': false}).catchError((_) {}));
   }
@@ -649,16 +649,26 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   }
 
   void rotate() {
+    final landscape = !_viewIsLandscape;
+    showControls();
+    if (Platform.isAndroid) {
+      // Like YouTube: the choice holds until the phone is turned that way, then the screen follows the
+      // phone again (auto-rotate on). MainActivity also lays Flutter's view out again if a phone
+      // (Realme) kept its old size after turning.
+      _platform.invokeMethod<void>('rotateTo', {'landscape': landscape}).catchError((Object e) {
+        debugPrint('[Video] rotate failed: $e');
+        _rotateWithFlutter(landscape);
+      });
+      return;
+    }
+    _rotateWithFlutter(landscape);
+  }
+
+  void _rotateWithFlutter(bool landscape) {
     _stopFollowingPhone();
     SystemChrome.setPreferredOrientations(
-      _viewIsLandscape
-          ? [DeviceOrientation.portraitUp]
-          : [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
+      landscape ? [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight] : [DeviceOrientation.portraitUp],
     );
-    // Some phones (Realme) kept Flutter's view at the old size after turning: MainActivity checks
-    // and lays it out again, even when no configuration change arrives.
-    if (Platform.isAndroid) unawaited(_platform.invokeMethod<void>('checkLayout').catchError((_) {}));
-    showControls();
   }
 
   /// Leaving: turn upright *before* the screen closes. Turning during the

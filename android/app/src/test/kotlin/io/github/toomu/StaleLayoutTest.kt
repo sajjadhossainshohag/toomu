@@ -22,11 +22,26 @@ class StaleLayoutTest {
     }
 
     @Test
+    fun `picture stuck in a corner after turning is caught when only Flutter's surface kept the old size`() {
+        // Emulator (and Realme) after turning: window, content and FlutterView all 1080x2400, the
+        // FlutterSurfaceView inside still 2400x1080, so the app drew sideways in the top-left corner.
+        assertTrue(StaleLayout.surfaceNeedsLayout(2400, 1080, viewWidth = 1080, viewHeight = 2400))
+        assertTrue(StaleLayout.surfaceNeedsLayout(1080, 2400, viewWidth = 2400, viewHeight = 1080))
+        assertFalse(StaleLayout.surfaceNeedsLayout(1080, 2400, viewWidth = 1080, viewHeight = 2400))
+    }
+
+    @Test
     fun `a view that fills the window is left alone`() {
         assertFalse(StaleLayout.isStale(2400, 1080, 2400, 1080))
         assertFalse(StaleLayout.isStale(2399, 1080, 2400, 1080)) // rounding
         assertFalse(StaleLayout.needsLayout(2400, 1080, 2400, 1080, landscape = true))
         assertFalse(StaleLayout.needsLayout(1080, 2400, 1080, 2400, landscape = false))
+    }
+
+    @Test
+    fun `a view a little smaller than the window (system bars, cutout) is left alone`() {
+        assertFalse(StaleLayout.needsLayout(2280, 1080, windowWidth = 2400, windowHeight = 1080, landscape = true))
+        assertFalse(StaleLayout.needsLayout(1080, 2274, windowWidth = 1080, windowHeight = 2400, landscape = false))
     }
 
     @Test
