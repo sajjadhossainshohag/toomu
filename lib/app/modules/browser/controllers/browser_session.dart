@@ -9,6 +9,7 @@ import '../../../services/browser_store.dart';
 import '../../../widgets/app_snackbar.dart';
 import '../ad_blocker.dart';
 import '../address.dart';
+import '../incognito.dart';
 import '../tab_session.dart';
 import 'browser_controller.dart';
 
@@ -26,6 +27,9 @@ class BrowserSession extends GetxController {
   /// Tabs with a WebView right now.
   final live = <String>{}.obs;
   final showingSwitcher = false.obs;
+
+  /// The switcher shows the incognito tabs (else the normal ones).
+  final switcherIncognito = false.obs;
 
   late final TabSession _order = TabSession(maxLive: DeviceProfile.lowEnd ? 2 : 4);
   Timer? _saveTimer;
@@ -73,6 +77,8 @@ class BrowserSession extends GetxController {
     for (final c in [...tabs]) {
       _forget(c, now: true);
     }
+    // Incognito tabs don't outlive the browser.
+    Incognito.end();
     forgetAdHidingJs();
     FilterLists.browserClosed();
     super.onClose();
@@ -92,7 +98,11 @@ class BrowserSession extends GetxController {
 
   BrowserController _register(BrowserController c) {
     Get.put(c, tag: c.id);
-    c.openTab = (url, {required background}) => newTab(url: url, opener: c, background: background);
+    // A link from an incognito tab opens incognito too.
+    c.openTab = (url, {required background}) =>
+        newTab(url: url, opener: c, background: background, incognito: c.incognito);
+    c.closeTab = () => close(c);
+    c.openIncognito = (url) => unawaited(newIncognitoTab(url: url));
     c.onRefreshed = () => identical(c, _openedFor) ? Get.back<void>() : close(c);
     _workers[c.id] = [
       for (final rx in <RxInterface<Object?>>[c.url, c.title, c.showingNewTab]) ever(rx, (_) => _save()),
@@ -107,8 +117,10 @@ class BrowserSession extends GetxController {
     BrowserController? opener,
     bool background = false,
     DownloadTask? refreshFor,
+    bool incognito = false,
   }) {
-    final c = _register(BrowserController(url: url, refreshFor: refreshFor));
+    if (incognito) Incognito.session; // starts one if none is going
+    final c = _register(BrowserController(url: url, refreshFor: refreshFor, incognito: incognito));
     if (background) c.foreground = false;
     _order.open(c.id, opener: opener?.id, background: true);
     _syncOrder();
@@ -130,6 +142,19 @@ class BrowserSession extends GetxController {
     }
     _save();
     return c;
+  }
+
+  /// The menu's "New incognito tab". Android needs a WebView that can keep incognito data apart.
+  Future<void> newIncognitoTab({String url = newTabUrl}) async {
+    if (!await Incognito.supported()) {
+      showSnack(
+        'Incognito needs a newer WebView',
+        'Update "Android System WebView" from the Play Store, then try again.',
+        duration: const Duration(seconds: 5),
+      );
+      return;
+    }
+    newTab(url: url, incognito: true);
   }
 
   /// Shows tab [c]; the one shown before goes to the background with a
@@ -182,24 +207,49 @@ class BrowserSession extends GetxController {
       activate(tabs.firstWhere((t) => t.id == next));
     }
     showingSwitcher.value = switcher || tabs.isEmpty;
+    _endIncognitoIfDone();
     _save();
   }
 
-  void closeAll() {
-    for (final c in [...tabs]) {
+  /// Closes every tab, or only the normal or the [incognito] ones (the switcher's "Close all").
+  void closeAll({bool? incognito}) {
+    final closing = [
+      for (final c in tabs)
+        if (incognito == null || c.incognito == incognito) c,
+    ];
+    final wasShown = closing.contains(active.value);
+    for (final c in closing) {
+      _order.close(c.id);
+      live.remove(c.id);
       _forget(c);
     }
-    _order.closeAll();
-    tabs.clear();
-    live.clear();
-    active.value = null;
+    tabs.removeWhere(closing.contains);
+    // The tab the session moved to, if the shown one closed and others are left.
+    final next = _order.activeId;
+    if (next == null) {
+      active.value = null;
+    } else if (wasShown) {
+      activate(tabs.firstWhere((t) => t.id == next));
+    }
     showingSwitcher.value = true;
+    _endIncognitoIfDone();
     _save();
   }
+
+  void _endIncognitoIfDone() {
+    if (!tabs.any((t) => t.incognito)) Incognito.end();
+  }
+
+  /// The tabs the switcher and the tab count show: incognito or normal.
+  List<BrowserController> tabsOf({required bool incognito}) => [
+    for (final t in tabs)
+      if (t.incognito == incognito) t,
+  ];
 
   /// Opens at once; the shown page's picture fills in when it's taken.
   void openSwitcher() {
     unawaited(active.value?.snapshot());
+    switcherIncognito.value = active.value?.incognito ?? switcherIncognito.value;
     FocusManager.instance.primaryFocus?.unfocus();
     showingSwitcher.value = true;
   }
@@ -232,11 +282,11 @@ class BrowserSession extends GetxController {
     _saveTimer = Timer(const Duration(seconds: 1), _saveNow);
   }
 
-  /// Refresh-link tabs are a one-off errand: not brought back next time.
+  /// Refresh-link tabs are a one-off errand and incognito ones private: not brought back next time.
   void _saveNow() {
     final kept = [
       for (final c in tabs)
-        if (c.refreshFor == null) c,
+        if (c.refreshFor == null && !c.incognito) c,
     ];
     final list = [for (final c in kept) (url: c.tabUrl, title: c.tabTitle)];
     // The shown tab may be the refresh tab (not saved): then the last one.

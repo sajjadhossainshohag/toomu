@@ -1,6 +1,7 @@
 /// What a long-pressed link offers (Chrome's link menu).
 enum LinkAction {
   openNewTab('Open in new tab'),
+  openIncognito('Open in incognito tab'),
   copyAddress('Copy link address'),
   copyText('Copy link text'),
   download('Download link'),
@@ -30,9 +31,11 @@ class PageLink {
 }
 
 /// Web links get everything; mailto:, tel: and the like can only be
-/// copied or shared (they don't open as pages or download).
-List<LinkAction> linkActions(PageLink link) => [
+/// copied or shared (they don't open as pages or download). In an [incognito] tab "Open in new tab" is
+/// incognito already.
+List<LinkAction> linkActions(PageLink link, {bool incognito = false}) => [
   if (link.isWebLink) LinkAction.openNewTab,
+  if (link.isWebLink && !incognito) LinkAction.openIncognito,
   LinkAction.copyAddress,
   if (link.text.trim().isNotEmpty) LinkAction.copyText,
   if (link.isWebLink) LinkAction.download,

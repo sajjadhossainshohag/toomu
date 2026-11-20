@@ -14,9 +14,14 @@ typedef PageMenuEntry = ({String label, Object action});
 
 /// The rows for a long press: the link's, then the picture's (an image
 /// inside a link gets both, like Chrome).
-List<PageMenuEntry> pageMenuEntries({PageLink? link, PageImage? image, required bool canCopyImage}) => [
+List<PageMenuEntry> pageMenuEntries({
+  PageLink? link,
+  PageImage? image,
+  required bool canCopyImage,
+  bool incognito = false,
+}) => [
   if (link != null)
-    for (final a in linkActions(link)) (label: a.label, action: a),
+    for (final a in linkActions(link, incognito: incognito)) (label: a.label, action: a),
   if (image != null)
     for (final a in imageActions(image, canCopyImage: canCopyImage)) (label: a.label, action: a),
 ];

@@ -8,6 +8,7 @@ import '../../../services/browser_store.dart';
 import '../../../services/remote_config_service.dart';
 import '../controllers/browser_controller.dart';
 import 'site_icon.dart';
+import 'tab_switcher.dart';
 
 /// Chrome's new-tab page: a search box, Toomu's site shortcuts and your
 /// most visited sites.
@@ -71,20 +72,23 @@ class NewTabPage extends StatelessWidget {
       child: ListView(
         padding: EdgeInsets.fromLTRB(20 * scale, 36 * scale, 20 * scale, 24 * scale),
         children: <Widget>[
-          Center(
-            child: ShaderMask(
-              shaderCallback: (r) => brand.headerGradient.createShader(r),
-              child: Text(
-                'Toomu',
-                style: TextStyle(
-                  fontSize: 40 * scale,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: -1,
+          if (tab.incognito)
+            _IncognitoNote(scale: scale, ink: ink, primary: brand.primary)
+          else
+            Center(
+              child: ShaderMask(
+                shaderCallback: (r) => brand.headerGradient.createShader(r),
+                child: Text(
+                  'Toomu',
+                  style: TextStyle(
+                    fontSize: 40 * scale,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: -1,
+                  ),
                 ),
               ),
             ),
-          ),
           SizedBox(height: 22 * scale),
           // Tapping the box types in the address bar, like Chrome's.
           GestureDetector(
@@ -124,27 +128,57 @@ class NewTabPage extends StatelessWidget {
                 ),
             ]),
           ),
-          Obx(() {
-            BrowserStore.to.historyVersion.value;
-            final top = BrowserStore.to.history.mostVisited(8);
-            if (top.isEmpty) return const SizedBox.shrink();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                heading('Most visited'),
-                grid([
-                  for (final v in top)
-                    tile(
-                      icon: SiteIcon(url: v.url, size: 26),
-                      label: Uri.parse(v.url).host.replaceFirst(RegExp(r'^(www|m)\.'), ''),
-                      onTap: () => tab.navigate(v.url),
-                    ),
-                ]),
-              ],
-            );
-          }),
+          // Incognito shows nothing from your history.
+          if (!tab.incognito)
+            Obx(() {
+              BrowserStore.to.historyVersion.value;
+              final top = BrowserStore.to.history.mostVisited(8);
+              if (top.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  heading('Most visited'),
+                  grid([
+                    for (final v in top)
+                      tile(
+                        icon: SiteIcon(url: v.url, size: 26),
+                        label: Uri.parse(v.url).host.replaceFirst(RegExp(r'^(www|m)\.'), ''),
+                        onTap: () => tab.navigate(v.url),
+                      ),
+                  ]),
+                ],
+              );
+            }),
         ],
       ),
     );
   }
+}
+
+/// The incognito new-tab page's heading: what incognito keeps and doesn't.
+class _IncognitoNote extends StatelessWidget {
+  const _IncognitoNote({required this.scale, required this.ink, required this.primary});
+
+  final double scale;
+  final Color ink;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: <Widget>[
+      Icon(incognitoIcon, size: 44 * scale, color: primary),
+      SizedBox(height: 10 * scale),
+      Text(
+        "You've gone incognito",
+        style: TextStyle(fontSize: 22 * scale, fontWeight: FontWeight.w800, color: ink),
+      ),
+      SizedBox(height: 8 * scale),
+      Text(
+        "Pages you open in incognito tabs aren't saved in your history, and sign-ins, cookies and site data are "
+        'deleted when you close the last incognito tab. Downloads and bookmarks are kept.',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 13.5 * scale, height: 1.4, color: ink.withValues(alpha: 0.65)),
+      ),
+    ],
+  );
 }

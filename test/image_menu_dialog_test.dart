@@ -47,6 +47,7 @@ void main() {
       'Avatar: The Last Airbender',
       'https://movies.example.com/avatar',
       'Open in new tab',
+      'Open in incognito tab',
       'Copy link address',
       'Copy link text',
       'Download link',
@@ -60,6 +61,7 @@ void main() {
     final entries = pageMenuEntries(link: link, image: web, canCopyImage: true);
     expect(entries.map((e) => e.action), [
       LinkAction.openNewTab,
+      LinkAction.openIncognito,
       LinkAction.copyAddress,
       LinkAction.copyText,
       LinkAction.download,

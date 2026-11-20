@@ -147,6 +147,8 @@ dependencies {
     implementation("androidx.core:core:1.13.1")
     // AppCompat themes: the fingerprint prompt crashes without one on Android 7-8.
     implementation("androidx.appcompat:appcompat:1.7.0")
+    // WebView profiles: incognito tabs' own cookies and site data (the WebView plugin uses the same version).
+    implementation("androidx.webkit:webkit:1.12.0")
 
     testImplementation("junit:junit:4.13.2")
 }

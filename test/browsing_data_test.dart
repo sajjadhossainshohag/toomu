@@ -189,12 +189,19 @@ void main() {
       const l = PageLink(href: 'https://a.com/x', text: 'Read more');
       expect(linkActions(l), [
         LinkAction.openNewTab,
+        LinkAction.openIncognito,
         LinkAction.copyAddress,
         LinkAction.copyText,
         LinkAction.download,
         LinkAction.share,
       ]);
       expect(l.title, 'Read more');
+    });
+
+    test('in an incognito tab a new tab is already incognito: no second "open" item', () {
+      const l = PageLink(href: 'https://a.com/x');
+      expect(linkActions(l, incognito: true), isNot(contains(LinkAction.openIncognito)));
+      expect(linkActions(l, incognito: true).first, LinkAction.openNewTab);
     });
 
     test('mail and phone links can only be copied or shared; no text, no "Copy link text"', () {

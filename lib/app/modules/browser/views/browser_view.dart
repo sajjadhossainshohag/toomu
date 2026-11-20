@@ -372,6 +372,13 @@ class _TopBar extends StatelessWidget {
               ),
               child: Row(
                 children: <Widget>[
+                  if (tab.incognito) ...<Widget>[
+                    Tooltip(
+                      message: 'Incognito',
+                      child: Icon(incognitoIcon, size: 17 * scale, color: BrandColors.of(context).primary),
+                    ),
+                    SizedBox(width: 6 * scale),
+                  ],
                   Icon(
                     editing || !page
                         ? Icons.search_rounded
@@ -392,6 +399,8 @@ class _TopBar extends StatelessWidget {
                         textInputAction: TextInputAction.go,
                         autocorrect: false,
                         enableSuggestions: false,
+                        // Incognito: the keyboard doesn't learn what's typed (Gboard shows its incognito mode).
+                        enableIMEPersonalizedLearning: !tab.incognito,
                         onChanged: tab.onAddressChanged,
                         onSubmitted: tab.submit,
                         style: TextStyle(fontSize: 14 * scale, fontWeight: FontWeight.w500, color: ink),

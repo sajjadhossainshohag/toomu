@@ -371,6 +371,8 @@ class MainActivity : AudioServiceFragmentActivity() {
             ytDlp = YtDlpBridge(applicationContext, messenger)
             ytDlpEngine = flutterEngine
         }
+        // Incognito browser tabs' own WebView profile.
+        IncognitoBridge(flutterEngine)
 
         // Links shared to Toomu ("Download with Toomu") and bubble taps.
         pendingIntent = payloadOf(intent)

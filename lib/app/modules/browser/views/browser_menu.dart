@@ -10,6 +10,7 @@ import '../controllers/browser_session.dart';
 import 'bookmarks_page.dart';
 import 'downloads_sheet.dart';
 import 'history_page.dart';
+import 'tab_switcher.dart';
 
 /// Chrome's ⋮ menu: a row of page buttons (forward, bookmark, share,
 /// reload), then the browser's commands.
@@ -131,6 +132,7 @@ class BrowserMenu extends StatelessWidget {
                       Divider(height: 1, color: ink.withValues(alpha: 0.08)),
                       SizedBox(height: 4 * scale),
                       item(Icons.add_box_outlined, 'New tab', session.newTab),
+                      item(incognitoIcon, 'New incognito tab', session.newIncognitoTab),
                       item(Icons.history_rounded, 'History', () => Get.to<void>(() => HistoryPage(session: session))),
                       item(
                         Icons.star_outline_rounded,

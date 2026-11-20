@@ -34,6 +34,7 @@ import '../../video_player/controllers/video_playback_controller.dart';
 import '../ad_blocker.dart';
 import '../address.dart';
 import '../engine_notice.dart';
+import '../incognito.dart';
 import '../link_menu.dart';
 import '../tab_session.dart';
 import '../image_menu.dart';
@@ -52,11 +53,24 @@ import '../views/media_sheet.dart';
 /// an extractor supports, the Download button appears. BrowserSession
 /// owns the tabs.
 class BrowserController extends GetxController {
-  BrowserController({String url = newTabUrl, this.refreshFor, String? id})
+  BrowserController({String url = newTabUrl, this.refreshFor, String? id, this.incognito = false})
     : initialUrl = refreshFor?.pageUrl ?? url,
       id = id ?? newTabId();
 
   final String id;
+
+  /// An incognito tab: its own cookies and site data (see [Incognito]), no history, not brought back next time.
+  final bool incognito;
+
+  /// Android: the page waits until the WebView is in the incognito profile (its first load would use normal
+  /// tabs' cookies), so the WebView starts empty and [onCreated] loads it.
+  bool get loadsAfterCreated => incognito && HostOs.isAndroid;
+
+  /// Set by the session: opens [url] in a new incognito tab.
+  void Function(String url)? openIncognito;
+
+  /// Set by the session: closes this tab.
+  VoidCallback? closeTab;
 
   // Opened from a download whose link expired: find the same file again.
   final DownloadTask? refreshFor;
@@ -148,6 +162,8 @@ class BrowserController extends GetxController {
     // Ad blocking asks about every request (Android only; Windows' WebView2
     // gets the ad-hiding style alone).
     useShouldInterceptRequest: blockAds && Platform.isAndroid,
+    // Windows: WebView2's InPrivate mode (Android uses a WebView profile, see Incognito).
+    incognito: incognito && HostOs.isWindows,
   );
 
   /// Built for each new WebView (a dropped tab's page is rebuilt later):
@@ -213,6 +229,7 @@ class BrowserController extends GetxController {
       _lifecycle ??= AppLifecycleListener(onHide: () => unawaited(_run(false)), onShow: () => unawaited(_run(true)));
     }
     _loading(restoreUrl);
+    if (loadsAfterCreated) unawaited(_loadIncognito(c));
     if (blockAds) {
       c.addJavaScriptHandler(
         handlerName: 'toomuCss',
@@ -240,6 +257,23 @@ class BrowserController extends GetxController {
     );
   }
 
+  Future<void> _loadIncognito(InAppWebViewController c) async {
+    if (!await Incognito.attach(c)) {
+      showSnack(
+        "Couldn't open an incognito tab",
+        'Update "Android System WebView" from the Play Store, then try again.',
+        duration: const Duration(seconds: 5),
+      );
+      closeTab?.call();
+      return;
+    }
+    if (identical(web, c) && restoreUrl.isNotEmpty) await c.loadUrl(urlRequest: URLRequest(url: WebUri(restoreUrl)));
+  }
+
+  /// Cookies the page's site set, for a download from this tab.
+  Future<String> _cookies(String url) =>
+      incognito ? Incognito.cookies(url, web) : DownloadService.webCookies(url);
+
   void onLoadStart(WebUri? u) {
     if (u != null) _loading(u.toString());
     engineNotice.value = null;
@@ -263,11 +297,13 @@ class BrowserController extends GetxController {
     // The title may have come before the address (see onTitle): ask the
     // page. If it comes after, onTitle sets it then.
     final page = url.value;
-    BrowserStore.to.visit(page, '');
-    try {
-      final t = await web?.getTitle();
-      if (t != null && t.isNotEmpty) BrowserStore.to.retitle(page, t);
-    } catch (_) {}
+    if (!incognito) {
+      BrowserStore.to.visit(page, '');
+      try {
+        final t = await web?.getTitle();
+        if (t != null && t.isNotEmpty) BrowserStore.to.retitle(page, t);
+      } catch (_) {}
+    }
     canGoBack.value = await web?.canGoBack() ?? false;
     canGoForward.value = await web?.canGoForward() ?? false;
   }
@@ -356,6 +392,7 @@ class BrowserController extends GetxController {
   /// the last address we heard of.
   Future<void> onTitle(String? t) async {
     title.value = t ?? '';
+    if (incognito) return;
     final shown = title.value;
     String page = url.value;
     try {
@@ -846,7 +883,7 @@ class BrowserController extends GetxController {
   Future<void> preview(CapturedMedia m) async {
     // The player sends these headers with every piece and key of a stream,
     // whatever their host, so a stream gets no cookies.
-    final cookies = m.isStream ? '' : await DownloadService.webCookies(m.url);
+    final cookies = m.isStream ? '' : await _cookies(m.url);
     await _run(false);
     await Get.toNamed(
       Routes.videoPlayer,
@@ -905,7 +942,7 @@ class BrowserController extends GetxController {
     final picked = await showPageMenu(
       link: link,
       image: image,
-      entries: pageMenuEntries(link: link, image: image, canCopyImage: HostOs.isAndroid),
+      entries: pageMenuEntries(link: link, image: image, canCopyImage: HostOs.isAndroid, incognito: incognito),
     );
     if (picked is LinkAction) await runLinkAction(link!, picked);
     if (picked is ImageAction) await runImageAction(image!, picked);
@@ -927,6 +964,8 @@ class BrowserController extends GetxController {
       switch (action) {
         case LinkAction.openNewTab:
           openTab?.call(link.href, background: true);
+        case LinkAction.openIncognito:
+          openIncognito?.call(link.href);
         case LinkAction.copyAddress:
           await Clipboard.setData(ClipboardData(text: link.href));
           showSnack('Link copied', displayAddress(link.href), duration: const Duration(seconds: 2));
@@ -954,7 +993,7 @@ class BrowserController extends GetxController {
 
   Future<PageImage> _pageImage(String src) async {
     final ua = capture.userAgent;
-    final cookies = src.startsWith('http') ? await DownloadService.webCookies(src) : '';
+    final cookies = src.startsWith('http') ? await _cookies(src) : '';
     String alt = '';
     try {
       final r = await web
@@ -1074,7 +1113,7 @@ class BrowserController extends GetxController {
     searchError.value = null;
     final page = url.value;
     try {
-      final cookies = await DownloadService.webCookies(page);
+      final cookies = await _cookies(page);
       final info = await YtDlpService.to.pageInfo(
         page,
         DownloadService.headerArgs({..._pageHeaders(), if (cookies.isNotEmpty) 'Cookie': cookies}),

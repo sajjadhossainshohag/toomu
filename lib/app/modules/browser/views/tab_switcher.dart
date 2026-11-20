@@ -10,7 +10,11 @@ import '../controllers/browser_controller.dart';
 import '../controllers/browser_session.dart';
 import 'site_icon.dart';
 
-/// The tab-count button in the top bar (Chrome's square with a number).
+/// Incognito's mark (no incognito glyph in Material's set).
+const IconData incognitoIcon = Icons.visibility_off_outlined;
+
+/// The tab-count button in the top bar (Chrome's square with a number): the tabs of the shown tab's kind,
+/// incognito or normal.
 class TabCountButton extends StatelessWidget {
   const TabCountButton({required this.session, super.key});
 
@@ -21,9 +25,10 @@ class TabCountButton extends StatelessWidget {
     final double scale = context.scale;
     final Color ink = ColorConstants.textOn(context.isDark);
     return Obx(() {
-      final n = session.tabs.length;
+      final incognito = session.active.value?.incognito ?? false;
+      final n = session.tabsOf(incognito: incognito).length;
       return Tooltip(
-        message: '$n open ${n == 1 ? 'tab' : 'tabs'}',
+        message: '$n open ${incognito ? 'incognito ' : ''}${n == 1 ? 'tab' : 'tabs'}',
         child: InkResponse(
           onTap: session.openSwitcher,
           radius: 22 * scale,
@@ -86,47 +91,72 @@ class TabSwitcher extends StatelessWidget {
                 ),
                 Expanded(
                   child: Obx(() {
-                    final n = session.tabs.length;
-                    return Text(
-                      '$n ${n == 1 ? 'tab' : 'tabs'}',
-                      style: TextStyle(fontSize: 17 * scale, fontWeight: FontWeight.w700, color: ink),
+                    final incognito = session.switcherIncognito.value;
+                    final normal = session.tabsOf(incognito: false).length;
+                    final private = session.tabsOf(incognito: true).length;
+                    return Row(
+                      children: <Widget>[
+                        _Kind(
+                          label: '$normal ${normal == 1 ? 'tab' : 'tabs'}',
+                          selected: !incognito,
+                          onTap: () => session.switcherIncognito.value = false,
+                        ),
+                        SizedBox(width: 6 * scale),
+                        _Kind(
+                          icon: incognitoIcon,
+                          label: '$private',
+                          tooltip: 'Incognito tabs',
+                          selected: incognito,
+                          onTap: () => session.switcherIncognito.value = true,
+                        ),
+                      ],
                     );
                   }),
                 ),
-                Obx(
-                  () => IconButton(
-                    tooltip: 'Close all tabs',
-                    onPressed: session.tabs.isEmpty
+                Obx(() {
+                  final incognito = session.switcherIncognito.value;
+                  return IconButton(
+                    tooltip: incognito ? 'Close all incognito tabs' : 'Close all tabs',
+                    onPressed: session.tabsOf(incognito: incognito).isEmpty
                         ? null
                         : () async {
                             final ok = await showConfirmDialog(
-                              title: 'Close all tabs?',
-                              message: 'Every open tab closes.',
+                              title: incognito ? 'Close all incognito tabs?' : 'Close all tabs?',
+                              message: incognito
+                                  ? "Every incognito tab closes, and their cookies and site data are deleted."
+                                  : 'Every open tab closes.',
                               confirmLabel: 'Close all',
                               destructive: true,
                             );
-                            if (ok) session.closeAll();
+                            if (ok) session.closeAll(incognito: incognito);
                           },
                     icon: Icon(Icons.layers_clear_outlined, color: ink.withValues(alpha: 0.8)),
+                  );
+                }),
+                Obx(
+                  () => IconButton(
+                    tooltip: session.switcherIncognito.value ? 'New incognito tab' : 'New tab',
+                    onPressed: session.switcherIncognito.value ? session.newIncognitoTab : session.newTab,
+                    icon: Icon(Icons.add_rounded, color: ink),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'New tab',
-                  onPressed: session.newTab,
-                  icon: Icon(Icons.add_rounded, color: ink),
                 ),
               ],
             ),
           ),
           Expanded(
-            child: Obx(
-              () => session.tabs.isEmpty
+            child: Obx(() {
+              final incognito = session.switcherIncognito.value;
+              final shown = session.tabsOf(incognito: incognito);
+              return shown.isEmpty
                   ? EmptyState(
-                      icon: Icons.tab_rounded,
-                      title: 'No open tabs',
-                      message: 'Open a new tab to keep browsing, or go back to leave the browser.',
-                      actionLabel: 'New tab',
-                      onAction: session.newTab,
+                      icon: incognito ? incognitoIcon : Icons.tab_rounded,
+                      title: incognito ? 'No incognito tabs' : 'No open tabs',
+                      message: incognito
+                          ? "Pages you open in incognito aren't saved in history, and their cookies and site data "
+                                'are deleted when you close the last incognito tab.'
+                          : 'Open a new tab to keep browsing, or go back to leave the browser.',
+                      actionLabel: incognito ? 'New incognito tab' : 'New tab',
+                      onAction: incognito ? session.newIncognitoTab : session.newTab,
                     )
                   : GridView.builder(
                       padding: EdgeInsets.fromLTRB(12 * scale, 4 * scale, 12 * scale, 24 * scale),
@@ -136,9 +166,9 @@ class TabSwitcher extends StatelessWidget {
                         crossAxisSpacing: 12 * scale,
                         childAspectRatio: 0.72,
                       ),
-                      itemCount: session.tabs.length,
+                      itemCount: shown.length,
                       itemBuilder: (_, i) {
-                        final t = session.tabs[i];
+                        final t = shown[i];
                         return Dismissible(
                           key: ValueKey(t.id),
                           onDismissed: (_) => session.close(t),
@@ -150,12 +180,57 @@ class TabSwitcher extends StatelessWidget {
                           ),
                         );
                       },
-                    ),
-            ),
+                    );
+            }),
           ),
         ],
       ),
     );
+  }
+}
+
+/// The switcher's choice between normal and incognito tabs.
+class _Kind extends StatelessWidget {
+  const _Kind({required this.label, required this.selected, required this.onTap, this.icon, this.tooltip});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final double scale = context.scale;
+    final Color ink = ColorConstants.textOn(context.isDark);
+    final Color primary = BrandColors.of(context).primary;
+    final Color color = selected ? primary : ink.withValues(alpha: 0.6);
+    final chip = InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18 * scale),
+      child: Container(
+        height: 34 * scale,
+        padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+        decoration: BoxDecoration(
+          color: selected ? primary.withValues(alpha: 0.12) : null,
+          borderRadius: BorderRadius.circular(18 * scale),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (icon != null) ...<Widget>[
+              Icon(icon, size: 18 * scale, color: color),
+              SizedBox(width: 6 * scale),
+            ],
+            Text(
+              label,
+              style: TextStyle(fontSize: 15 * scale, fontWeight: FontWeight.w700, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+    return tooltip == null ? chip : Tooltip(message: tooltip, child: chip);
   }
 }
 

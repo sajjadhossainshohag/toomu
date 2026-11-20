@@ -42,7 +42,7 @@ class _TabWebViewState extends State<TabWebView> {
 
   @override
   Widget build(BuildContext context) => InAppWebView(
-    initialUrlRequest: URLRequest(url: WebUri(c.restoreUrl)),
+    initialUrlRequest: c.loadsAfterCreated ? null : URLRequest(url: WebUri(c.restoreUrl)),
     initialSettings: c.settings,
     initialUserScripts: _scripts,
     pullToRefreshController: _pull,
