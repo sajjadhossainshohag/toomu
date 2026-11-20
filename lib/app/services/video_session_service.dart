@@ -169,6 +169,7 @@ class VideoSessionService extends GetxService {
     _subs.clear();
     _player = null;
     _video = null;
+    _videoOff = false; // a new player starts with video on
     unawaited(p.dispose());
     debugPrint('[Video] player released (app in the background)');
   }
@@ -274,13 +275,20 @@ class VideoSessionService extends GetxService {
   @visibleForTesting
   set debugActive(bool on) => _active = on;
 
+  /// mpv's video is off (audio only). Kept after a video ends: mpv keeps it for the next file.
   bool _videoOff = false;
+
+  /// Records what [setVideoEnabled] sends to mpv (tests have no player).
+  @visibleForTesting
+  void Function(bool on)? debugVideoTrack;
 
   /// Turns video decoding off while nobody can see it (background play)
   /// and back on when the player is visible again.
   void setVideoEnabled(bool on) {
     if (!_active || _videoOff == !on) return;
     _videoOff = !on;
+    final debug = debugVideoTrack;
+    if (debug != null) return debug(on);
     player.setVideoTrack(on ? VideoTrack.auto() : VideoTrack.no());
   }
 
@@ -550,7 +558,7 @@ class VideoSessionService extends GetxService {
   void _endSession() {
     if (!_active) return;
     _active = false;
-    _videoOff = false;
+    // _videoOff stays: mpv keeps video off for later files too, so the next video must turn it back on.
     _player?.stop();
     _outsideBuild(() => playing.value = false);
   }
