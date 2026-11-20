@@ -63,7 +63,7 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
                 }
                 "cancel" -> {
                     val id = call.argument<String>("id")
-                    result.success(id != null && YoutubeDL.destroyProcessById(id))
+                    if (id == null) result.success(false) else async(result) { stop(id) }
                 }
                 else -> result.notImplemented()
             }
@@ -78,6 +78,36 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
                 progressSink = null
             }
         })
+    }
+
+    /**
+     * Pause / cancel: aria2c and ffmpeg first (see [ProcessTree]; the library leaves them running), asked to stop so
+     * aria2c saves where it got to, then made to after a second; then yt-dlp itself.
+     */
+    private fun stop(id: String): Boolean {
+        val pid = processOf(id)?.let { ProcessTree.pidOf(it) }
+        if (pid != null) {
+            val children = ProcessTree.descendants(pid, ProcessTree.parentsNow())
+            for (c in children) android.os.Process.sendSignal(c, 15) // SIGTERM
+            val until = System.currentTimeMillis() + 1000
+            while (children.any(ProcessTree::alive) && System.currentTimeMillis() < until) Thread.sleep(50)
+            val left = children.filter(ProcessTree::alive)
+            for (c in left) android.os.Process.sendSignal(c, 9) // SIGKILL
+            Log.i("YtDlpBridge", "stopped $id: yt-dlp $pid, children $children${if (left.isEmpty()) "" else ", forced $left"}")
+        } else {
+            Log.w("YtDlpBridge", "stopped $id: yt-dlp's process not found, its children may keep running")
+        }
+        return YoutubeDL.destroyProcessById(id)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun processOf(id: String): Process? = try {
+        val field = YoutubeDL::class.java.getDeclaredField("idProcessMap")
+        field.isAccessible = true
+        (field.get(null) as? Map<String, Process>)?.get(id)
+    } catch (e: Exception) {
+        Log.w("YtDlpBridge", "no process map", e)
+        null
     }
 
     @Synchronized

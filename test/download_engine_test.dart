@@ -324,6 +324,17 @@ void main() {
       }
     });
 
+    test('after a pause nothing more is fetched or written (no download left running in the background)', () async {
+      await pauseMidway();
+      final file = File(part).readAsBytesSync();
+      final journal = File('${DownloadTask.chunksDirOf(part)}/written.json').readAsStringSync();
+      final requests = origin.starts.length;
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(origin.starts.length, requests, reason: 'no new request after the pause');
+      expect(File('${DownloadTask.chunksDirOf(part)}/written.json').readAsStringSync(), journal);
+      expect(File(part).readAsBytesSync(), file, reason: 'the file is not written to after the pause');
+    });
+
     test('pieces go straight into the file: no second copy of the data at the end', () async {
       await pauseMidway();
       final temp = Directory(DownloadTask.chunksDirOf(part)).listSync().map((e) => e.uri.pathSegments.last);
