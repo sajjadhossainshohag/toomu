@@ -207,6 +207,71 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
   });
 
+  group('the screen turns to the video\'s shape', () {
+    late List<List<Object?>> asked;
+
+    Future<_FakePlayback> openHeld(WidgetTester tester, Size screen, {String? youtubeId}) async {
+      asked = [];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'SystemChrome.setPreferredOrientations') asked.add(call.arguments as List<Object?>);
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+      tester.view
+        ..devicePixelRatio = 1
+        ..physicalSize = screen;
+      addTearDown(tester.view.reset);
+      final c = await open(tester);
+      if (youtubeId != null) {
+        VideoSessionService.to.items[0] = VideoItem(uri: 'https://v/a.mp4', title: 'A video', remoteKey: 'yt:$youtubeId');
+        await tester.pump();
+      }
+      asked.clear();
+      return c;
+    }
+
+    const landscape = ['DeviceOrientation.landscapeLeft', 'DeviceOrientation.landscapeRight'];
+
+    testWidgets('a landscape video opened with the phone upright plays in landscape', (tester) async {
+      final c = await openHeld(tester, const Size(400, 800));
+      c.onVideoShape(16 / 9);
+      expect(asked.last, landscape);
+      await tester.pump(const Duration(seconds: 4));
+    });
+
+    testWidgets('a reel (portrait video) opened with the phone sideways plays upright', (tester) async {
+      final c = await openHeld(tester, const Size(800, 400));
+      c.onVideoShape(9 / 16);
+      expect(asked.last, ['DeviceOrientation.portraitUp']);
+      await tester.pump(const Duration(seconds: 4));
+    });
+
+    testWidgets('already the right way, or a square video: the screen is left alone', (tester) async {
+      final c = await openHeld(tester, const Size(400, 800));
+      c.onVideoShape(9 / 16); // a reel, already upright
+      c.onVideoShape(1.0);
+      expect(asked, isEmpty);
+      await tester.pump(const Duration(seconds: 4));
+    });
+
+    testWidgets('once per video: turning it back yourself is not undone', (tester) async {
+      final c = await openHeld(tester, const Size(400, 800));
+      c.onVideoShape(16 / 9);
+      asked.clear();
+      c.onVideoShape(16 / 9); // the player reports the size again (a new stream quality…)
+      expect(asked, isEmpty);
+      await tester.pump(const Duration(seconds: 4));
+    });
+
+    testWidgets('the YouTube watch page keeps its own layout', (tester) async {
+      // Sideways (the full-screen player): a reel elsewhere would turn the screen upright here.
+      final c = await openHeld(tester, const Size(800, 400), youtubeId: 'aaaaaaaaaaa');
+      c.onVideoShape(9 / 16);
+      expect(asked, isEmpty);
+      await tester.pump(const Duration(seconds: 4));
+    });
+  });
+
   test('when the player opens, it turns with the phone instead of locking to the video', () {
     expect(VideoPlaybackController.followPhone, [
       DeviceOrientation.portraitUp,

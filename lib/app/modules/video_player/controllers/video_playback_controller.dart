@@ -122,7 +122,28 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
 
   void _syncAspect() {
     final w = player.state.width, h = player.state.height;
-    if (w != null && h != null && w > 0 && h > 0) videoAspect.value = w / h;
+    if (w != null && h != null && w > 0 && h > 0) {
+      videoAspect.value = w / h;
+      onVideoShape(w / h);
+    }
+  }
+
+  /// The video whose shape already turned the screen (once per video: turning it back yourself sticks).
+  String? _shapedFor;
+
+  /// Plays a video the way it was filmed, like MX: a landscape video turns the screen to landscape, a portrait
+  /// one (a reel) upright; a square one, or a screen already the right way, is left alone. The turn holds like
+  /// the rotate button's, until the phone is held that way. Not on the YouTube watch page, which has its own
+  /// upright layout (the video above its details).
+  @visibleForTesting
+  void onVideoShape(double aspect) {
+    if (items.isEmpty || inPip.value) return;
+    final item = current;
+    if (item.youtubeId != null || _shapedFor == item.resumeKey) return;
+    _shapedFor = item.resumeKey;
+    final landscape = aspect > 1.1 ? true : (aspect < 0.9 ? false : null);
+    if (landscape == null || landscape == _viewIsLandscape) return;
+    _turn(landscape);
   }
 
   /// Set by the view: the player's box (gestures are measured in it).
@@ -666,8 +687,11 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   }
 
   void rotate() {
-    final landscape = !_viewIsLandscape;
     showControls();
+    _turn(!_viewIsLandscape);
+  }
+
+  void _turn(bool landscape) {
     if (Platform.isAndroid) {
       // Like YouTube: the choice holds until the phone is turned that way, then the screen follows the
       // phone again (auto-rotate on). MainActivity also lays Flutter's view out again if a phone
