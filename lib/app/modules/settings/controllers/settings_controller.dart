@@ -8,6 +8,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/host_os.dart';
 import '../../../core/utils/shell_open.dart';
 import '../../../core/values/app_constants.dart';
+import '../../../routes/app_pages.dart';
 import '../../../services/download_service.dart';
 import '../../../services/floating_button_service.dart';
 import '../../../services/settings_service.dart';
@@ -143,6 +144,12 @@ class SettingsController extends GetxController {
   void openDiagnostics() => Get.bottomSheet(const DiagnosticsSheet(), isScrollControlled: true);
 
   void openEqualizer() => Get.bottomSheet(const EqualizerSheet(), isScrollControlled: true);
+
+  /// Toomu's official YouTube channel, in the app's own browser.
+  Future<void> openYoutubeChannel() => openInBrowser(AppConstants.youtubeChannelUrl);
+
+  @visibleForTesting
+  Future<void> openInBrowser(String url) async => Get.toNamed<void>(Routes.browser, arguments: url);
 
   void shareApp() => SharePlus.instance.share(
         ShareParams(

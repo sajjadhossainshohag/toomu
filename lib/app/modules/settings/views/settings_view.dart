@@ -251,6 +251,13 @@ class SettingsView extends GetView<SettingsController> {
                     title: 'About',
                     rows: <Widget>[
                       AppRow(
+                        icon: Icons.smart_display_rounded,
+                        tint: ColorConstants.siteYoutube,
+                        label: 'YouTube channel',
+                        value: '@toomuapp',
+                        onTap: controller.openYoutubeChannel,
+                      ),
+                      AppRow(
                         icon: Icons.share_rounded,
                         tint: ColorConstants.tileShare,
                         label: 'Share Toomu',

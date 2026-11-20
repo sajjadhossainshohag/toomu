@@ -22,6 +22,8 @@ abstract class AppConstants {
       'https://github.com/$githubRepo/releases/latest/download/${windows ? 'toomu-windows-setup.exe' : 'toomu-arm64-v8a.apk'}';
 
   /// Ad filters (Adblock Plus syntax), the main list AdBlock uses.
+  /// Toomu's official YouTube channel (Settings → About).
+  static const youtubeChannelUrl = 'https://www.youtube.com/@toomuapp';
   static const easylistUrl = 'https://easylist.to/easylist/easylist.txt';
   static const blocklistUrl = 'https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling/hosts';
 
