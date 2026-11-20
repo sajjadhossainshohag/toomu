@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -46,7 +47,7 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
             controller.viewTop = watch ? MediaQuery.paddingOf(context).top : 0;
             // The status bar shows over the watch page, like YouTube; full screen hides the bars.
             controller.showSystemBars(watch);
-            final content = _player(context, box, watch, constraints.maxWidth > constraints.maxHeight);
+            final content = _player(context, box, watch);
             if (!watch) return SizedBox.fromSize(size: box, child: content);
             // The height changes once the video's shape is known: it slides there, like YouTube's.
             final player = TweenAnimationBuilder<double>(
@@ -108,7 +109,7 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
     padding: EdgeInsets.fromLTRB(16, 0, 16, box.shortestSide * 0.06),
   );
 
-  Widget _player(BuildContext context, Size box, bool compact, bool landscape) => Stack(
+  Widget _player(BuildContext context, Size box, bool compact) => Stack(
     fit: StackFit.expand,
     children: <Widget>[
       // Video (zoom = pinch; fit/aspect = aspect button). The zoom wraps the same Video widget, so a pinch
@@ -118,10 +119,9 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
             ? const SizedBox.expand()
             : ClipRect(
                 child: _Zoom(
+                  // The same video view across turns (no black frame while it is made again). Phones that kept
+                  // Flutter's old surface size after turning are fixed natively (MainActivity, StaleLayout).
                   child: Video(
-                    // A fresh surface per orientation: some phones kept
-                    // the old layout after turning (half the picture).
-                    key: ValueKey(landscape),
                     controller: controller.video,
                     controls: NoVideoControls,
                     fill: ColorConstants.black,
@@ -428,8 +428,83 @@ class _FullControls extends GetView<VideoPlaybackController> {
   }
 }
 
-class _SeekBar extends GetView<VideoPlaybackController> {
+/// The player reports its position a few times a second; in between, the bar moves on by itself (from
+/// the last report at the playback rate) so it glides like MX instead of stepping. Only while playing with
+/// the controls up: otherwise there is no ticker and no frame each tick.
+class _SeekBar extends StatefulWidget {
   const _SeekBar();
+
+  @override
+  State<_SeekBar> createState() => _SeekBarState();
+}
+
+class _SeekBarState extends State<_SeekBar> with SingleTickerProviderStateMixin {
+  final controller = Get.find<VideoPlaybackController>();
+  late final Ticker _ticker = createTicker(_onTick);
+  Duration _now = Duration.zero; // the ticker's clock
+  Duration _reportedAt = Duration.zero;
+  Duration? _reported;
+  late final List<Worker> _workers;
+
+  @override
+  void initState() {
+    super.initState();
+    _workers = [
+      for (final rx in <RxInterface<Object?>>[
+        controller.playing,
+        controller.buffering,
+        controller.controlsVisible,
+        controller.seekPreview,
+        controller.inPip,
+      ])
+        ever(rx, (_) => _syncTicker()),
+    ];
+    _syncTicker();
+  }
+
+  bool get _gliding =>
+      controller.playing.value &&
+      !controller.buffering.value &&
+      controller.controlsVisible.value &&
+      controller.seekPreview.value == null &&
+      !controller.inPip.value;
+
+  void _syncTicker() {
+    if (!mounted) return;
+    if (_gliding && !_ticker.isActive) {
+      _now = Duration.zero;
+      _reported = null; // start from the next report
+      _ticker.start();
+    } else if (!_gliding && _ticker.isActive) {
+      _ticker.stop();
+    }
+  }
+
+  void _onTick(Duration elapsed) => setState(() => _now = elapsed);
+
+  @override
+  void dispose() {
+    for (final w in _workers) {
+      w.dispose();
+    }
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  /// Where the bar is drawn: the last report, plus the time since it while gliding (never more than a
+  /// second ahead, in case the player stalls without saying so).
+  double _shownMs(Duration pos, double total) {
+    if (_reported != pos) {
+      _reported = pos;
+      _reportedAt = _now;
+    }
+    var ms = pos.inMilliseconds.toDouble();
+    if (_ticker.isActive) {
+      final ahead = ((_now - _reportedAt).inMicroseconds / 1000 * controller.rate.value).clamp(0.0, 1000.0);
+      ms += ahead;
+    }
+    return ms.clamp(0, total).toDouble();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -441,7 +516,7 @@ class _SeekBar extends GetView<VideoPlaybackController> {
     );
     return Obx(() {
       final total = controller.duration.value.inMilliseconds.toDouble();
-      final pos = controller.position.value.inMilliseconds.clamp(0, total).toDouble();
+      final pos = _shownMs(controller.position.value, total);
       return Row(
         children: <Widget>[
           Text(Formatters.duration(controller.position.value), style: time),

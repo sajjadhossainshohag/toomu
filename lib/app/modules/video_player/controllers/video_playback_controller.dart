@@ -22,6 +22,7 @@ import '../../../services/video_session_service.dart';
 import '../../../widgets/option_sheet.dart';
 import '../../../widgets/app_snackbar.dart';
 import '../../youtube/controllers/youtube_controller.dart';
+import 'live_seek.dart';
 import 'watch_details_controller.dart';
 import '../../../core/utils/subtitles.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' show ClosedCaptionTrackInfo;
@@ -229,6 +230,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
       t?.cancel();
     }
     WidgetsBinding.instance.removeObserver(this);
+    _liveSeek.cancel();
     _platform.invokeMethod<void>('updatePip', {'autoEnter': false, 'playing': false});
     // Background play on + playing → the audio continues after leaving the
     // player (notification + mini bar); otherwise the session ends.
@@ -560,14 +562,27 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   void seekTo(Duration d) {
     seekPreview.value = null;
     position.value = d;
-    player.seek(d);
+    _liveSeek.end(d);
     _scheduleHide();
   }
 
+  /// While dragging: the picture follows the finger (fast keyframe seeks, a few a second).
   void previewSeek(Duration d) {
     seekPreview.value = d;
     position.value = d;
     _hideTimer?.cancel();
+    _liveSeek.drag(d);
+  }
+
+  late final _liveSeek = LiveSeek(fast: _fastSeek, exact: (d) => player.seek(d));
+
+  /// To the nearest keyframe: shows a frame quickly; the exact seek follows when the finger lets go.
+  void _fastSeek(Duration d) {
+    final mpv = player.platform;
+    if (mpv is! NativePlayer) return;
+    unawaited(
+      mpv.command(['seek', (d.inMilliseconds / 1000).toStringAsFixed(3), 'absolute+keyframes']).catchError((_) {}),
+    );
   }
 
   Duration _clampPosition(Duration d) {

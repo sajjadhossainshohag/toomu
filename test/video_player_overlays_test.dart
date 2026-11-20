@@ -168,6 +168,45 @@ void main() {
     await tester.pump(const Duration(seconds: 4));
   });
 
+  double sliderValue(WidgetTester tester) => tester.widget<Slider>(find.byType(Slider)).value;
+
+  testWidgets('the seek bar glides while playing instead of jumping 4 times a second', (tester) async {
+    final c = await open(tester);
+    c
+      ..duration.value = const Duration(minutes: 10)
+      ..position.value = const Duration(seconds: 60)
+      ..playing.value = true
+      ..controlsVisible.value = true;
+    await tester.pump();
+    expect(sliderValue(tester), 60000);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(sliderValue(tester), closeTo(60200, 40), reason: 'it moves on between the position updates');
+
+    // The next update from the player: it carries on from there.
+    c.position.value = const Duration(seconds: 61);
+    await tester.pump();
+    expect(sliderValue(tester), closeTo(61000, 20));
+
+    c.playing.value = false;
+    await tester.pump();
+    final paused = sliderValue(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(sliderValue(tester), paused, reason: 'paused: it stays put');
+
+    expect(tester.binding.transientCallbackCount, 0, reason: 'paused: no frame each tick');
+
+    // Hidden while playing: no more frame callbacks than hidden and paused (the bar's ticker is off).
+    c.controlsVisible.value = false;
+    await tester.pump(const Duration(seconds: 1));
+    final pausedHidden = tester.binding.transientCallbackCount;
+    c.playing.value = true;
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.binding.transientCallbackCount, pausedHidden, reason: 'hidden: the bar does not tick');
+    c.playing.value = false;
+    await tester.pump(const Duration(seconds: 4));
+  });
+
   test('when the player opens, it turns with the phone instead of locking to the video', () {
     expect(VideoPlaybackController.followPhone, [
       DeviceOrientation.portraitUp,

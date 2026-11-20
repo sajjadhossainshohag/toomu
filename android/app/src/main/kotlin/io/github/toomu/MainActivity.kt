@@ -104,6 +104,9 @@ class MainActivity : AudioServiceFragmentActivity() {
     private fun followPhone(on: Boolean): Boolean? {
         if (on == followingPhone) return if (on) applyFollow() else null
         followingPhone = on
+        window.attributes = window.attributes.also {
+            it.rotationAnimation = PlayerOrientation.rotationAnimation(Build.VERSION.SDK_INT, playerOpen = on)
+        }
         val uri = Settings.System.getUriFor(Settings.System.ACCELEROMETER_ROTATION)
         return if (on) {
             contentResolver.registerContentObserver(uri, false, autoRotateSetting)

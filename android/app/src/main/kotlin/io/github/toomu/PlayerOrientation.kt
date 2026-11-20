@@ -1,6 +1,7 @@
 package io.github.toomu
 
 import android.content.pm.ActivityInfo
+import android.view.WindowManager
 
 /**
  * The video player's screen orientation while it follows the phone. Flutter's "follow the phone"
@@ -35,4 +36,15 @@ object PlayerOrientation {
 
     fun releasesLock(lockedLandscape: Boolean, degrees: Int, autoRotate: Boolean): Boolean =
         autoRotate && physicalLandscape(degrees) == lockedLandscape
+
+    /**
+     * How the screen turns. The player turns at once like MX and YouTube (seamless: the picture just
+     * turns, no cross-fade of the whole screen; Android 7 has only the jump cut, also at once). The rest of
+     * the app keeps Android's normal turn.
+     */
+    fun rotationAnimation(sdk: Int, playerOpen: Boolean): Int = when {
+        !playerOpen -> WindowManager.LayoutParams.ROTATION_ANIMATION_ROTATE
+        sdk >= 26 -> WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
+        else -> WindowManager.LayoutParams.ROTATION_ANIMATION_JUMPCUT
+    }
 }

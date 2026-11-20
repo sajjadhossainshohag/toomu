@@ -1,6 +1,7 @@
 package io.github.toomu
 
 import android.content.pm.ActivityInfo
+import android.view.WindowManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -48,5 +49,14 @@ class PlayerOrientationTest {
         assertNull(PlayerOrientation.physicalLandscape(-1)) // ORIENTATION_UNKNOWN: flat on a table
         assertFalse(PlayerOrientation.releasesLock(lockedLandscape = true, degrees = 45, autoRotate = true))
         assertFalse(PlayerOrientation.releasesLock(lockedLandscape = false, degrees = -1, autoRotate = true))
+    }
+
+    @Test
+    fun `the player turns at once like MX, the rest of the app keeps the normal turn`() {
+        assertEquals(WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS, PlayerOrientation.rotationAnimation(26, playerOpen = true))
+        assertEquals(WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS, PlayerOrientation.rotationAnimation(35, playerOpen = true))
+        // Android 7 has no seamless turn: a jump cut, still at once.
+        assertEquals(WindowManager.LayoutParams.ROTATION_ANIMATION_JUMPCUT, PlayerOrientation.rotationAnimation(24, playerOpen = true))
+        assertEquals(WindowManager.LayoutParams.ROTATION_ANIMATION_ROTATE, PlayerOrientation.rotationAnimation(35, playerOpen = false))
     }
 }
