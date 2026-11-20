@@ -92,6 +92,9 @@ class DownloadService extends GetxService {
   final tasks = <DownloadTask>[].obs;
   final Map<String, CancelToken> _running = {};
 
+  /// Completes when a task's run has fully ended (its connections closed, nothing more written).
+  final Map<String, Completer<void>> _runEnded = {};
+
   /// Why a running task was stopped ('pause' | 'cancel'), read by [_start].
   final Map<String, String> _stopReasons = {};
   final Map<String, void Function()> _speedTicks = {};
@@ -562,6 +565,9 @@ class DownloadService extends GetxService {
       if (_running.containsKey(task.id)) {
         task.status.value = DownloadStatus.canceled;
         _stop(task, 'cancel');
+        // Its connections are still closing and would write their progress file again after the delete,
+        // leaving a .chunks folder behind.
+        await _runEnded[task.id]?.future.timeout(const Duration(seconds: 5), onTimeout: () {});
       }
       tasks.remove(task);
       for (final p in _tempPathsOf(task)) {
@@ -652,6 +658,7 @@ class DownloadService extends GetxService {
   Future<void> _start(DownloadTask task) async {
     final token = CancelToken();
     _running[task.id] = token;
+    final ended = _runEnded[task.id] = Completer<void>();
     task.status.value = DownloadStatus.running;
     task.error.value = null;
     // After the status change, so the first snapshot sees this task.
@@ -686,7 +693,7 @@ class DownloadService extends GetxService {
         await _downloadSite(task, token, onBytes);
       }
       if (task.source == DownloadSource.youtube && task.kind == DownloadKind.video) {
-        await _saveSubtitles(task);
+        await saveSubtitles(task);
       }
       if (task.subtitles.isNotEmpty) await _savePageSubtitles(task);
 
@@ -734,6 +741,8 @@ class DownloadService extends GetxService {
       if (task.status.value != DownloadStatus.canceled) await _persist();
       _pump();
       _updateNotification();
+      ended.complete();
+      if (identical(_runEnded[task.id], ended)) _runEnded.remove(task.id);
     }
   }
 
@@ -1047,7 +1056,7 @@ class DownloadService extends GetxService {
     var json = yt.savedInfoJson(url);
     var fromFast = false;
     if (json == null) {
-      json = await _fastInfoJson(task);
+      json = await fastInfoJson(task);
       fromFast = json != null;
     }
     json ??= await lookedUp();
@@ -1084,8 +1093,9 @@ class DownloadService extends GetxService {
     Future<YtDlpResult> fromInfo(String info) async {
       task.phase.value = DownloadPhase.starting;
       var r = await fromSavedInfo(info, aria2c: useAria2c);
-      // aria2c refused: the built-in downloader asks differently.
-      if (useAria2c && !r.ok && !stopped(r)) {
+      // aria2c refused: the built-in downloader asks differently (not when the file can't be written: it
+      // would fail the same way).
+      if (useAria2c && !r.ok && !stopped(r) && localFileProblem(r.err) == null) {
         debugPrint(
           '[Download] aria2c failed on the saved links; trying the built-in downloader',
         );
@@ -1307,6 +1317,13 @@ class DownloadService extends GetxService {
       debugPrint('[Download] no stream subtitles: $e');
     }
   }
+
+  /// Saves a YouTube video's subtitles beside it (tests replace this and [fastInfoJson]: both ask YouTube).
+  @visibleForTesting
+  static Future<void> Function(DownloadTask task) saveSubtitles = _saveSubtitles;
+
+  @visibleForTesting
+  static Future<String?> Function(DownloadTask task) fastInfoJson = _fastInfoJson;
 
   static Future<void> _saveSubtitles(DownloadTask task) async {
     try {
