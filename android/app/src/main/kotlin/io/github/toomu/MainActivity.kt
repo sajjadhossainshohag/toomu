@@ -27,6 +27,7 @@ import android.util.Size
 import android.view.OrientationEventListener
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterSurfaceView
 import io.flutter.embedding.android.FlutterTextureView
@@ -192,6 +193,43 @@ class MainActivity : AudioServiceFragmentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (pipAutoEnter && Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S) enterPip()
+    }
+
+    /**
+     * Flutter's late old-size frame after a turn (see [relayout]) is undone in the same frame, before it is
+     * drawn: the delayed check alone left the old layout on screen for ~300 ms, then a black flash while
+     * the surface resized (seen frame by frame on the emulator).
+     */
+    private var flutterView: View? = null
+    private var flutterSize = 0L
+
+    private val atOnce = ViewTreeObserver.OnPreDrawListener {
+        val content = findViewById<View>(android.R.id.content)
+        val flutter = flutterView?.takeIf { it.isAttachedToWindow } ?: content?.let { flutterViewIn(it) }?.also { flutterView = it }
+        if (flutter != null && flutter.width > 0) {
+            var resend = false
+            // FlutterView resized: send the size again now, in case Flutter dropped it.
+            val size = (flutter.width.toLong() shl 32) or flutter.height.toLong()
+            if (size != flutterSize) {
+                flutterSize = size
+                resend = true
+            }
+            for (s in renderSurfacesIn(flutter)) {
+                val params = s.layoutParams ?: continue
+                if (!StaleLayout.paramsPinned(params.width, params.height)) continue
+                params.width = ViewGroup.LayoutParams.MATCH_PARENT
+                params.height = ViewGroup.LayoutParams.MATCH_PARENT
+                s.layoutParams = params
+                resend = true
+            }
+            if (resend) flutter.requestApplyInsets()
+        }
+        true
+    }
+
+    override fun onPostCreate(savedInstanceState: Bundle?) {
+        super.onPostCreate(savedInstanceState)
+        window.decorView.viewTreeObserver.addOnPreDrawListener(atOnce)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -900,6 +938,7 @@ class MainActivity : AudioServiceFragmentActivity() {
     }
 
     override fun onDestroy() {
+        window.decorView.viewTreeObserver.let { if (it.isAlive) it.removeOnPreDrawListener(atOnce) }
         VideoMediaBridge.listener = null
         if (followingPhone) contentResolver.unregisterContentObserver(autoRotateSetting)
         releaseLock()

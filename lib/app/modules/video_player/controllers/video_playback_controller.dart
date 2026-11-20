@@ -667,8 +667,6 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
 
   void rotate() {
     final landscape = !_viewIsLandscape;
-    // Full screen hides the bars now, with the turn: after it, the screen was laid out a second time.
-    if (landscape) showSystemBars(false);
     showControls();
     if (Platform.isAndroid) {
       // Like YouTube: the choice holds until the phone is turned that way, then the screen follows the

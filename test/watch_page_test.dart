@@ -200,17 +200,6 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
-  testWidgets('Full screen hides the status bar as the screen turns, not after (a second jump)', (tester) async {
-    await open(tester, const Size(390, 844));
-    expect(_uiModes.last, 'SystemUiMode.edgeToEdge');
-    final c = Get.find<VideoPlaybackController>()..showControls(autoHide: false);
-    await tester.pump();
-    await tester.tap(find.byTooltip('Full screen'));
-    expect(_uiModes.last, 'SystemUiMode.immersiveSticky', reason: 'still upright: the bars go with the turn');
-    c.controlsVisible.value = false;
-    await tester.pump(const Duration(seconds: 5));
-  });
-
   testWidgets('swiping the small player down moves the watch page without building it again every frame', (tester) async {
     await open(tester, const Size(390, 844));
     await tester.pump(const Duration(seconds: 1));
