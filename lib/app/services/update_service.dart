@@ -47,22 +47,46 @@ class UpdateService extends GetxService {
   bool get downloading => progress.value != null;
   final _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 10)));
 
+  bool _autoChecking = false;
+  AppLifecycleListener? _lifecycle;
+
   UpdateService init() {
-    if (Platform.isAndroid && currentTag.isNotEmpty) unawaited(_autoCheck());
+    if (Platform.isAndroid && currentTag.isNotEmpty) {
+      unawaited(_autoCheck(launch: true));
+      // Back in the app after a while: a release may have come out since.
+      _lifecycle = AppLifecycleListener(onResume: () => unawaited(_autoCheck(launch: false)));
+    }
     return this;
   }
 
-  Future<void> _autoCheck() async {
+  @override
+  void onClose() {
+    _lifecycle?.dispose();
+    super.onClose();
+  }
+
+  /// Every app open looks for a new version; coming back to the app does
+  /// once an hour (GitHub's API allows 60 requests an hour per IP).
+  @visibleForTesting
+  static bool shouldAutoCheck({required bool launch, required int lastCheckMs, required int nowMs}) =>
+      launch || nowMs - lastCheckMs >= const Duration(hours: 1).inMilliseconds;
+
+  Future<void> _autoCheck({required bool launch}) async {
     final last = _storage.read<int>(AppConstants.kUpdateCheckedAt) ?? 0;
-    if (DateTime.now().millisecondsSinceEpoch - last < const Duration(days: 1).inMilliseconds) return;
-    await Future<void>.delayed(const Duration(seconds: 5));
-    if (downloading) return;
+    if (!shouldAutoCheck(launch: launch, lastCheckMs: last, nowMs: DateTime.now().millisecondsSinceEpoch)) return;
+    if (_autoChecking || checking.value || downloading) return;
+    _autoChecking = true;
     try {
+      // Let the first screen settle before a dialog.
+      await Future<void>.delayed(Duration(seconds: launch ? 3 : 1));
+      if (downloading || checking.value) return;
       final release = await _latest();
       await _storage.write(AppConstants.kUpdateCheckedAt, DateTime.now().millisecondsSinceEpoch);
       if (release.apkUrl != null && AppRelease.isNewer(release.tag, currentTag)) await _offer(release);
     } catch (e) {
       debugPrint('[Update] check failed: $e');
+    } finally {
+      _autoChecking = false;
     }
   }
 
