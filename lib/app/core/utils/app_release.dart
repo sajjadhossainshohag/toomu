@@ -1,10 +1,20 @@
 class AppRelease {
-  const AppRelease({required this.tag, required this.notes, required this.apkUrl, required this.apkSize});
+  const AppRelease({required this.tag, required this.notes, required this.fileUrl, required this.fileSize});
 
   final String tag;
   final String notes;
-  final String? apkUrl;
-  final int apkSize;
+
+  /// The release's file for this device (APK, Windows installer or zip); null if it has none (yet: the Windows
+  /// files are attached a few minutes after the release is published).
+  final String? fileUrl;
+  final int fileSize;
+
+  /// Release files for this device, best first: the APK for the phone's CPU types, or on Windows the installer
+  /// (a copy installed with it updates itself) or the portable zip.
+  static List<String> fileNames({required bool windows, bool installed = false, List<String> abis = const []}) =>
+      windows
+          ? [installed ? 'toomu-windows-setup.exe' : 'toomu-windows-x64.zip']
+          : [for (final abi in abis) 'toomu-$abi.apk'];
 
   static final _dated = RegExp(r'^v\d{4}\.\d{2}\.\d{2}-\d{4}$');
 
@@ -23,18 +33,19 @@ class AppRelease {
     return tag == null ? null : Uri.decodeComponent(tag);
   }
 
-  static AppRelease fromGitHub(Map<String, dynamic> json, List<String> abis) {
+  /// [names]: see [fileNames].
+  static AppRelease fromGitHub(Map<String, dynamic> json, List<String> names) {
     final assets = (json['assets'] as List? ?? const []).whereType<Map>().toList();
-    Map? apk;
-    for (final abi in abis) {
-      apk = assets.where((a) => a['name'] == 'toomu-$abi.apk').firstOrNull;
-      if (apk != null) break;
+    Map? file;
+    for (final name in names) {
+      file = assets.where((a) => a['name'] == name).firstOrNull;
+      if (file != null) break;
     }
     return AppRelease(
       tag: '${json['tag_name'] ?? ''}',
       notes: '${json['body'] ?? ''}'.trim(),
-      apkUrl: apk?['browser_download_url'] as String?,
-      apkSize: (apk?['size'] as num?)?.toInt() ?? 0,
+      fileUrl: file?['browser_download_url'] as String?,
+      fileSize: (file?['size'] as num?)?.toInt() ?? 0,
     );
   }
 }

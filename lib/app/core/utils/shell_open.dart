@@ -9,6 +9,21 @@ import 'host_os.dart';
 @visibleForTesting
 Future<Object?> Function(String exe, List<String> args) startProcess = Process.start;
 
+/// Starts a program that outlives Toomu, e.g. the update installer (tests record the call instead).
+@visibleForTesting
+Future<Object?> Function(String exe, List<String> args) startDetached =
+    (exe, args) => Process.start(exe, args, mode: ProcessStartMode.detached);
+
+/// Starts [exe] so it keeps running after Toomu exits.
+Future<void> runDetached(String exe, List<String> args) async {
+  await startDetached(exe, args);
+}
+
+/// Windows: opens a web link in the default browser.
+Future<void> openUrl(String url) async {
+  await startProcess('explorer', [url]);
+}
+
 /// Opens a file with its default app (open_filex on Android, which has no
 /// Windows side).
 @visibleForTesting

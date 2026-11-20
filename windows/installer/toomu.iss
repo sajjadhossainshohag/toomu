@@ -53,6 +53,8 @@ Name: "{autodesktop}\Toomu"; Filename: "{app}\toomu.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\toomu.exe"; Description: "{cm:LaunchProgram,Toomu}"; Flags: nowait postinstall skipifsilent
+; Toomu's own update runs this installer silently with /relaunch=yes: start the new version when done.
+Filename: "{app}\toomu.exe"; Flags: nowait; Check: Relaunch
 
 [UninstallDelete]
 ; yt-dlp, FFmpeg and Deno (a few hundred MB) download on first launch into the app's support folder
@@ -60,6 +62,11 @@ Filename: "{app}\toomu.exe"; Description: "{cm:LaunchProgram,Toomu}"; Flags: now
 Type: filesandordirs; Name: "{userappdata}\Toomu\Toomu\tools"
 
 [Code]
+function Relaunch: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:relaunch|no}') = 'yes');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Dir: String;

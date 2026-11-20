@@ -12,7 +12,9 @@ import '../core/theme/design_metrics.dart';
 import '../core/utils/app_release.dart';
 import '../core/utils/error_text.dart';
 import '../core/utils/formatters.dart';
+import '../core/utils/host_os.dart';
 import '../core/utils/parallel_download.dart';
+import '../core/utils/shell_open.dart';
 import '../core/utils/speed_meter.dart';
 import '../core/values/app_constants.dart';
 import '../widgets/app_dialog.dart';
@@ -51,7 +53,7 @@ class UpdateService extends GetxService {
   AppLifecycleListener? _lifecycle;
 
   UpdateService init() {
-    if (Platform.isAndroid && currentTag.isNotEmpty) {
+    if ((Platform.isAndroid || HostOs.isWindows) && currentTag.isNotEmpty) {
       unawaited(_autoCheck(launch: true));
       // Back in the app after a while: a release may have come out since.
       _lifecycle = AppLifecycleListener(onResume: () => unawaited(_autoCheck(launch: false)));
@@ -82,7 +84,7 @@ class UpdateService extends GetxService {
       if (downloading || checking.value) return;
       final release = await _latest();
       await _storage.write(AppConstants.kUpdateCheckedAt, DateTime.now().millisecondsSinceEpoch);
-      if (release.apkUrl != null && AppRelease.isNewer(release.tag, currentTag)) await _offer(release);
+      if (release.fileUrl != null && AppRelease.isNewer(release.tag, currentTag)) await _offer(release);
     } catch (e) {
       debugPrint('[Update] check failed: $e');
     } finally {
@@ -100,8 +102,13 @@ class UpdateService extends GetxService {
       final release = await _latest();
       if (!AppRelease.isNewer(release.tag, currentTag)) {
         showSnack('Toomu is up to date', release.tag);
-      } else if (release.apkUrl == null) {
-        showSnack('No update for this phone', '${release.tag} has no APK for its CPU type.');
+      } else if (release.fileUrl == null) {
+        showSnack(
+          HostOs.isWindows ? 'Update not ready yet' : 'No update for this phone',
+          HostOs.isWindows
+              ? '${release.tag} is still being built for Windows. Try again in a few minutes.'
+              : '${release.tag} has no APK for its CPU type.',
+        );
       } else {
         await _offer(release);
       }
@@ -112,23 +119,32 @@ class UpdateService extends GetxService {
     }
   }
 
+  /// Windows: installed with the installer (it leaves its uninstaller next to toomu.exe), so the installer can
+  /// update it; else the portable zip.
+  static bool get _windowsInstalled =>
+      File('${File(Platform.resolvedExecutable).parent.path}${Platform.pathSeparator}unins000.exe').existsSync();
+
+  Future<List<String>> _fileNames() async => HostOs.isWindows
+      ? AppRelease.fileNames(windows: true, installed: _windowsInstalled)
+      : AppRelease.fileNames(windows: false, abis: (await DeviceInfoPlugin().androidInfo).supportedAbis);
+
   Future<AppRelease> _latest() async {
-    final abis = (await DeviceInfoPlugin().androidInfo).supportedAbis;
+    final names = await _fileNames();
     try {
       final r = await _dio.get<Map<String, dynamic>>(
         'https://api.github.com/repos/${AppConstants.githubRepo}/releases/latest',
         options: Options(headers: {'Accept': 'application/vnd.github+json'}),
       );
-      return AppRelease.fromGitHub(r.data ?? const {}, abis);
+      return AppRelease.fromGitHub(r.data ?? const {}, names);
     } on DioException catch (e) {
       final code = e.response?.statusCode;
       if (code != 403 && code != 429) rethrow;
       // The API allows 60 requests an hour per IP (shared on mobile networks); the web pages aren't limited.
-      return _latestFromWebPage(abis);
+      return _latestFromWebPage(names);
     }
   }
 
-  Future<AppRelease> _latestFromWebPage(List<String> abis) async {
+  Future<AppRelease> _latestFromWebPage(List<String> names) async {
     const repo = 'https://github.com/${AppConstants.githubRepo}';
     final page = await _dio.get<void>(
       '$repo/releases/latest',
@@ -136,26 +152,29 @@ class UpdateService extends GetxService {
     );
     final tag = AppRelease.tagFromLocation(page.headers.value('location'));
     if (tag == null) throw StateError("Couldn't find the latest Toomu release.");
-    for (final abi in abis) {
-      final url = '$repo/releases/download/$tag/toomu-$abi.apk';
+    for (final name in names) {
+      final url = '$repo/releases/download/$tag/$name';
       final head = await _dio.head<void>(url, options: Options(validateStatus: (s) => s != null && s < 500));
       if (head.statusCode == 200) {
         final size = int.tryParse(head.headers.value(Headers.contentLengthHeader) ?? '') ?? 0;
-        return AppRelease(tag: tag, notes: '', apkUrl: url, apkSize: size);
+        return AppRelease(tag: tag, notes: '', fileUrl: url, fileSize: size);
       }
     }
-    return AppRelease(tag: tag, notes: '', apkUrl: null, apkSize: 0);
+    return AppRelease(tag: tag, notes: '', fileUrl: null, fileSize: 0);
   }
 
   Future<void> _offer(AppRelease release) async {
     final notes = release.notes.length > 400 ? '${release.notes.substring(0, 400)}…' : release.notes;
     final ok = await showConfirmDialog(
       title: 'Update available',
-      message: '${release.tag} · ${Formatters.bytes(release.apkSize)}${notes.isEmpty ? '' : '\n\n$notes'}',
-      confirmLabel: 'Update',
+      message: '${release.tag} · ${Formatters.bytes(release.fileSize)}${notes.isEmpty ? '' : '\n\n$notes'}',
+      confirmLabel: _portable(release) ? 'Download' : 'Update',
       cancelLabel: 'Later',
     );
-    if (ok && !downloading) await _install(release);
+    if (!ok || downloading) return;
+    // A portable copy can't replace its own files while it runs: the browser downloads the new zip.
+    if (_portable(release)) return openUrl(release.fileUrl!);
+    await _install(release);
   }
 
   /// The download's dialog. A tap outside or Back doesn't close it, only
@@ -189,12 +208,12 @@ class UpdateService extends GetxService {
     progress.value = 0;
     _received.value = 0;
     _speed.value = 0;
-    _total.value = release.apkSize;
+    _total.value = release.fileSize;
     final cancelToken = _cancel = CancelToken();
     showProgress();
     final notify = Platform.isAndroid && Get.isRegistered<DownloadService>() ? DownloadService.to : null;
     try {
-      final path = '${(await getTemporaryDirectory()).path}/toomu-update.apk';
+      final path = '${(await getTemporaryDirectory()).path}/${HostOs.isWindows ? 'toomu-update-setup.exe' : 'toomu-update.apk'}';
       final clock = Stopwatch()..start();
       final meter = SpeedMeter(0, Duration.zero);
       var got = 0;
@@ -215,7 +234,7 @@ class UpdateService extends GetxService {
       try {
         await parallelDownload(
           _dio,
-          release.apkUrl!,
+          release.fileUrl!,
           path,
           cancelToken: cancelToken,
           onProgress: (received, total) {
@@ -229,6 +248,7 @@ class UpdateService extends GetxService {
       }
       debugPrint('[Update] ${Formatters.bytes(_total.value)} in ${clock.elapsed.inSeconds} s');
       _closeProgress();
+      if (HostOs.isWindows) return await _runInstaller(path);
       showSnack('Installing update', 'Toomu closes when it is done. Open it again to use the new version.');
       await _channel.invokeMethod<void>('install', {'path': path});
     } catch (e) {
@@ -239,4 +259,35 @@ class UpdateService extends GetxService {
       progress.value = null;
     }
   }
+
+  /// The installer, silently: it updates Toomu in place and starts it again (see toomu.iss). A copy installed
+  /// for all users (Program Files) updates there too, after Windows' admin prompt.
+  @visibleForTesting
+  static List<String> installerArgs({required bool allUsers}) => [
+        '/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', '/relaunch=yes',
+        allUsers ? '/ALLUSERS' : '/CURRENTUSER',
+      ];
+
+  /// Installed for all users: toomu.exe is under Program Files.
+  @visibleForTesting
+  static bool installedForAllUsers(String exe, Map<String, String> env) => [env['ProgramFiles'], env['ProgramW6432']]
+      .whereType<String>()
+      .where((d) => d.isNotEmpty)
+      .any((d) => exe.toLowerCase().startsWith('${d.toLowerCase()}\\'));
+
+  /// Exits the app (tests record the call instead).
+  @visibleForTesting
+  static void Function(int code) exitApp = exit;
+
+  Future<void> _runInstaller(String path) async {
+    showSnack('Installing update', 'Toomu closes and opens again on the new version.');
+    await Future<void>.delayed(const Duration(seconds: 1));
+    await runDetached(
+      path,
+      installerArgs(allUsers: installedForAllUsers(Platform.resolvedExecutable, Platform.environment)),
+    );
+    exitApp(0); // so the installer can replace toomu.exe
+  }
+
+  static bool _portable(AppRelease release) => HostOs.isWindows && release.fileUrl!.endsWith('.zip');
 }

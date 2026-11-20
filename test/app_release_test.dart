@@ -24,13 +24,30 @@ void main() {
         {'name': 'toomu-arm64-v8a.apk', 'browser_download_url': 'https://x/v8.apk', 'size': 3},
       ],
     };
-    final r = AppRelease.fromGitHub(json, ['arm64-v8a', 'armeabi-v7a', 'armeabi']);
-    expect([r.tag, r.notes, r.apkUrl, r.apkSize], ['v2026.11.16-0910', 'Built by CI', 'https://x/v8.apk', 3]);
-    expect(AppRelease.fromGitHub(json, ['armeabi-v7a', 'armeabi']).apkUrl, 'https://x/v7.apk');
-    expect(AppRelease.fromGitHub(json, ['x86_64']).apkUrl, isNull);
+    final r = AppRelease.fromGitHub(json, AppRelease.fileNames(windows: false, abis: ['arm64-v8a', 'armeabi-v7a', 'armeabi']));
+    expect([r.tag, r.notes, r.fileUrl, r.fileSize], ['v2026.11.16-0910', 'Built by CI', 'https://x/v8.apk', 3]);
+    expect(AppRelease.fromGitHub(json, AppRelease.fileNames(windows: false, abis: ['armeabi-v7a', 'armeabi'])).fileUrl, 'https://x/v7.apk');
+    expect(AppRelease.fromGitHub(json, AppRelease.fileNames(windows: false, abis: ['x86_64'])).fileUrl, isNull);
   });
 
-  test('reads the latest tag from the releases page redirect when the API is rate limited', () {
+  test('Windows: an installed copy updates with the installer, a portable one gets the zip', () {
+    final json = {
+      'tag_name': 'v2026.11.20-1200',
+      'assets': [
+        {'name': 'toomu-arm64-v8a.apk', 'browser_download_url': 'https://x/v8.apk', 'size': 3},
+        {'name': 'toomu-windows-setup.exe', 'browser_download_url': 'https://x/setup.exe', 'size': 4},
+        {'name': 'toomu-windows-x64.zip', 'browser_download_url': 'https://x/win.zip', 'size': 5},
+      ],
+    };
+    final installed = AppRelease.fromGitHub(json, AppRelease.fileNames(windows: true, installed: true));
+    expect([installed.fileUrl, installed.fileSize], ['https://x/setup.exe', 4]);
+    expect(AppRelease.fromGitHub(json, AppRelease.fileNames(windows: true)).fileUrl, 'https://x/win.zip');
+    // Published before the Windows build attached its files: nothing to offer yet.
+    final early = {'tag_name': 'v2026.11.20-1200', 'assets': (json['assets'] as List).take(1).toList()};
+    expect(AppRelease.fromGitHub(early, AppRelease.fileNames(windows: true, installed: true)).fileUrl, isNull);
+  });
+
+    test('reads the latest tag from the releases page redirect when the API is rate limited', () {
     expect(AppRelease.tagFromLocation('https://github.com/a/b/releases/tag/v2026.11.16-0910'), 'v2026.11.16-0910');
     expect(AppRelease.tagFromLocation('https://github.com/a/b/releases'), isNull);
     expect(AppRelease.tagFromLocation(null), isNull);

@@ -263,7 +263,6 @@ class SettingsView extends GetView<SettingsController> {
                         label: 'Share Toomu',
                         onTap: controller.shareApp,
                       ),
-                      if (Platform.isAndroid)
                       AppRow(
                         icon: Icons.system_update_rounded,
                         tint: ColorConstants.tileDownloads,
