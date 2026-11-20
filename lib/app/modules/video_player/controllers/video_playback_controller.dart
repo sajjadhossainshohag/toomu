@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -157,6 +158,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
 
     _followPhone();
     VolumeController.instance.showSystemUI = false;
+    _watchLevels();
 
     // Music and video shouldn't play at once.
     unawaited(AudioPlayerService.to.pause());
@@ -223,7 +225,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     for (final s in _subs) {
       s.cancel();
     }
-    for (final t in [_hideTimer, _feedbackTimer, _rippleTimer, _resumeTimer, _saveTimer]) {
+    for (final t in [_hideTimer, _feedbackTimer, _rippleTimer, _resumeTimer, _saveTimer, _tapWindowTimer]) {
       t?.cancel();
     }
     WidgetsBinding.instance.removeObserver(this);
@@ -236,6 +238,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     _stopFollowingPhone();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     ScreenBrightness.instance.resetApplicationScreenBrightness();
+    VolumeController.instance.removeListener();
     VolumeController.instance.showSystemUI = true;
     super.onClose();
   }
@@ -575,8 +578,7 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
 
   void toggleControls() {
     if (controlsVisible.value) {
-      controlsVisible.value = false;
-      _hideTimer?.cancel();
+      _hideControls();
     } else {
       showControls();
     }
@@ -650,6 +652,8 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
 
   void rotate() {
     final landscape = !_viewIsLandscape;
+    // Full screen hides the bars now, with the turn: after it, the screen was laid out a second time.
+    if (landscape) showSystemBars(false);
     showControls();
     if (Platform.isAndroid) {
       // Like YouTube: the choice holds until the phone is turned that way, then the screen follows the
@@ -918,14 +922,24 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
   double _startZoom = 1, _startBrightness = 0.5, _startVolume = 0.5;
   Duration _startPosition = Duration.zero;
 
-  Future<void> onScaleStart(ScaleStartDetails d) async {
+  /// Known before a swipe starts: waiting for them at the start (two calls to Android) left the first moves
+  /// of a brightness or volume swipe starting from 50 %, then jumping.
+  double? _brightness, _volume;
+
+  void _watchLevels() {
+    ScreenBrightness.instance.application.then((v) => _brightness ??= v, onError: (Object _) {});
+    // Also follows the volume keys.
+    VolumeController.instance.addListener((v) => _volume = v);
+  }
+
+  void onScaleStart(ScaleStartDetails d) {
     if (locked.value) return;
     _drag = d.pointerCount >= 2 ? _Drag.zoom : null;
     _dragStart = d.localFocalPoint;
     _startZoom = zoom.value;
     _startPosition = position.value;
-    _startBrightness = await ScreenBrightness.instance.application;
-    _startVolume = await VolumeController.instance.getVolume();
+    _startBrightness = _brightness ?? 0.5;
+    _startVolume = _volume ?? 0.5;
   }
 
   void onScaleUpdate(ScaleUpdateDetails d) {
@@ -962,10 +976,12 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
         );
       case _Drag.brightness:
         final v = (_startBrightness - delta.dy / (viewSize.height * 0.8)).clamp(0.0, 1.0);
+        _brightness = v;
         ScreenBrightness.instance.setApplicationScreenBrightness(v);
         _show(Icons.brightness_6_rounded, '${(v * 100).round()}%', level: v);
       case _Drag.volume:
         final v = (_startVolume - delta.dy / (viewSize.height * 0.8)).clamp(0.0, 1.0);
+        _volume = v;
         VolumeController.instance.setVolume(v);
         _show(v == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded, '${(v * 100).round()}%', level: v);
     }
@@ -985,14 +1001,14 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     _hideFeedbackSoon();
   }
 
-  Offset _doubleTapAt = Offset.zero;
-  void onDoubleTapDown(TapDownDetails d) => _doubleTapAt = d.localPosition;
-
   /// Left third: −10 s, right third: +10 s (repeated taps add up), middle:
   /// play/pause.
-  void onDoubleTap() {
+  void onDoubleTap(Offset at) {
     if (locked.value || viewSize == Size.zero) return;
-    final x = _doubleTapAt.dx / viewSize.width;
+    // The first tap of the two already showed or hid the controls (taps act at once): put them back.
+    final before = _visibleBeforeTap;
+    if (before != null && controlsVisible.value != before) before ? showControls() : _hideControls();
+    final x = at.dx / viewSize.width;
     if (x > 0.35 && x < 0.65) {
       playPause();
       return;
@@ -1004,13 +1020,31 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
     _rippleTimer = Timer(const Duration(milliseconds: 800), () => skipRipple.value = 0);
   }
 
-  void onTap() {
+  /// Controls before the last single tap, so a double tap can undo what its first tap did.
+  bool? _visibleBeforeTap;
+
+  /// Right after a tap showed the controls (a double tap's window): they don't take touches yet.
+  final tapWindow = false.obs;
+  Timer? _tapWindowTimer;
+
+  void onTap(Offset at) {
+    _visibleBeforeTap = controlsVisible.value;
     if (locked.value) {
       // Only the unlock button appears while locked.
       showControls();
       return;
     }
     toggleControls();
+    if (controlsVisible.value) {
+      tapWindow.value = true;
+      _tapWindowTimer?.cancel();
+      _tapWindowTimer = Timer(kDoubleTapTimeout, () => tapWindow.value = false);
+    }
+  }
+
+  void _hideControls() {
+    controlsVisible.value = false;
+    _hideTimer?.cancel();
   }
 
   void _show(IconData icon, String text, {double? level}) {

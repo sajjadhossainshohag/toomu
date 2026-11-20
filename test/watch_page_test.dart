@@ -200,6 +200,32 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
+  testWidgets('Full screen hides the status bar as the screen turns, not after (a second jump)', (tester) async {
+    await open(tester, const Size(390, 844));
+    expect(_uiModes.last, 'SystemUiMode.edgeToEdge');
+    final c = Get.find<VideoPlaybackController>()..showControls(autoHide: false);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Full screen'));
+    expect(_uiModes.last, 'SystemUiMode.immersiveSticky', reason: 'still upright: the bars go with the turn');
+    c.controlsVisible.value = false;
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('swiping the small player down moves the watch page without building it again every frame', (tester) async {
+    await open(tester, const Size(390, 844));
+    await tester.pump(const Duration(seconds: 1));
+    final before = tester.widget(find.byType(WatchDetails));
+    final g = await tester.startGesture(const Offset(60, 150));
+    for (var i = 0; i < 6; i++) {
+      await g.moveBy(const Offset(0, 12));
+      await tester.pump();
+    }
+    expect(identical(tester.widget(find.byType(WatchDetails)), before), isTrue,
+        reason: 'the same widget each frame: Flutter skips building the page again');
+    await g.up();
+    await tester.pump(const Duration(seconds: 5));
+  });
+
   testWidgets('the upload date reads "3 days ago", not as a timestamp', (tester) async {
     await open(tester, const Size(390, 844), uploaded: DateTime.now().subtract(const Duration(days: 3, hours: 1)));
     await tester.pump();

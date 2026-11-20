@@ -9,6 +9,7 @@ import '../../../core/theme/brand_colors.dart';
 import '../../../core/theme/color_constants.dart';
 import '../../../core/utils/formatters.dart';
 import '../controllers/video_playback_controller.dart';
+import 'player_tap_area.dart';
 import 'watch_details.dart';
 
 /// Full-screen MX-style player.
@@ -55,39 +56,37 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
               builder: (_, height, child) => SizedBox(width: box.width, height: height, child: child),
               child: content,
             );
+            // Built once here, not on each frame of a swipe down: only the offset and the fade follow the finger.
+            final page = Column(
+              children: <Widget>[
+                // The box is at the top: the screen's bottom inset (gesture bar) belongs to the details below.
+                // removeTop too: this context is outside the SafeArea, so its padding still has the cutout,
+                // and the top bar would move down by it a second time.
+                SafeArea(
+                  bottom: false,
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeTop: true,
+                    removeBottom: true,
+                    child: player,
+                  ),
+                ),
+                Expanded(
+                  child: _FadeWithPull(child: WatchDetails(key: ValueKey(youtubeId), videoId: youtubeId)),
+                ),
+              ],
+            );
             return AnnotatedRegion<SystemUiOverlayStyle>(
               value: SystemUiOverlayStyle.light,
               // Swiped down: the page follows the finger, then shrinks into the corner or springs back.
-              child: Obx(() {
-                final pulled = controller.dismissDrag.value;
-                return AnimatedContainer(
+              child: Obx(
+                () => AnimatedContainer(
                   duration: controller.dismissDragging ? Duration.zero : const Duration(milliseconds: 200),
                   curve: Curves.easeOutCubic,
-                  transform: Matrix4.translationValues(0, pulled, 0),
-                  child: Column(
-                    children: <Widget>[
-                      // The box is at the top: the screen's bottom inset (gesture bar) belongs to the details below.
-                      // removeTop too: this context is outside the SafeArea, so its padding still has the cutout,
-                      // and the top bar would move down by it a second time.
-                      SafeArea(
-                        bottom: false,
-                        child: MediaQuery.removePadding(
-                          context: context,
-                          removeTop: true,
-                          removeBottom: true,
-                          child: player,
-                        ),
-                      ),
-                      Expanded(
-                        child: Opacity(
-                          opacity: (1 - pulled / 300).clamp(0.0, 1.0),
-                          child: WatchDetails(key: ValueKey(youtubeId), videoId: youtubeId),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
+                  transform: Matrix4.translationValues(0, controller.dismissDrag.value, 0),
+                  child: page,
+                ),
+              ),
             );
           }),
         ),
@@ -112,13 +111,13 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
   Widget _player(BuildContext context, Size box, bool compact, bool landscape) => Stack(
     fit: StackFit.expand,
     children: <Widget>[
-      // Video (zoom = pinch; fit/aspect = aspect button).
+      // Video (zoom = pinch; fit/aspect = aspect button). The zoom wraps the same Video widget, so a pinch
+      // only scales it each frame instead of building the video view again.
       Obx(
         () => controller.exiting.value
             ? const SizedBox.expand()
             : ClipRect(
-                child: Transform.scale(
-                  scale: controller.zoom.value,
+                child: _Zoom(
                   child: Video(
                     // A fresh surface per orientation: some phones kept
                     // the old layout after turning (half the picture).
@@ -144,11 +143,9 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
             : Stack(
                 fit: StackFit.expand,
                 children: <Widget>[
-                  // Gestures.
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
+                  // Gestures. Taps act at once (no wait for a possible double tap).
+                  PlayerTapArea(
                     onTap: controller.onTap,
-                    onDoubleTapDown: controller.onDoubleTapDown,
                     onDoubleTap: controller.onDoubleTap,
                     onScaleStart: controller.onScaleStart,
                     onScaleUpdate: controller.onScaleUpdate,
@@ -172,6 +169,29 @@ class VideoPlayerView extends GetView<VideoPlaybackController> {
   );
 }
 
+/// Scales the video with the pinch; the video widget itself stays the same.
+class _Zoom extends GetView<VideoPlaybackController> {
+  const _Zoom({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Obx(() => Transform.scale(scale: controller.zoom.value, child: child));
+}
+
+/// The watch page fades as it is pulled down; the page itself isn't built again.
+class _FadeWithPull extends GetView<VideoPlaybackController> {
+  const _FadeWithPull({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Obx(() {
+    // Always an Opacity (at 1 it paints the page directly): swapping it in and out would rebuild the page.
+    return Opacity(opacity: (1 - controller.dismissDrag.value / 300).clamp(0.0, 1.0), child: child);
+  });
+}
+
 // ------------------------------------------------------------------ controls
 
 class _Controls extends GetView<VideoPlaybackController> {
@@ -185,9 +205,11 @@ class _Controls extends GetView<VideoPlaybackController> {
       final visible = controller.controlsVisible.value;
       final locked = controller.locked.value;
       return IgnorePointer(
-        ignoring: !visible,
+        // Just shown by a tap: a second tap is a double tap (skip), not a press on the button now under it.
+        ignoring: !visible || controller.tapWindow.value,
         child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 200),
+          // Up at once like MX; away a little slower.
+          duration: Duration(milliseconds: visible ? 100 : 200),
           opacity: visible ? 1 : 0,
           child: locked ? const _LockedOverlay() : _FullControls(compact: compact),
         ),

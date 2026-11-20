@@ -14,6 +14,11 @@ import 'package:toomu/app/services/video_session_service.dart';
 import 'support/temp_storage.dart';
 
 class _FakePlayback extends VideoPlaybackController {
+  final seeks = <int>[];
+
+  @override
+  void seekBy(int seconds) => seeks.add(seconds);
+
   @override
   // ignore: must_call_super
   void onInit() {}
@@ -128,6 +133,38 @@ void main() {
     await tester.pump();
     await tester.tap(find.byIcon(Icons.screen_rotation_rounded));
     expect(asked.last, ['DeviceOrientation.portraitUp']);
+    await tester.pump(const Duration(seconds: 4));
+  });
+
+  testWidgets('tapping the video shows the controls on the next frame, not 300 ms later', (tester) async {
+    final c = await open(tester);
+    c.controlsVisible.value = false;
+    await tester.pump();
+    final g = await tester.startGesture(const Offset(400, 450));
+    await g.up();
+    await tester.pump();
+    expect(c.controlsVisible.value, isTrue);
+    await tester.pump(const Duration(seconds: 4));
+  });
+
+  testWidgets('a double tap beside the play button skips 10 s and leaves the controls hidden', (tester) async {
+    tester.view
+      ..devicePixelRatio = 1
+      ..physicalSize = const Size(400, 800);
+    addTearDown(tester.view.reset);
+    final c = await open(tester);
+    c.controlsVisible.value = false;
+    await tester.pump();
+    // Just right of centre, where the Next button appears once the first tap shows the controls.
+    final next = tester.getCenter(find.byIcon(Icons.skip_next_rounded));
+    expect(next.dx / 400, greaterThan(0.65), reason: 'the right-hand skip area');
+    for (var i = 0; i < 2; i++) {
+      final g = await tester.startGesture(next);
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+    expect(c.seeks, [10], reason: 'the second tap skips; it does not press Next');
+    expect(c.controlsVisible.value, isFalse, reason: 'the first tap showed the controls; the double tap puts them back');
     await tester.pump(const Duration(seconds: 4));
   });
 

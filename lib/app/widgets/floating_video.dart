@@ -46,7 +46,9 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
   bool _left = false;
   double? _top;
   Rect _shown = Rect.zero;
-  Rect? _dragged;
+  /// Where the finger has it while dragging. Only the box's position listens: a setState per move built the
+  /// video and its buttons again on every frame of the drag.
+  final _dragged = ValueNotifier<Rect?>(null);
   int _surface = 0;
 
   @override
@@ -84,16 +86,17 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
     _minimizedWatch.dispose();
     _shrink.dispose();
     _life.dispose();
+    _dragged.dispose();
     super.dispose();
   }
 
   void _drop(DragEndDetails d) {
-    final dropped = _dragged;
+    final dropped = _dragged.value;
     if (dropped == null) return;
+    _dragged.value = null;
     setState(() {
       _left = FloatingVideo.landsLeft(dropped, MediaQuery.sizeOf(context).width, d.velocity.pixelsPerSecond.dx);
       _top = dropped.top;
-      _dragged = null;
       _from = DeviceProfile.reduceMotion ? null : dropped;
       _fromRadius = 12;
       _snapping = true;
@@ -107,18 +110,19 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
     final media = MediaQuery.of(context);
     final rest = FloatingVideo.restRect(media.size, media.padding, left: _left, top: _top);
     return AnimatedBuilder(
-      animation: _shrink,
+      animation: Listenable.merge([_shrink, _dragged]),
       builder: (_, child) {
+        final dragged = _dragged.value;
         final t = Curves.easeOutCubic.transform(_shrink.value);
         final from = _from;
-        _shown = _dragged ?? (from == null ? rest : Rect.lerp(from, rest, t)!);
+        _shown = dragged ?? (from == null ? rest : Rect.lerp(from, rest, t)!);
         return Positioned.fromRect(
           rect: _shown,
           child: Material(
             color: Colors.black,
             elevation: 10,
             borderRadius: BorderRadius.circular(
-              from == null || _dragged != null ? 12 : _fromRadius + (12 - _fromRadius) * t,
+              from == null || dragged != null ? 12 : _fromRadius + (12 - _fromRadius) * t,
             ),
             clipBehavior: Clip.antiAlias,
             child: child,
@@ -140,8 +144,8 @@ class _FloatingVideoState extends State<FloatingVideo> with SingleTickerProvider
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _session.reopen,
-            onPanStart: (_) => setState(() => _dragged = _shown),
-            onPanUpdate: (d) => setState(() => _dragged = _dragged?.shift(d.delta)),
+            onPanStart: (_) => _dragged.value = _shown,
+            onPanUpdate: (d) => _dragged.value = _dragged.value?.shift(d.delta),
             onPanEnd: _drop,
           ),
           Align(
