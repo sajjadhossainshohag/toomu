@@ -200,13 +200,16 @@ class _BarAndPageState extends State<_BarAndPage> with SingleTickerProviderState
     final double barHeight = _barHeight ?? 58 * context.scale;
     return Obx(() {
       final tab = widget.tab;
-      final shown =
-          DeviceProfile.lowEnd ||
-          tab.barShown.value ||
-          tab.loading ||
-          tab.addressFocused.value ||
-          tab.finding.value ||
-          tab.showingNewTab.value;
+      // Every value read first: `lowEnd || …` stopped at lowEnd on low-end phones, so the Obx read nothing
+      // and GetX replaced the whole browser with its "improper use" error page.
+      final asked = [
+        tab.barShown.value,
+        tab.loading,
+        tab.addressFocused.value,
+        tab.finding.value,
+        tab.showingNewTab.value,
+      ];
+      final shown = DeviceProfile.lowEnd || asked.contains(true);
       if (shown != _target) WidgetsBinding.instance.addPostFrameCallback((_) => _apply(shown));
       return Stack(
         children: <Widget>[
