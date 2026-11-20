@@ -38,9 +38,14 @@ class _Yt extends YoutubeController {
 }
 
 class _Home extends HomeController {
+  final browsed = <String>[];
+
   @override
   // ignore: must_call_super
   void onReady() {}
+
+  @override
+  Future<void> openInBrowser(String url) async => browsed.add(url);
 }
 
 void main() {
@@ -111,13 +116,15 @@ void main() {
     expect(find.textContaining('downloading'), findsNothing);
   });
 
-  testWidgets('words typed on Home search YouTube in the YouTube tab', (tester) async {
+  testWidgets('words typed on Home search Google in the browser; the YouTube tab has its own search', (tester) async {
     final yt = await open(tester);
     await tester.enterText(find.byType(TextField), 'lofi beats');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pump();
-    expect(Get.find<HomeController>().tabIndex.value, HomeTabs.indexOf(HomeTabs.youtube));
-    expect(yt.opened, ['search lofi beats']);
+    final home = Get.find<HomeController>() as _Home;
+    expect(home.browsed, ['https://www.google.com/search?q=lofi+beats']);
+    expect(home.tabIndex.value, HomeTabs.indexOf(HomeTabs.home), reason: 'it stays on Home');
+    expect(yt.opened, isEmpty, reason: 'nothing searched on YouTube');
   });
 
   testWidgets('the Downloads tab shows how many are running', (tester) async {

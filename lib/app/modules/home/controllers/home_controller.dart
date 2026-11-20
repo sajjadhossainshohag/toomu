@@ -13,6 +13,7 @@ import '../../../data/models/video_item.dart';
 import '../../../data/providers/local_music_provider.dart';
 import '../../../data/providers/local_video_provider.dart';
 import '../../../routes/app_pages.dart';
+import '../../browser/address.dart';
 import '../../browser/controllers/browser_session.dart';
 import '../../settings/views/settings_view.dart';
 import '../../video_player/controllers/video_playback_controller.dart';
@@ -117,15 +118,13 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   Future<void> openFromHome(String input) async {
     final text = input.trim();
     if (text.isEmpty || await openLinkFrom(text)) return;
+    // A link in the text opens it; anything else is an address or a Google search (the YouTube tab has its own).
     final url = RegExp(r'https?://\S+').firstMatch(text)?.group(0);
-    if (url != null) {
-      await Get.toNamed<void>(Routes.browser, arguments: url);
-      return;
-    }
-    openTab(HomeTabs.youtube);
-    final yt = Get.find<YoutubeController>()..searchText.text = text;
-    await yt.submit(text);
+    await openInBrowser(url ?? addressTarget(text));
   }
+
+  @visibleForTesting
+  Future<void> openInBrowser(String url) async => Get.toNamed<void>(Routes.browser, arguments: url);
 
   Future<void> pasteFromHome() async {
     final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim() ?? '';
