@@ -1900,15 +1900,80 @@ class DownloadService extends GetxService {
   }
 
   Future<int> _bytesOnDisk(DownloadTask t) {
-    final work = _workDirOf(t);
-    final paths = t.source != DownloadSource.direct
-        ? [if (work.isNotEmpty) work]
-        : const <String>[];
     if (t.source == DownloadSource.direct) {
       final part = t.partPath;
       return Isolate.run(() => partBytesOnDisk(part));
     }
-    return Isolate.run(() => paths.fold<int>(0, (s, p) => s + _sizeOf(p)));
+    final work = _workDirOf(t);
+    if (work.isEmpty) return Future.value(0);
+    return Isolate.run(() => workBytesOnDisk(work));
+  }
+
+  /// Bytes a yt-dlp work folder holds. aria2c (Android, several connections)
+  /// writes each part of a file at its own offset, so a paused file is
+  /// already about as long as the start of its last part: its bytes come
+  /// from aria2c's control file (`<file>.aria2`) instead.
+  @visibleForTesting
+  static int workBytesOnDisk(String dir) {
+    try {
+      final files = Directory(dir).listSync(recursive: true, followLinks: false).whereType<File>().toList();
+      final controls = {for (final f in files) if (f.path.endsWith('.aria2')) f.path};
+      var sum = 0;
+      for (final f in files) {
+        if (controls.contains(f.path)) continue;
+        final control = '${f.path}.aria2';
+        final got = controls.contains(control) ? aria2Downloaded(File(control).readAsBytesSync()) : null;
+        sum += got ?? f.lengthSync();
+      }
+      return sum;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Bytes downloaded per an aria2c control file: finished pieces plus the
+  /// 16 KB blocks of the pieces in flight; null if it can't be read.
+  @visibleForTesting
+  static int? aria2Downloaded(Uint8List bytes) {
+    try {
+      final d = ByteData.sublistView(bytes);
+      final version = d.getUint16(0, Endian.big);
+      if (version > 1) return null;
+      final e = version == 1 ? Endian.big : Endian.host;
+      var at = 6; // version + extension
+      final hashLength = d.getUint32(at, e);
+      at += 4 + hashLength;
+      final piece = d.getUint32(at, e);
+      final total = d.getUint64(at + 4, e);
+      at += 4 + 8 + 8; // piece length, total, uploaded
+      if (piece <= 0 || total <= 0) return null;
+      int bitsSet(int from, int length, int Function(int i) size) {
+        var n = 0;
+        for (var i = 0; i < length * 8; i++) {
+          if (bytes[from + i ~/ 8] & (0x80 >> (i % 8)) != 0) n += size(i);
+        }
+        return n;
+      }
+
+      final count = (total + piece - 1) ~/ piece;
+      int pieceSize(int i) => i >= count ? 0 : (i == count - 1 ? total - i * piece : piece);
+      final fieldLength = d.getUint32(at, e);
+      var got = bitsSet(at + 4, fieldLength, pieceSize);
+      at += 4 + fieldLength;
+      final inFlight = d.getUint32(at, e);
+      at += 4;
+      const block = 16 * 1024;
+      for (var k = 0; k < inFlight; k++) {
+        final length = d.getUint32(at + 4, e);
+        final blocksLength = d.getUint32(at + 8, e);
+        final blocks = bitsSet(at + 12, blocksLength, (_) => block);
+        got += blocks > length ? length : blocks;
+        at += 12 + blocksLength;
+      }
+      return got > total ? total : got;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Size of a file, or of all files in a folder; 0 if missing.

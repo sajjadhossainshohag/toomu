@@ -137,6 +137,97 @@ void main() {
     });
   });
 
+  group('paused yt-dlp downloads', () {
+    late Directory work;
+    setUp(() => work = Directory.systemTemp.createTempSync('ytwork'));
+    tearDown(() => work.deleteSync(recursive: true));
+
+    // aria2c's control file (<file>.aria2, format version 1, big-endian): which 1 MB pieces are done, and the
+    // 16 KB blocks of the pieces it was in the middle of.
+    Uint8List control({
+      required int total,
+      required Set<int> done,
+      Map<int, int> inFlightBlocks = const {},
+      int version = 1,
+    }) {
+      const piece = _mb;
+      final count = (total + piece - 1) ~/ piece;
+      final b = BytesBuilder();
+      final endian = version == 1 ? Endian.big : Endian.little;
+      void u32(int v) => b.add((ByteData(4)..setUint32(0, v, endian)).buffer.asUint8List());
+      void u64(int v) => b.add((ByteData(8)..setUint64(0, v, endian)).buffer.asUint8List());
+      Uint8List bits(int n, bool Function(int) set) {
+        final out = Uint8List((n + 7) ~/ 8);
+        for (var i = 0; i < n; i++) {
+          if (set(i)) out[i ~/ 8] |= 0x80 >> (i % 8);
+        }
+        return out;
+      }
+
+      b.add((ByteData(2)..setUint16(0, version, Endian.big)).buffer.asUint8List());
+      u32(0); // extension
+      u32(0); // no info hash: not a torrent
+      u32(piece);
+      u64(total);
+      u64(0); // uploaded
+      final field = bits(count, done.contains);
+      u32(field.length);
+      b.add(field);
+      u32(inFlightBlocks.length);
+      for (final e in inFlightBlocks.entries) {
+        u32(e.key);
+        u32(piece);
+        final blocks = bits(piece ~/ (16 << 10), (i) => i < e.value);
+        u32(blocks.length);
+        b.add(blocks);
+      }
+      return b.toBytes();
+    }
+
+    // aria2c with 4 connections splits the file in 4 and writes each part at its own offset: after a little of
+    // each, the file is already as long as the start of the last part plus what it got.
+    void gappyPart(String path, int total, Set<int> donePieces) {
+      final raf = File(path).openSync(mode: FileMode.write);
+      for (final i in donePieces) {
+        raf
+          ..setPositionSync(i * _mb)
+          ..writeFromSync(List.filled(_mb, 1));
+      }
+      raf.closeSync();
+    }
+
+    test('a paused multi-connection download shows the bytes it got, not near the end of the file', () {
+      const total = 40 * _mb;
+      final done = {0, 1, 10, 20, 30, 31}; // 6 MB, the last at 31-32 MB
+      final part = '${work.path}/f137.mp4.part';
+      gappyPart(part, total, done);
+      File('$part.aria2').writeAsBytesSync(control(total: total, done: done, inFlightBlocks: {11: 8}));
+      File('${work.path}/info.json').writeAsStringSync('{}');
+      expect(File(part).lengthSync(), 32 * _mb, reason: 'the gappy file is almost full length');
+
+      expect(DownloadService.workBytesOnDisk(work.path), 6 * _mb + 8 * (16 << 10) + 2);
+    });
+
+    test('video already finished, audio paused: both counted by their bytes', () {
+      File('${work.path}/f137.mp4').writeAsBytesSync(List.filled(3 * _mb, 1));
+      final part = '${work.path}/f140.m4a.part';
+      gappyPart(part, 8 * _mb, {0, 7});
+      File('$part.aria2').writeAsBytesSync(control(total: 8 * _mb, done: {0, 7}, version: 0));
+      expect(DownloadService.workBytesOnDisk(work.path), 5 * _mb);
+    });
+
+    test('a part file without a control file (built-in downloader) counts its length', () {
+      File('${work.path}/f137.mp4.part').writeAsBytesSync(List.filled(5 * _mb, 1));
+      expect(DownloadService.workBytesOnDisk(work.path), 5 * _mb);
+    });
+
+    test('an unreadable control file falls back to the file length', () {
+      File('${work.path}/f137.mp4.part').writeAsBytesSync(List.filled(_mb, 1));
+      File('${work.path}/f137.mp4.part.aria2').writeAsBytesSync([0, 1, 2]);
+      expect(DownloadService.workBytesOnDisk(work.path), _mb);
+    });
+  });
+
   group('direct downloads over several connections', () {
     const total = 35 * _mb + 77;
     late Directory tmp;

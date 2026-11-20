@@ -155,22 +155,11 @@ class YtDlpBridge(private val context: Context, messenger: BinaryMessenger) {
         }
     }
 
-    /**
-     * aria2c with [connections] parallel connections per file. These args
-     * replace the library's own aria2c args, so they repeat its two (CA
-     * certificate path for TLS, progress lines every second).
-     */
+    /** aria2c with [connections] parallel connections per file (see [Aria2Args]). */
     private fun aria2cArgs(connections: Int): List<String> {
-        val n = connections.coerceIn(2, 16)
         val caCert = File(context.noBackupFilesDir,
             "${YoutubeDL.baseName}/packages/python/usr/etc/tls/cert.pem").absolutePath
-        return listOf(
-            "--downloader", "libaria2c.so",
-            "--downloader-args",
-            "aria2c:-x $n -s $n -k 1M --file-allocation=none --summary-interval=1 " +
-                // Same IP version as yt-dlp (-4): links are tied to it.
-                "--disable-ipv6=true --console-log-level=warn --ca-certificate=$caCert",
-        )
+        return Aria2Args.of(connections, caCert)
     }
 
     // ------------------------------------------------------------ updates
