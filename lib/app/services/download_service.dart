@@ -1148,7 +1148,9 @@ class DownloadService extends GetxService {
 
   static const _progressTemplate =
       'download:[toomu] %(info.format_id)s %(progress.downloaded_bytes)s '
-      '%(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s';
+      '%(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s '
+      // "finished" lines of a file kept from before a pause carry no byte count.
+      '%(progress.status)s';
 
   /// yt-dlp may pick another extension (e.g. a single WebM file).
   static void _findOutput(
@@ -2081,16 +2083,19 @@ class YtDlpProgress {
   final void Function()? onFirstBytes;
   bool _gotBytes = false;
 
-  /// Native downloader: bytes per format id (from --progress-template).
+  /// Bytes per format id (from --progress-template): while the built-in
+  /// downloader runs, and once a file is finished (aria2c's too, or one
+  /// kept from before a pause, which yt-dlp skips).
   final _perFormat = <String, ({int done, int total})>{};
 
-  /// aria2c: bytes of finished stages + the current one.
+  /// aria2c: the file it is on now, and earlier ones of this run that
+  /// yt-dlp didn't report as finished (finished ones are in [_perFormat]).
   int _stageBase = 0;
   int _stageDone = 0;
   int _stageTotal = 0;
   int _stages = 0;
 
-  static final _template = RegExp(r'^\[toomu\] (\S+) (\S+) (\S+) (\S+) (\S+)');
+  static final _template = RegExp(r'^\[toomu\] (\S+) (\S+) (\S+) (\S+) (\S+)(?: (\S+))?');
   static final _aria2c = RegExp(
     r'\[#\w+\s+([\d.]+)([KMG]?i?B)/([\d.]+)([KMG]?i?B)\(\d+%\)',
   );
@@ -2110,12 +2115,14 @@ class YtDlpProgress {
     }
     final t = _template.firstMatch(line);
     if (t != null) {
-      final done = _num(t[2]);
       final total = _num(t[3]) > 0 ? _num(t[3]) : _num(t[4]);
+      final done = t[6] == 'finished' && total > 0 ? total : _num(t[2]);
       _perFormat[t[1]!] = (done: done, total: total);
+      // aria2c's file, now counted per format.
+      _stageDone = _stageTotal = 0;
       _report(
-        _perFormat.values.fold(0, (s, f) => s + f.done),
-        _perFormat.values.fold(0, (s, f) => s + f.total),
+        _perFormat.values.fold(_stageBase, (s, f) => s + f.done),
+        _perFormat.values.fold(_stageBase, (s, f) => s + f.total),
         stage: _perFormat.length,
       );
       return;
@@ -2132,9 +2139,9 @@ class YtDlpProgress {
       _stageDone = _bytes(a[1]!, a[2]!);
       _stageTotal = _bytes(a[3]!, a[4]!);
       _report(
-        _stageBase + _stageDone,
-        _stageBase + _stageTotal,
-        stage: _stages,
+        _perFormat.values.fold(_stageBase + _stageDone, (s, f) => s + f.done),
+        _perFormat.values.fold(_stageBase + _stageTotal, (s, f) => s + f.total),
+        stage: _stages + _perFormat.length,
       );
       return;
     }

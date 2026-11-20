@@ -58,4 +58,46 @@ void main() {
     expect(task.phase.value, DownloadPhase.video);
     expect(firstBytes, 1);
   });
+
+  group('a resumed download counts the part it finished before the pause', () {
+    const mib = 1024 * 1024;
+
+    test('aria2c: the audio part adds to the video part yt-dlp already has', () {
+      final task = _task(DownloadKind.video);
+      var bytes = 0;
+      final p = YtDlpProgress(task, (b) => bytes = b);
+      // Paused during the audio part; on resume yt-dlp skips the finished
+      // video part and reports it without a byte count.
+      p.onLine('[download] /tmp/x.f137.mp4 has already been downloaded');
+      p.onLine('[toomu] 137 NA 104857600 NA NA finished');
+      p.onLine('[download] Destination: /tmp/x.f140.m4a');
+      p.onLine('[#a1b2c3 2.0MiB/4.0MiB(50%) CN:8 DL:1.0MiB ETA:2s]');
+      expect(bytes, 102 * mib);
+      expect(task.totalBytes.value, 104 * mib);
+      expect(task.phase.value, DownloadPhase.audio);
+    });
+
+    test('built-in downloader: the same', () {
+      final task = _task(DownloadKind.video);
+      var bytes = 0;
+      final p = YtDlpProgress(task, (b) => bytes = b);
+      p.onLine('[toomu] 137 NA 104857600 NA NA finished');
+      p.onLine('[toomu] 140 2097152 4194304 NA 524288.5 downloading');
+      expect(bytes, 102 * mib);
+    });
+
+    test("a part finished in this run isn't counted twice", () {
+      final task = _task(DownloadKind.video);
+      var bytes = 0;
+      final p = YtDlpProgress(task, (b) => bytes = b);
+      p.onLine('[download] Destination: /tmp/x.f137.mp4');
+      p.onLine('[#2089b0 100MiB/100MiB(100%) CN:8 DL:5.1MiB]');
+      p.onLine('[toomu] 137 104857600 104857600 NA 5242880 finished');
+      expect(bytes, 100 * mib);
+      p.onLine('[download] Destination: /tmp/x.f140.m4a');
+      p.onLine('[#a1b2c3 2.0MiB/4.0MiB(50%) CN:8 DL:1.0MiB ETA:2s]');
+      expect(bytes, 102 * mib);
+      expect(task.totalBytes.value, 104 * mib);
+    });
+  });
 }
