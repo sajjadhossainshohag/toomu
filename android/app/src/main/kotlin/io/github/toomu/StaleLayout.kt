@@ -40,4 +40,13 @@ object StaleLayout {
      */
     fun surfaceNeedsLayout(surfaceWidth: Int, surfaceHeight: Int, viewWidth: Int, viewHeight: Int): Boolean =
         isStale(surfaceWidth, surfaceHeight, viewWidth, viewHeight)
+
+    /**
+     * The surface's layout params are a fixed size instead of MATCH_PARENT (-1): every layout pass then puts it
+     * back to that (old) size, so laying it out again can't help; the params themselves are set back.
+     */
+    fun paramsPinned(paramsWidth: Int, paramsHeight: Int): Boolean =
+        paramsWidth != MATCH_PARENT || paramsHeight != MATCH_PARENT
+
+    private const val MATCH_PARENT = -1
 }

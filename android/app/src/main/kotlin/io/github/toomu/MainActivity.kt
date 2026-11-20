@@ -221,6 +221,9 @@ class MainActivity : AudioServiceFragmentActivity() {
             val (ww, wh) = windowBounds()
             val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             val viewStale = StaleLayout.needsLayout(flutter.width, flutter.height, ww, wh, landscape)
+            // Flutter's Android layer can drop the new size after a turn (see relayout): it is sent again once per
+            // turn, whatever the sizes look like. The same size again changes nothing.
+            if (attempt == 0) flutter.requestApplyInsets()
             val surfaces = renderSurfacesIn(flutter).filter {
                 StaleLayout.surfaceNeedsLayout(it.width, it.height, flutter.width, flutter.height)
             }
@@ -228,7 +231,10 @@ class MainActivity : AudioServiceFragmentActivity() {
                 videoChannel?.invokeMethod(
                     "log",
                     "[Screen] Flutter view ${flutter.width}x${flutter.height}" +
-                        surfaces.joinToString("") { ", surface ${it.width}x${it.height}" } +
+                        surfaces.joinToString("") {
+                            ", surface ${it.width}x${it.height} (params ${it.layoutParams?.width}x${it.layoutParams?.height}, " +
+                                "measured ${it.measuredWidth}x${it.measuredHeight}, layout asked ${it.isLayoutRequested})"
+                        } +
                         ", window ${ww}x$wh, ${if (landscape) "landscape" else "portrait"} after turning: laid out again (try ${attempt + 1})",
                 )
                 relayout(flutter, surfaces, viewStale, attempt)
@@ -237,25 +243,33 @@ class MainActivity : AudioServiceFragmentActivity() {
         }, checkDelays[attempt])
     }
 
+    /**
+     * Flutter (3.41) after a turn: a frame still drawn at the old size reports that size (FlutterView's
+     * FlutterUiResizeListener.resizeEngineView), which pins the surface's layout params to it and makes
+     * FlutterView skip sending the next real size to Dart ("Resize was in response to the engine resizing the
+     * view"). So the surface is set back to fill the view and the size is sent again (insets applied =
+     * FlutterView sends its metrics); a layout pass alone never helped. Seen on the emulator; the Realme
+     * half-screen picture looks the same.
+     */
     private fun relayout(flutter: View, surfaces: List<View>, viewStale: Boolean, attempt: Int) {
-        for (s in surfaces) s.forceLayout()
+        for (s in surfaces) {
+            val params = s.layoutParams
+            if (params != null && StaleLayout.paramsPinned(params.width, params.height)) {
+                params.width = ViewGroup.LayoutParams.MATCH_PARENT
+                params.height = ViewGroup.LayoutParams.MATCH_PARENT
+                s.layoutParams = params
+            }
+            s.forceLayout()
+        }
         var v: View? = flutter
         while (v != null) {
             v.forceLayout()
             v = v.parent as? View
         }
         window.decorView.requestLayout()
-        if (attempt < 1) return
-        // Still stale after a layout pass. The surface: size it to the view directly (its parent's
-        // layout skipped it). The view itself: have the window manager lay the window out again.
-        for (s in surfaces) {
-            s.measure(
-                View.MeasureSpec.makeMeasureSpec(flutter.width, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(flutter.height, View.MeasureSpec.EXACTLY),
-            )
-            s.layout(0, 0, flutter.width, flutter.height)
-        }
-        if (viewStale) window.attributes = window.attributes
+        flutter.requestApplyInsets()
+        // The view itself still the old size after a layout pass: have the window manager lay the window out again.
+        if (viewStale && attempt >= 1) window.attributes = window.attributes
     }
 
     /** What Flutter draws into; FlutterView's other children (platform views) have their own sizes. */

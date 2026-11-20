@@ -31,6 +31,15 @@ class StaleLayoutTest {
     }
 
     @Test
+    fun `half-screen picture after turning, a surface pinned to its old size is set back to fill the view`() {
+        // Emulator log: "surface 1080x2400 (params 1080x2400 ...)" in a 2400x1080 view. Fixed layout params put the
+        // surface back to its old size on every layout pass, so laying it out again never helped.
+        assertTrue(StaleLayout.paramsPinned(1080, 2400))
+        assertTrue(StaleLayout.paramsPinned(-1, 2400))
+        assertFalse(StaleLayout.paramsPinned(-1, -1)) // MATCH_PARENT both ways: it follows the view
+    }
+
+    @Test
     fun `a view that fills the window is left alone`() {
         assertFalse(StaleLayout.isStale(2400, 1080, 2400, 1080))
         assertFalse(StaleLayout.isStale(2399, 1080, 2400, 1080)) // rounding
