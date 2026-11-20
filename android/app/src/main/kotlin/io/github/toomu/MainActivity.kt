@@ -163,27 +163,48 @@ class MainActivity : AudioServiceFragmentActivity() {
         checkFlutterFillsWindow(0)
     }
 
+    /** The window's real size (0x0 before Android 11, where only the orientation is checked). */
+    private fun windowBounds(): Pair<Int, Int> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0 to 0
+        val b = windowManager.currentWindowMetrics.bounds
+        return b.width() to b.height()
+    }
+
+    private val checkDelays = longArrayOf(300, 300, 400, 600, 1000)
+    private var checkRun = 0
+
     /**
      * After a turn, some phones left Flutter's view at its old size (see [StaleLayout]); lays it
-     * out again, checking a few times as the window settles.
+     * out again, checking a few times as the window settles. A newer turn replaces older checks.
      */
-    private fun checkFlutterFillsWindow(attempt: Int) {
+    private fun checkFlutterFillsWindow(attempt: Int, run: Int = ++checkRun) {
         val content = findViewById<View>(android.R.id.content) ?: return
         content.postDelayed({
+            if (run != checkRun) return@postDelayed
             val flutter = flutterViewIn(content) ?: return@postDelayed
-            if (!StaleLayout.isStale(flutter.width, flutter.height, content.width, content.height)) return@postDelayed
-            videoChannel?.invokeMethod(
-                "log",
-                "[Screen] Flutter view ${flutter.width}x${flutter.height} in a ${content.width}x${content.height} window after turning: laid out again",
-            )
-            var v: View? = flutter
-            while (v != null) {
-                v.forceLayout()
-                v = v.parent as? View
+            val (ww, wh) = windowBounds()
+            val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            if (StaleLayout.needsLayout(flutter.width, flutter.height, ww, wh, landscape)) {
+                videoChannel?.invokeMethod(
+                    "log",
+                    "[Screen] Flutter view ${flutter.width}x${flutter.height}, content ${content.width}x${content.height}, " +
+                        "window ${ww}x$wh, ${if (landscape) "landscape" else "portrait"} after turning: laid out again (try ${attempt + 1})",
+                )
+                relayout(flutter, attempt)
             }
-            content.requestLayout()
-            if (attempt < 3) checkFlutterFillsWindow(attempt + 1)
-        }, if (attempt == 0) 300L else 250L)
+            if (attempt + 1 < checkDelays.size) checkFlutterFillsWindow(attempt + 1, run)
+        }, checkDelays[attempt])
+    }
+
+    private fun relayout(flutter: View, attempt: Int) {
+        var v: View? = flutter
+        while (v != null) {
+            v.forceLayout()
+            v = v.parent as? View
+        }
+        window.decorView.requestLayout()
+        // Still stale: have the window manager lay the window out again (the frame itself was old).
+        if (attempt >= 1) window.attributes = window.attributes
     }
 
     private fun flutterViewIn(v: View): View? {
@@ -352,6 +373,11 @@ class MainActivity : AudioServiceFragmentActivity() {
                     "pipSupported" -> result.success(pipSupported())
                     // The player follows the phone (on) or stops before it locks the screen itself (off).
                     "followPhone" -> result.success(followPhone(call.argument<Boolean>("on") == true))
+                    // The rotate button: also checked when no configuration change arrives.
+                    "checkLayout" -> {
+                        checkFlutterFillsWindow(0)
+                        result.success(null)
+                    }
                     "clock" -> result.success(
                         mapOf(
                             "elapsed" to SystemClock.elapsedRealtime(),

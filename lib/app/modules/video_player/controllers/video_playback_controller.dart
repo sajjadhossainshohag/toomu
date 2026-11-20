@@ -655,6 +655,9 @@ class VideoPlaybackController extends GetxController with WidgetsBindingObserver
           ? [DeviceOrientation.portraitUp]
           : [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
     );
+    // Some phones (Realme) kept Flutter's view at the old size after turning: MainActivity checks
+    // and lays it out again, even when no configuration change arrives.
+    if (Platform.isAndroid) unawaited(_platform.invokeMethod<void>('checkLayout').catchError((_) {}));
     showControls();
   }
 
