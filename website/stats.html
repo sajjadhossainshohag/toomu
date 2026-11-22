@@ -52,7 +52,7 @@ pre { white-space: pre-wrap; word-break: break-word }
 <main class="mx-auto max-w-[1000px] space-y-6 px-4 py-8 sm:px-6">
   <div>
     <h1 class="text-[30px] font-semibold tracking-[-0.03em]">Users</h1>
-    <p class="mt-1 text-[14px] text-muted">Each copy of the app sends one ping a day with no ID: just the platform and version. Days are UTC. Updates every few minutes.</p>
+    <p class="mt-1 text-[14px] text-muted">Each copy of the app sends one ping a day with no ID: just the platform and version. Days are UTC.</p>
   </div>
 
   <p id="err" class="hidden rounded-[12px] border border-[#F3C7C7] bg-[#FDF1F1] px-4 py-3 text-[14px] text-[#9B1C1C]"></p>
@@ -180,7 +180,7 @@ function drawChart(series) {
 
 async function loadStats() {
   try {
-    const res = await fetch(`${RELAY}/stats`);
+    const res = await fetch(`${RELAY}/stats`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`the relay answered ${res.status}`);
     const s = await res.json();
     $('t-today').textContent = fmt(s.today);

@@ -206,7 +206,7 @@ async function stats(env, url) {
     days,
   };
   return new Response(JSON.stringify(body), {
-    headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'max-age=300' },
+    headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store' },
   });
 }
 

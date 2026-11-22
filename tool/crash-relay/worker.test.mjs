@@ -181,3 +181,9 @@ test('without ADMIN_KEY set the crash list is off, and the browser preflight is 
   assert.equal(pre.status, 204);
   assert.match(pre.headers.get('access-control-allow-headers'), /x-admin-key/);
 });
+
+test('stats are never served from the browser cache, so a new ping shows on reload', async () => {
+  const e = { ...env, DB: fakeD1() };
+  const res = await worker.fetch(new Request('https://relay.example/stats'), e);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+});
