@@ -22,6 +22,12 @@ class SettingsService extends GetxService {
 
   final captureMedia = true.obs;
   final clipboardLinks = true.obs;
+
+  /// Send crash reports: null until the user is first asked (after a crash).
+  final crashReports = Rxn<bool>();
+
+  /// One anonymous "used today" ping a day (no ID), so the developer knows how many use Toomu.
+  final usageCount = true.obs;
   final blockRedirects = true.obs;
 
   /// Browser: block ads (ad hosts' requests, common ad boxes hidden).
@@ -45,6 +51,8 @@ class SettingsService extends GetxService {
     videoAutoPip.value = _storage.read<bool>(AppConstants.kVideoAutoPip) ?? true;
     captureMedia.value = _storage.read<bool>(AppConstants.kCaptureMedia) ?? true;
     clipboardLinks.value = _storage.read<bool>(AppConstants.kClipboardLinks) ?? true;
+    crashReports.value = _storage.read<bool>(AppConstants.kCrashReports);
+    usageCount.value = _storage.read<bool>(AppConstants.kUsageCount) ?? true;
     blockRedirects.value = _storage.read<bool>(AppConstants.kBlockRedirects) ?? true;
     blockAds.value = _storage.read<bool>(AppConstants.kBlockAds) ?? true;
     adsAllowedSites.assignAll(
@@ -71,6 +79,16 @@ class SettingsService extends GetxService {
   void setCaptureMedia(bool v) {
     captureMedia.value = v;
     _storage.write(AppConstants.kCaptureMedia, v);
+  }
+
+  void setCrashReports(bool v) {
+    crashReports.value = v;
+    _storage.write(AppConstants.kCrashReports, v);
+  }
+
+  void setUsageCount(bool v) {
+    usageCount.value = v;
+    _storage.write(AppConstants.kUsageCount, v);
   }
 
   void setClipboardLinks(bool v) {

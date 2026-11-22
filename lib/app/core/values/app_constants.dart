@@ -17,6 +17,13 @@ abstract class AppConstants {
 
   static const githubRepo = 'sajjadhossainshohag/toomu';
 
+  /// Crash relay and user count (`tool/crash-relay`, a Cloudflare Worker: /report opens GitHub
+  /// issues, /ping counts users). No trailing slash. Empty: nothing is sent.
+  static const relayUrl = '';
+
+  /// Sent as X-Toomu-Key. Not a secret (it ships in the app): it only keeps random traffic off the relay.
+  static const crashReportKey = 'toomu-ec11073bba3ceb97e13b7ff5';
+
   // GitHub redirects /releases/latest/download/<file> to that file in the newest release.
   static String latestDownload({required bool windows}) =>
       'https://github.com/$githubRepo/releases/latest/download/${windows ? 'toomu-windows-setup.exe' : 'toomu-arm64-v8a.apk'}';
@@ -49,6 +56,9 @@ abstract class AppConstants {
   static const kVideoAutoPip = 'video_auto_pip';
   static const kCaptureMedia = 'browser_capture_media';
   static const kClipboardLinks = 'clipboard_links';
+  static const kCrashReports = 'crash_reports';
+  static const kUsageCount = 'usage_count';
+  static const kUsagePingDay = 'usage_ping_day';
   static const kBlockRedirects = 'browser_block_redirects';
   static const kBlockAds = 'browser_block_ads';
   static const kAdsAllowedSites = 'browser_ads_allowed_sites';

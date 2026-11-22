@@ -200,6 +200,21 @@ class SettingsView extends GetView<SettingsController> {
                         value: 'Log',
                         onTap: controller.openDiagnostics,
                       ),
+                      AppRow(
+                        icon: Icons.report_rounded,
+                        tint: ColorConstants.tileAbout,
+                        label: 'Send crash reports',
+                        toggled: controller.settings.crashReports.value ?? false,
+                        onTap: () => controller.settings
+                            .setCrashReports(!(controller.settings.crashReports.value ?? false)),
+                      ),
+                      AppRow(
+                        icon: Icons.people_alt_rounded,
+                        tint: ColorConstants.tileAbout,
+                        label: 'Anonymous usage count',
+                        toggled: controller.settings.usageCount.value,
+                        onTap: () => controller.settings.setUsageCount(!controller.settings.usageCount.value),
+                      ),
                     ],
                   ),
                   SizedBox(height: 18 * scale),

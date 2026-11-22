@@ -37,7 +37,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:hasFragileUserData="true"
-        android:name="${applicationName}"
+        android:name=".ToomuApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
