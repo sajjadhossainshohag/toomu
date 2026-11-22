@@ -449,7 +449,7 @@ details[open] .chev { transform: rotate(45deg) }
       <h2 class="mt-4 text-h2 font-semibold">Pick a feature.<br class="hidden sm:block"> See how it works.</h2></div>
       <p class="max-w-[440px] text-lead text-muted lg:pb-1">Five things you'll use every day, each a tap away.</p>
     </div>
-    <div class="mt-10 grid gap-5 lg:grid-cols-[360px_1fr]">
+    <div class="mt-10 grid grid-cols-1 gap-5 lg:grid-cols-[360px_1fr]">
       <div class="flex flex-col gap-2 rounded-[32px] gloss gloss-tint p-3" role="tablist" aria-label="Features" id="feat-tabs">
         <button class="v4-tab flex items-start gap-4 rounded-3xl p-4 text-left text-muted transition" role="tab" id="feat-tab-0" aria-controls="feat-panel-0" aria-selected="true" tabindex="0"><span class="v4-ico grid h-10 w-10 flex-none place-items-center rounded-xl bg-white text-brand"><svg width="18" height="18"><use href="#i-dl"/></svg></span><span><span class="block text-body font-semibold text-ink">Download</span><span class="block text-small">Any link, video or audio</span></span></button>
         <button class="v4-tab flex items-start gap-4 rounded-3xl p-4 text-left text-muted transition" role="tab" id="feat-tab-1" aria-controls="feat-panel-1" aria-selected="false" tabindex="-1"><span class="v4-ico grid h-10 w-10 flex-none place-items-center rounded-xl bg-white text-brand"><svg width="18" height="18"><use href="#i-play"/></svg></span><span><span class="block text-body font-semibold text-ink">Watch</span><span class="block text-small">YouTube without ads</span></span></button>
@@ -458,44 +458,29 @@ details[open] .chev { transform: rotate(45deg) }
         <button class="v4-tab flex items-start gap-4 rounded-3xl p-4 text-left text-muted transition" role="tab" id="feat-tab-4" aria-controls="feat-panel-4" aria-selected="false" tabindex="-1"><span class="v4-ico grid h-10 w-10 flex-none place-items-center rounded-xl bg-white text-brand"><svg width="18" height="18"><use href="#i-lock"/></svg></span><span><span class="block text-body font-semibold text-ink">Keep private</span><span class="block text-small">PIN or fingerprint</span></span></button>
       </div>
       <div class="flex flex-col justify-center rounded-[32px] gloss p-7 sm:p-10">
-        <div class="v4-panel on gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-0" aria-labelledby="feat-tab-0">
+        <div class="v4-panel on grid-cols-1 gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-0" aria-labelledby="feat-tab-0">
           <div><h3 class="text-h3 font-semibold">Share a link, get the file.</h3><p class="mt-4 text-body text-muted">From YouTube, TikTok, Instagram, Facebook or almost any site. Choose 4K down to 360p, MP3, or the original audio. Every size is shown first.</p><ul class="mt-6 space-y-2 text-small"><li class="flex gap-2"><svg width="18" height="18" class="text-brand"><use href="#i-check"/></svg>Up to 8 connections per file</li><li class="flex gap-2"><svg width="18" height="18" class="text-brand"><use href="#i-check"/></svg>Resumes after a dropped connection</li></ul></div>
           <div class="space-y-2 rounded-3xl bg-page p-3 text-small"><div class="flex items-center gap-3 rounded-2xl bg-white p-3"><img src="img/concert.jpg" alt="" class="aspect-video w-14 flex-none rounded-md object-cover" loading="lazy"><div class="min-w-0 flex-1"><p class="truncate font-medium">Live at the arena, full set</p><p class="text-meta text-muted">4K · 2.1 GB</p></div><span class="status ok">Saved</span></div><div class="flex items-center gap-3 rounded-2xl bg-white p-3"><img src="img/album.jpg" alt="" class="aspect-video w-14 flex-none rounded-md object-cover" loading="lazy"><div class="min-w-0 flex-1"><p class="truncate font-medium">Ghum Ghum</p><p class="text-meta text-muted">MP3 · 3.9 MB</p></div><span class="status brand tabular-nums">63%</span></div></div>
         </div>
-        <div class="v4-panel gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-1" aria-labelledby="feat-tab-1">
+        <div class="v4-panel grid-cols-1 gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-1" aria-labelledby="feat-tab-1">
           <div><h3 class="text-h3 font-semibold">YouTube without the ads.</h3><p class="mt-4 text-body text-muted">Search, subscriptions and your feed, with nothing playing before your video. Keep listening with the screen off, or shrink it into a corner.</p></div>
           <img src="img/video.jpg" alt="" class="aspect-video w-full rounded-3xl object-cover" loading="lazy">
         </div>
-        <div class="v4-panel gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-2" aria-labelledby="feat-tab-2">
+        <div class="v4-panel grid-cols-1 gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-2" aria-labelledby="feat-tab-2">
           <div><h3 class="text-h3 font-semibold">Any site. It finds the video.</h3><p class="mt-4 text-body text-muted">Tabs, incognito, bookmarks and history like Chrome. Toomu lists every video and song on the page, with its qualities, and stops ad pop-ups.</p></div>
           <img src="img/food.jpg" alt="" class="aspect-video w-full rounded-3xl object-cover" loading="lazy">
         </div>
-        <div class="v4-panel gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-3" aria-labelledby="feat-tab-3">
+        <div class="v4-panel grid-cols-1 gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-3" aria-labelledby="feat-tab-3">
           <div><h3 class="text-h3 font-semibold">Your music, without a connection.</h3><p class="mt-4 text-body text-muted">Everything you saved as audio, in one player: queue, favourites, equalizer and a sleep timer.</p></div>
           <img src="img/album.jpg" alt="" class="aspect-square w-full max-w-[320px] justify-self-center rounded-3xl object-cover" loading="lazy">
         </div>
-        <div class="v4-panel gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-4" aria-labelledby="feat-tab-4">
+        <div class="v4-panel grid-cols-1 gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-4" aria-labelledby="feat-tab-4">
           <div><h3 class="text-h3 font-semibold">Some files are just yours.</h3><p class="mt-4 text-body text-muted">Move videos into the private folder and they disappear from the gallery. It opens only with your PIN or fingerprint.</p></div>
           <div class="grid aspect-video place-items-center rounded-3xl bg-tint text-brand"><svg width="64" height="64"><use href="#i-finger"/></svg></div>
         </div>
       </div>
     </div>
 
-    <article class="mt-5 rounded-[32px] gloss p-7 sm:p-10">
-      <h3 class="text-h4 font-semibold">The details, in plain words.</h3>
-      <dl class="mt-6 grid gap-x-16 text-small lg:grid-cols-2">
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Price</dt><dd class="font-medium">Free. No ads, no account, no trial.</dd></div>
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Platforms</dt><dd class="font-medium">Android 7.0 or newer · Windows 10 and 11</dd></div>
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Sources</dt><dd class="font-medium">YouTube, TikTok, Instagram, Facebook and almost any site</dd></div>
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Quality</dt><dd class="font-medium">Up to 4K, or audio only</dd></div>
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Streams</dt><dd class="font-medium">HLS and DASH, saved as one file</dd></div>
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Speed</dt><dd class="font-medium">Up to 8 connections per file</dd></div>
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Music</dt><dd class="font-medium">Queue, favourites, equalizer, sleep timer</dd></div>
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-t border-line py-3.5"><dt class="text-muted">Sharing</dt><dd class="font-medium">Share sheet, plus a bubble over the YouTube app</dd></div>
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-y border-line py-3.5 lg:border-b"><dt class="text-muted">Privacy</dt><dd class="font-medium">Private folder with PIN or fingerprint</dd></div>
-        <div class="grid grid-cols-[112px_1fr] gap-4 border-y border-line py-3.5"><dt class="text-muted">Updates</dt><dd class="font-medium">The app and its downloader update themselves</dd></div>
-      </dl>
-    </article>
   </section>
 
   <section id="more" class="mx-auto max-w-[1200px] scroll-mt-24 px-4 pt-24 sm:px-6 sm:pt-32">
@@ -505,66 +490,66 @@ details[open] .chev { transform: rotate(45deg) }
       <p class="max-w-[440px] text-lead text-muted lg:pb-1">The small things that save you a tap, every day.</p>
     </div>
 
-    <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-brand-tint text-brand" aria-hidden="true"><svg width="20" height="20"><use href="#i-list"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">Whole playlists and channels</h3>
-        <p class="mt-1.5 text-small text-muted">Download a playlist or a channel in one go. Videos already saved are skipped.</p>
+    <div class="mt-10 grid gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4">
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-brand-tint text-brand" aria-hidden="true"><svg width="20" height="20"><use href="#i-list"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">Whole playlists and channels</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">Download a playlist or a channel in one go. Videos already saved are skipped.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-[#EEF9FB] text-ink" aria-hidden="true"><svg width="20" height="20"><use href="#b-tiktok"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">TikTok without the watermark</h3>
-        <p class="mt-1.5 text-small text-muted">Save the clean video, or just its sound as MP3 or original audio.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-[#EEF9FB] text-ink" aria-hidden="true"><svg width="20" height="20"><use href="#b-tiktok"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">TikTok without the watermark</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">Save the clean video, or just its sound as MP3 or original audio.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-[#E2F1F3] text-[#27727E]" aria-hidden="true"><svg width="20" height="20"><use href="#i-cc"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">Subtitles included</h3>
-        <p class="mt-1.5 text-small text-muted">YouTube subtitles are saved with the video and show in the player.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-[#E2F1F3] text-[#27727E]" aria-hidden="true"><svg width="20" height="20"><use href="#i-cc"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">Subtitles included</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">YouTube subtitles are saved with the video and show in the player.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-[#FFEDE3] text-[#C2410C]" aria-hidden="true"><svg width="20" height="20"><use href="#i-phone"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">Shorts, ad-free</h3>
-        <p class="mt-1.5 text-small text-muted">Swipe through YouTube Shorts and download the ones you like.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-[#FFEDE3] text-[#C2410C]" aria-hidden="true"><svg width="20" height="20"><use href="#i-phone"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">Shorts, ad-free</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">Swipe through YouTube Shorts and download the ones you like.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-brand-tint text-brand" aria-hidden="true"><svg width="20" height="20"><use href="#i-user"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">Your YouTube feed</h3>
-        <p class="mt-1.5 text-small text-muted">Sign in for your own home feed. Watch later and watch history are kept too.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-brand-tint text-brand" aria-hidden="true"><svg width="20" height="20"><use href="#i-user"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">Your YouTube feed</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">Sign in for your own home feed. Watch later and watch history are kept too.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-[#E3F4EA] text-[#0F7A3D]" aria-hidden="true"><svg width="20" height="20"><use href="#i-folder-play"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">A player for every video</h3>
-        <p class="mt-1.5 text-small text-muted">Plays any video on your phone, folder by folder, at the speed you like.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-[#E3F4EA] text-[#0F7A3D]" aria-hidden="true"><svg width="20" height="20"><use href="#i-folder-play"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">A player for every video</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">Plays any video on your phone, folder by folder, at the speed you like.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-[#FFEDE3] text-[#C2410C]" aria-hidden="true"><svg width="20" height="20"><use href="#i-paste"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">Copied a link? It notices</h3>
-        <p class="mt-1.5 text-small text-muted">Copy a video link anywhere; open Toomu and it offers to download it.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-[#FFEDE3] text-[#C2410C]" aria-hidden="true"><svg width="20" height="20"><use href="#i-paste"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">Copied a link? It notices</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">Copy a video link anywhere; open Toomu and it offers to download it.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-[#FFE8EC] text-[#FF0033]" aria-hidden="true"><svg width="20" height="20"><use href="#i-bubble"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">A button over YouTube</h3>
-        <p class="mt-1.5 text-small text-muted">A floating bubble over the YouTube app downloads what's playing in one tap.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-[#FFE8EC] text-[#FF0033]" aria-hidden="true"><svg width="20" height="20"><use href="#i-bubble"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">A button over YouTube</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">A floating bubble over the YouTube app downloads what's playing in one tap.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-[#EEEBF5] text-ink" aria-hidden="true"><svg width="20" height="20"><use href="#i-eye-off"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">Incognito tabs</h3>
-        <p class="mt-1.5 text-small text-muted">Private tabs with their own sign-ins, wiped when the last one closes. Desktop site too.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-[#EEEBF5] text-ink" aria-hidden="true"><svg width="20" height="20"><use href="#i-eye-off"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">Incognito tabs</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">Private tabs with their own sign-ins, wiped when the last one closes. Desktop site too.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-brand-tint text-brand" aria-hidden="true"><svg width="20" height="20"><use href="#i-refresh"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">Expired links, refreshed</h3>
-        <p class="mt-1.5 text-small text-muted">A browser download stopped working? Refresh the link and it carries on where it was.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-brand-tint text-brand" aria-hidden="true"><svg width="20" height="20"><use href="#i-refresh"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">Expired links, refreshed</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">A browser download stopped working? Refresh the link and it carries on where it was.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-[#E9E5FF] text-[#4A2BD6]" aria-hidden="true"><svg width="20" height="20"><use href="#i-moon"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">Light or dark</h3>
-        <p class="mt-1.5 text-small text-muted">Pick a theme, or let it follow your phone.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-[#E9E5FF] text-[#4A2BD6]" aria-hidden="true"><svg width="20" height="20"><use href="#i-moon"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">Light or dark</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">Pick a theme, or let it follow your phone.</p></div>
       </article>
-      <article class="gloss rounded-[28px] p-6 sm:p-7">
-        <span class="grid h-11 w-11 place-items-center rounded-2xl bg-[#E5F1FB] text-[#0078D4]" aria-hidden="true"><svg width="20" height="20"><use href="#i-windows"/></svg></span>
-        <h3 class="mt-5 text-title font-semibold">On your PC too</h3>
-        <p class="mt-1.5 text-small text-muted">The same app for Windows 10 and 11. It updates itself.</p>
+      <article class="gloss flex items-start gap-4 rounded-[24px] p-5 sm:block sm:rounded-[28px] sm:p-7">
+        <span class="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-[#E5F1FB] text-[#0078D4]" aria-hidden="true"><svg width="20" height="20"><use href="#i-windows"/></svg></span>
+        <div class="min-w-0"><h3 class="text-title font-semibold sm:mt-5">On your PC too</h3>
+        <p class="mt-1 text-small text-muted sm:mt-1.5">The same app for Windows 10 and 11. It updates itself.</p></div>
       </article>
     </div>
   </section>
