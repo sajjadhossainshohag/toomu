@@ -684,6 +684,11 @@ class DownloadService extends GetxService {
       task.receivedBytes.value = current;
     };
     void onBytes(int b) => current = b;
+    // Off the running list before the status changes: whoever sees
+    // "paused"/"completed" must not still count it as running.
+    void release() {
+      if (_running[task.id] == token) _running.remove(task.id);
+    }
 
     try {
       if (task.source == DownloadSource.direct) {
@@ -701,11 +706,13 @@ class DownloadService extends GetxService {
       if (task.subtitles.isNotEmpty) await _savePageSubtitles(task);
 
       task.receivedBytes.value = task.totalBytes.value;
+      release();
       task.status.value = DownloadStatus.completed;
       _networkRetries.remove(task.id);
       MediaScannerService.to.scan(task.filePath);
       _notifyFinished(task);
     } on Object catch (e) {
+      release();
       final stopped =
           e is _Stopped ||
           (e is DioException && CancelToken.isCancel(e)) ||
@@ -731,6 +738,7 @@ class DownloadService extends GetxService {
         // No notification for failures: the Downloads tab shows the error.
       }
     } finally {
+      release();
       _speedTicks.remove(task.id);
       _stopReasons.remove(task.id);
       task.speed.value = 0;
@@ -738,9 +746,8 @@ class DownloadService extends GetxService {
       if (task.status.value != DownloadStatus.completed) {
         final onDisk = await _bytesOnDisk(task);
         // A quick resume may have started a new run during the await.
-        if (_running[task.id] == token) task.receivedBytes.value = onDisk;
+        if (!_running.containsKey(task.id)) task.receivedBytes.value = onDisk;
       }
-      if (_running[task.id] == token) _running.remove(task.id);
       if (task.status.value != DownloadStatus.canceled) await _persist();
       _pump();
       _updateNotification();

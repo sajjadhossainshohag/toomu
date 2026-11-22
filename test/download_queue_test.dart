@@ -121,6 +121,19 @@ void main() {
       await DownloadHarness.status(b, DownloadStatus.completed);
     });
 
+    test('a download no longer counts as running once it shows paused (pause all looked unfinished)', () async {
+      final a = await slow(name: 'a.mp4');
+      await someBytes(a);
+      final seen = <bool>[];
+      final sub = a.status.listen((st) {
+        if (st == DownloadStatus.paused) seen.add(s().hasActiveDownloads);
+      });
+      s().pause(a);
+      await DownloadHarness.status(a, DownloadStatus.paused);
+      await sub.cancel();
+      expect(seen, [false]);
+    });
+
     test('a failed download can be resumed', () async {
       origin.status = 500;
       final t = await s().enqueueDirect(url: origin.url.toString());
