@@ -5,7 +5,8 @@
 //               Private: read them in the Cloudflare dashboard (D1 → toomu-usage → Console), e.g.
 //               SELECT sig, title, count, last_version, last_seen FROM crashes ORDER BY last_seen DESC
 // POST /ping    the app's once-a-day "used today" ping, with no ID of any kind: just the platform,
-//               the version and whether it's its first ping this week / month. Counted in D1, so
+//               the version, the OS version, the phone model and whether it's its first ping
+//               this week / month. Counted in D1, so
 //               daily, weekly and monthly users are sums, not lookups of anyone.
 // GET  /stats   those counts (public: totals only).
 // GET  /crashes the stored crashes, newest first, for the website's stats page. Needs the
@@ -132,6 +133,10 @@ const SCHEMA = [
     day TEXT NOT NULL, platform TEXT NOT NULL, version TEXT NOT NULL,
     daily INTEGER NOT NULL DEFAULT 0, weekly INTEGER NOT NULL DEFAULT 0, monthly INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, platform, version))`,
+  `CREATE TABLE IF NOT EXISTS usage_devices (
+    day TEXT NOT NULL, platform TEXT NOT NULL, os TEXT NOT NULL, device TEXT NOT NULL,
+    daily INTEGER NOT NULL DEFAULT 0, monthly INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, platform, os, device))`,
   `CREATE TABLE IF NOT EXISTS crashes (
     sig TEXT PRIMARY KEY, kind TEXT NOT NULL, platform TEXT NOT NULL, title TEXT NOT NULL,
     message TEXT NOT NULL, stack TEXT NOT NULL, first_version TEXT NOT NULL, last_version TEXT NOT NULL,
@@ -161,6 +166,8 @@ async function ping(request, env) {
     p = JSON.parse(text);
     if (!PLATFORMS.includes(p.platform)) throw new Error('unknown platform');
     p.version = str(p.version, 'version', 40);
+    p.os = str(p.os, 'os', 80, { required: false });
+    p.device = str(p.device, 'device', 80, { required: false });
   } catch (e) {
     return json({ error: `bad ping: ${e.message}` }, 400);
   }
@@ -175,6 +182,13 @@ async function ping(request, env) {
          daily = daily + 1, weekly = weekly + excluded.weekly, monthly = monthly + excluded.monthly`,
     )
     .bind(today(), p.platform, p.version, p.week ? 1 : 0, p.month ? 1 : 0)
+    .run();
+  await d
+    .prepare(
+      `INSERT INTO usage_devices (day, platform, os, device, daily, monthly) VALUES (?1, ?2, ?3, ?4, 1, ?5)
+       ON CONFLICT (day, platform, os, device) DO UPDATE SET daily = daily + 1, monthly = monthly + excluded.monthly`,
+    )
+    .bind(today(), p.platform, p.os, p.device, p.month ? 1 : 0)
     .run();
   return json({ ok: true });
 }
@@ -204,10 +218,33 @@ async function stats(env, url) {
     },
     versionsToday: versions,
     days,
+    ...(await deviceStats(d, thisDay)),
   };
   return new Response(JSON.stringify(body), {
     headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store' },
   });
+}
+
+/** Users by phone model and by OS version: today, and this month (first ping of the month). */
+async function deviceStats(d, thisDay) {
+  const rows = (
+    await d.prepare('SELECT day, platform, os, device, daily, monthly FROM usage_devices WHERE day >= ?1').bind(`${thisDay.slice(0, 7)}-01`).all()
+  ).results;
+  const group = (keyOf) => {
+    const m = new Map();
+    for (const r of rows) {
+      const k = keyOf(r);
+      const g = m.get(k) ?? { name: k, platform: r.platform, today: 0, month: 0 };
+      if (r.day === thisDay) g.today += r.daily;
+      g.month += r.monthly;
+      m.set(k, g);
+    }
+    return [...m.values()].sort((a, b) => b.month - a.month || b.today - a.today || a.name.localeCompare(b.name)).slice(0, 50);
+  };
+  return {
+    devices: group((r) => r.device || (r.platform === 'windows' ? 'Windows PC' : 'Unknown')),
+    osVersions: group((r) => r.os || 'Unknown'),
+  };
 }
 
 // ------------------------------------------------------------------ crash list (stats page)

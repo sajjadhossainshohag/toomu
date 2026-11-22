@@ -85,6 +85,18 @@ pre { white-space: pre-wrap; word-break: break-word }
     <table class="num mt-3 w-full text-[14px]"><tbody id="ver-body"><tr><td class="py-1.5 text-muted">–</td></tr></tbody></table>
   </section>
 
+  <section class="grid gap-4 md:grid-cols-2" aria-label="Devices">
+    <div class="card p-5">
+      <h2 class="text-[16px] font-semibold">Phone models</h2>
+      <table class="num mt-3 w-full text-[14px]"><thead><tr class="text-left text-muted"><th class="py-1.5 font-semibold">Model</th><th class="py-1.5 text-right font-semibold">Today</th><th class="py-1.5 text-right font-semibold">Month</th></tr></thead><tbody id="dev-body"></tbody></table>
+    </div>
+    <div class="card p-5">
+      <h2 class="text-[16px] font-semibold">OS versions</h2>
+      <table class="num mt-3 w-full text-[14px]"><thead><tr class="text-left text-muted"><th class="py-1.5 font-semibold">Version</th><th class="py-1.5 text-right font-semibold">Today</th><th class="py-1.5 text-right font-semibold">Month</th></tr></thead><tbody id="os-body"></tbody></table>
+    </div>
+    <p class="text-[13px] text-muted md:col-span-2">Month counts each phone once, from its first ping this month. Phones on versions before device info was added show as Unknown.</p>
+  </section>
+
   <section aria-labelledby="crash-h" class="space-y-4 pt-4">
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
@@ -208,10 +220,25 @@ async function loadStats() {
       if (n == null) tr.children[0].className = 'py-1.5 text-muted'; else tr.children[1].textContent = fmt(n);
       return tr;
     }));
+    fillGroups('dev-body', s.devices);
+    fillGroups('os-body', s.osVersions);
   } catch (e) {
     $('err').textContent = `Couldn't load the stats: ${e.message}.`;
     $('err').classList.remove('hidden');
   }
+}
+
+/** Rows of name · today · this month, or a muted "none yet" row. */
+function fillGroups(id, groups = []) {
+  const rows = groups.length ? groups : [{ name: 'No device info yet', today: null }];
+  $(id).replaceChildren(...rows.map((g) => {
+    const tr = document.createElement('tr'); tr.className = 'border-t border-line';
+    tr.innerHTML = '<td class="break-words py-1.5 pr-3"></td><td class="py-1.5 text-right"></td><td class="py-1.5 text-right font-semibold"></td>';
+    tr.children[0].textContent = g.name.replace(/^"([^"]+)".*$/, '$1');
+    if (g.today == null) tr.children[0].classList.add('text-muted');
+    else { tr.children[1].textContent = fmt(g.today); tr.children[2].textContent = fmt(g.month); }
+    return tr;
+  }));
 }
 
 $('as-table').addEventListener('click', (e) => {

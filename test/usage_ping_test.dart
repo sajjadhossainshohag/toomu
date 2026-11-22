@@ -27,16 +27,26 @@ void main() {
         appKey: 'key-1',
         platform: 'android',
         version: 'v2026.11.22-2242',
+        os: 'Android 14',
+        device: 'Samsung SM-S918B',
         lastDay: () => store['day'],
         saveDay: (d) => store['day'] = d,
       );
 
-  test('one ping a day, with no ID: platform, version and what is new this week and month', () async {
+  test('one ping a day, with no ID: platform, version, OS, phone model and what is new this week and month', () async {
     final store = <String, String>{};
     final p = pinger(store);
     expect(await p.sendIfDue(DateTime.utc(2026, 11, 23, 9)), isTrue); // a Monday
     expect(await p.sendIfDue(DateTime.utc(2026, 11, 23, 20)), isFalse, reason: 'already counted today');
-    expect(pings.single, {'key': 'key-1', 'platform': 'android', 'version': 'v2026.11.22-2242', 'week': true, 'month': true});
+    expect(pings.single, {
+      'key': 'key-1',
+      'platform': 'android',
+      'version': 'v2026.11.22-2242',
+      'os': 'Android 14',
+      'device': 'Samsung SM-S918B',
+      'week': true,
+      'month': true,
+    });
     expect(pings.single.keys, isNot(contains('id')));
     expect(store['day'], '2026-11-23');
   });

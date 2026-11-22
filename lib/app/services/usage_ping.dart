@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 
 /// "Used today": one anonymous ping a day to the relay (`tool/crash-relay`, POST /ping), which
 /// adds up daily, weekly and monthly users. No ID of any kind is sent: just the platform, the
-/// version and whether this is the first ping this week / month (that is what makes weekly and
+/// version, the OS version, the phone model (shared by many people) and whether this is the first ping this week / month (that is what makes weekly and
 /// monthly users countable without knowing who anyone is). Settings → Anonymous usage count.
 class UsagePing {
   UsagePing({
@@ -14,6 +14,8 @@ class UsagePing {
     required this.appKey,
     required this.platform,
     required this.version,
+    this.os = '',
+    this.device = '',
     required this.lastDay,
     required this.saveDay,
   });
@@ -22,6 +24,10 @@ class UsagePing {
   final String appKey;
   final String platform;
   final String version;
+
+  /// "Android 14" / the Windows version, and "Samsung SM-S918B" (empty on Windows).
+  final String os;
+  final String device;
 
   /// The UTC day ("2026-11-22") of the last ping the relay accepted, or null.
   final String? Function() lastDay;
@@ -58,7 +64,14 @@ class UsagePing {
       req.headers
         ..contentType = ContentType.json
         ..set('x-toomu-key', appKey);
-      req.add(utf8.encode(jsonEncode({'platform': platform, 'version': version, 'week': p.week, 'month': p.month})));
+      req.add(utf8.encode(jsonEncode({
+        'platform': platform,
+        'version': version,
+        'os': os,
+        'device': device,
+        'week': p.week,
+        'month': p.month,
+      })));
       final res = await req.close().timeout(const Duration(seconds: 15));
       await res.drain<void>();
       if (res.statusCode >= 300) return false;

@@ -93,7 +93,9 @@ test("the app's own frames identify a crash; error types are read from the messa
 function fakeD1() {
   const rows = new Map();
   const crashes = new Map();
+  const devices = new Map();
   return {
+    devices,
     rows,
     crashes,
     async batch(stmts) {
@@ -113,6 +115,14 @@ function fakeD1() {
           return { count: r.count };
         },
         async run() {
+          if (sql.startsWith('INSERT INTO usage_devices')) {
+            const [day, platform, os, device, month] = args;
+            const k = `${day}|${platform}|${os}|${device}`;
+            const r = devices.get(k) ?? { day, platform, os, device, daily: 0, monthly: 0 };
+            r.daily += 1; r.monthly += month;
+            devices.set(k, r);
+            return {};
+          }
           if (!sql.startsWith('INSERT INTO usage')) return {};
           const [day, platform, version, week, month] = args;
           const k = `${day}|${platform}|${version}`;
@@ -122,6 +132,7 @@ function fakeD1() {
           return {};
         },
         async all() {
+          if (sql.includes('FROM usage_devices')) return { results: [...devices.values()].filter((r) => r.day >= args[0]) };
           if (sql.includes('FROM crashes')) return { results: [...crashes.values()].sort((a, b) => (a.last_seen < b.last_seen ? 1 : -1)) };
           return { results: [...rows.values()].filter((r) => r.day >= args[0]) };
         },
@@ -186,4 +197,16 @@ test('stats are never served from the browser cache, so a new ping shows on relo
   const e = { ...env, DB: fakeD1() };
   const res = await worker.fetch(new Request('https://relay.example/stats'), e);
   assert.equal(res.headers.get('cache-control'), 'no-store');
+});
+
+test('stats show users by phone model and Android version, today and this month', async () => {
+  const e = { ...env, DB: fakeD1() };
+  await ping(e, { platform: 'android', version: 'v1', os: 'Android 14', device: 'Samsung SM-S918B', week: true, month: true });
+  await ping(e, { platform: 'android', version: 'v1', os: 'Android 14', device: 'Samsung SM-S918B', week: false, month: false });
+  await ping(e, { platform: 'android', version: 'v1', os: 'Android 13', device: 'Xiaomi 2201117TG', week: true, month: true });
+  await ping(e, { platform: 'android', version: 'v1', week: true, month: false }); // an older app without device info
+  const s = await (await worker.fetch(new Request('https://relay.example/stats'), e)).json();
+  assert.deepEqual(s.devices[0], { name: 'Samsung SM-S918B', platform: 'android', today: 2, month: 1 });
+  assert.deepEqual(s.devices.map((d) => d.name), ['Samsung SM-S918B', 'Xiaomi 2201117TG', 'Unknown']);
+  assert.deepEqual(s.osVersions.find((o) => o.name === 'Android 14'), { name: 'Android 14', platform: 'android', today: 2, month: 1 });
 });

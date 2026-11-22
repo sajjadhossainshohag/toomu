@@ -213,6 +213,8 @@ class CrashReportService extends GetxService {
       appKey: AppConstants.crashReportKey,
       platform: reporter.platform,
       version: reporter.version,
+      os: reporter.os,
+      device: reporter.device,
       lastDay: () => storage.read<String>(AppConstants.kUsagePingDay),
       saveDay: (day) => storage.write(AppConstants.kUsagePingDay, day),
     );
