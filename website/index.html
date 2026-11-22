@@ -117,6 +117,12 @@ main img { background-color: #E6E0F5 }
 .prog { height: 4px; border-radius: 2px; background: #ECE7F7; overflow: hidden }
 .prog > i { display: block; height: 100%; border-radius: 2px; background: #7C4DFF }
 .float-card { background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 24px 48px -20px rgba(16, 40, 90, .35) }
+.v4-tab:hover { color: #1C1B1F }
+.v4-tab:focus-visible { outline: 2px solid #7C4DFF; outline-offset: 2px }
+.v4-tab[aria-selected="true"] { background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 12px 24px -16px rgba(16, 40, 90, .4); color: #1C1B1F }
+.v4-tab[aria-selected="true"] .v4-ico { background: #7C4DFF; color: #fff }
+.v4-panel { display: none }
+.v4-panel.on { display: grid }
 details > summary { list-style: none; cursor: pointer }
 details > summary::-webkit-details-marker { display: none }
 details[open] .chev { transform: rotate(45deg) }
@@ -392,78 +398,39 @@ details[open] .chev { transform: rotate(45deg) }
 
   <section id="features" class="mx-auto max-w-[1200px] scroll-mt-24 px-4 pt-24 sm:px-6 sm:pt-32">
     <div class="grid gap-6 border-b border-line pb-10 lg:grid-cols-[1.15fr_.85fr] lg:items-end lg:gap-16">
-      <h2 class="text-h2 font-semibold">Everything you save,<br class="hidden sm:block"> in plain sight.</h2>
-      <p class="max-w-[440px] text-lead text-muted lg:pb-1">Toomu always shows what it's doing: what's saved, what's still coming down, what got blocked and what's locked away.</p>
+      <h2 class="text-h2 font-semibold">Pick a feature.<br class="hidden sm:block"> See how it works.</h2>
+      <p class="max-w-[440px] text-lead text-muted lg:pb-1">Five things you'll use every day, each a tap away.</p>
     </div>
-
-    <div class="mt-10 grid grid-cols-1 gap-5 xl:grid-cols-12">
-      <article class="rounded-[32px] bg-tint p-7 sm:p-10 xl:col-span-7">
-        <div class="flex items-center justify-between gap-4">
-          <h3 class="text-title font-semibold">Offline library</h3>
-          <span class="rounded-full bg-white px-2.5 py-1 text-meta text-muted ring-1 ring-tint-line">Example</span>
+    <div class="mt-10 grid gap-5 lg:grid-cols-[360px_1fr]">
+      <div class="flex flex-col gap-2 rounded-[32px] bg-tint p-3" role="tablist" aria-label="Features" id="feat-tabs">
+        <button class="v4-tab flex items-start gap-4 rounded-3xl p-4 text-left text-muted transition" role="tab" id="feat-tab-0" aria-controls="feat-panel-0" aria-selected="true" tabindex="0"><span class="v4-ico grid h-10 w-10 flex-none place-items-center rounded-xl bg-white text-brand"><svg width="18" height="18"><use href="#i-dl"/></svg></span><span><span class="block text-body font-semibold text-ink">Download</span><span class="block text-small">Any link, video or audio</span></span></button>
+        <button class="v4-tab flex items-start gap-4 rounded-3xl p-4 text-left text-muted transition" role="tab" id="feat-tab-1" aria-controls="feat-panel-1" aria-selected="false" tabindex="-1"><span class="v4-ico grid h-10 w-10 flex-none place-items-center rounded-xl bg-white text-brand"><svg width="18" height="18"><use href="#i-play"/></svg></span><span><span class="block text-body font-semibold text-ink">Watch</span><span class="block text-small">YouTube without ads</span></span></button>
+        <button class="v4-tab flex items-start gap-4 rounded-3xl p-4 text-left text-muted transition" role="tab" id="feat-tab-2" aria-controls="feat-panel-2" aria-selected="false" tabindex="-1"><span class="v4-ico grid h-10 w-10 flex-none place-items-center rounded-xl bg-white text-brand"><svg width="18" height="18"><use href="#i-globe"/></svg></span><span><span class="block text-body font-semibold text-ink">Browse</span><span class="block text-small">Finds videos on any page</span></span></button>
+        <button class="v4-tab flex items-start gap-4 rounded-3xl p-4 text-left text-muted transition" role="tab" id="feat-tab-3" aria-controls="feat-panel-3" aria-selected="false" tabindex="-1"><span class="v4-ico grid h-10 w-10 flex-none place-items-center rounded-xl bg-white text-brand"><svg width="18" height="18"><use href="#i-headphones"/></svg></span><span><span class="block text-body font-semibold text-ink">Listen</span><span class="block text-small">Music player, offline</span></span></button>
+        <button class="v4-tab flex items-start gap-4 rounded-3xl p-4 text-left text-muted transition" role="tab" id="feat-tab-4" aria-controls="feat-panel-4" aria-selected="false" tabindex="-1"><span class="v4-ico grid h-10 w-10 flex-none place-items-center rounded-xl bg-white text-brand"><svg width="18" height="18"><use href="#i-lock"/></svg></span><span><span class="block text-body font-semibold text-ink">Keep private</span><span class="block text-small">PIN or fingerprint</span></span></button>
+      </div>
+      <div class="flex flex-col justify-center rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10">
+        <div class="v4-panel on gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-0" aria-labelledby="feat-tab-0">
+          <div><h3 class="text-h3 font-semibold">Share a link, get the file.</h3><p class="mt-4 text-body text-muted">From YouTube, TikTok, Instagram, Facebook or almost any site. Choose 4K down to 360p, MP3, or the original audio. Every size is shown first.</p><ul class="mt-6 space-y-2 text-small"><li class="flex gap-2"><svg width="18" height="18" class="text-brand"><use href="#i-check"/></svg>Up to 8 connections per file</li><li class="flex gap-2"><svg width="18" height="18" class="text-brand"><use href="#i-check"/></svg>Resumes after a dropped connection</li></ul></div>
+          <div class="space-y-2 rounded-3xl bg-page p-3 text-small"><div class="flex items-center gap-3 rounded-2xl bg-white p-3"><img src="img/concert.jpg" alt="" class="aspect-video w-14 flex-none rounded-md object-cover" loading="lazy"><div class="min-w-0 flex-1"><p class="truncate font-medium">Live at the arena, full set</p><p class="text-meta text-muted">4K · 2.1 GB</p></div><span class="status ok">Saved</span></div><div class="flex items-center gap-3 rounded-2xl bg-white p-3"><img src="img/album.jpg" alt="" class="aspect-video w-14 flex-none rounded-md object-cover" loading="lazy"><div class="min-w-0 flex-1"><p class="truncate font-medium">Ghum Ghum</p><p class="text-meta text-muted">MP3 · 3.9 MB</p></div><span class="status brand tabular-nums">63%</span></div></div>
         </div>
-        <p class="mt-6 text-[clamp(2.75rem,2rem+2.6vw,4rem)] font-semibold leading-none tracking-[-0.04em] tabular-nums">24.6<span class="ml-1.5 text-[0.45em] tracking-normal text-muted">GB</span></p>
-        <p class="mt-2 text-small text-muted">174 videos and songs, ready without a connection</p>
-        <div class="mt-7 flex h-3 gap-1 overflow-hidden rounded-full" aria-hidden="true"><i class="block h-full w-[74%] rounded-full bg-brand"></i><i class="block h-full w-[17%] rounded-full bg-[#E5732E]"></i><i class="block h-full flex-1 rounded-full bg-[#27727E]"></i></div>
-        <dl class="mt-4 grid grid-cols-3 gap-4 text-small">
-          <div><dt class="flex items-center gap-2 text-muted"><i class="h-2.5 w-2.5 rounded-full bg-brand" aria-hidden="true"></i>Videos</dt><dd class="mt-1 font-semibold tabular-nums">18.2 GB</dd></div>
-          <div><dt class="flex items-center gap-2 text-muted"><i class="h-2.5 w-2.5 rounded-full bg-[#E5732E]" aria-hidden="true"></i>Music</dt><dd class="mt-1 font-semibold tabular-nums">4.1 GB</dd></div>
-          <div><dt class="flex items-center gap-2 text-muted"><i class="h-2.5 w-2.5 rounded-full bg-[#27727E]" aria-hidden="true"></i>Private</dt><dd class="mt-1 font-semibold tabular-nums">2.3 GB</dd></div>
-        </dl>
-        <div class="mt-9 border-t border-tint-line pt-6">
-          <p class="text-meta text-muted">Last saved</p>
-          <div class="mt-3 flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
-            <img src="img/concert.jpg" alt="" class="aspect-video w-16 flex-none rounded-lg object-cover" loading="lazy">
-            <div class="min-w-0 flex-1"><p class="truncate text-small font-medium">Live at the arena, full set</p><p class="text-meta text-muted">4K · 2.1 GB · 2 min ago</p></div>
-            <span class="status ok">Saved</span>
-          </div>
-          <p class="mt-5 flex items-center gap-2 text-small text-muted"><svg class="flex-none text-brand" width="16" height="16" aria-hidden="true"><use href="#i-lock"/></svg>Files stay on your device. No account, nothing to sync.</p>
+        <div class="v4-panel gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-1" aria-labelledby="feat-tab-1">
+          <div><h3 class="text-h3 font-semibold">YouTube without the ads.</h3><p class="mt-4 text-body text-muted">Search, subscriptions and your feed, with nothing playing before your video. Keep listening with the screen off, or shrink it into a corner.</p></div>
+          <img src="img/video.jpg" alt="" class="aspect-video w-full rounded-3xl object-cover" loading="lazy">
         </div>
-      </article>
-
-      <article class="rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10 xl:col-span-5">
-        <div class="flex items-center gap-3">
-          <span class="grid h-10 w-10 flex-none place-items-center rounded-xl bg-[#FFEDE3] text-[13px] font-bold text-[#C2410C]" aria-hidden="true">SE</span>
-          <div class="min-w-0 flex-1"><h3 class="truncate text-title font-semibold">streeteats.example</h3><p class="text-meta text-muted">Open in Toomu's browser</p></div>
-          <span class="flex flex-none items-center gap-1 rounded-full bg-[#E3F4EA] px-2.5 py-1 text-meta font-medium text-[#0F7A3D]"><svg width="12" height="12" aria-hidden="true"><use href="#i-shield-fill"/></svg>Protected</span>
+        <div class="v4-panel gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-2" aria-labelledby="feat-tab-2">
+          <div><h3 class="text-h3 font-semibold">Any site. It finds the video.</h3><p class="mt-4 text-body text-muted">Tabs, incognito, bookmarks and history like Chrome. Toomu lists every video and song on the page, with its qualities, and stops ad pop-ups.</p></div>
+          <img src="img/food.jpg" alt="" class="aspect-video w-full rounded-3xl object-cover" loading="lazy">
         </div>
-        <dl class="mt-7 grid grid-cols-2 divide-x divide-line rounded-2xl bg-page py-4">
-          <div class="px-5"><dt class="text-meta text-muted">Ads blocked</dt><dd class="mt-1 text-[32px] font-semibold leading-none tracking-[-0.03em] tabular-nums">23</dd></div>
-          <div class="px-5"><dt class="text-meta text-muted">Videos found</dt><dd class="mt-1 text-[32px] font-semibold leading-none tracking-[-0.03em] tabular-nums">3</dd></div>
-        </dl>
-        <ul class="mt-5 divide-y divide-line text-small" aria-label="Found on this page">
-          <li class="flex items-center gap-3 py-3"><img src="img/food.jpg" alt="" class="aspect-video w-14 flex-none rounded-lg object-cover" loading="lazy"><div class="min-w-0 flex-1"><p class="truncate font-medium">Night market tour</p><p class="text-meta text-muted">1080p · MP4 · 186 MB</p></div></li>
-          <li class="flex items-center gap-3 py-3"><img src="img/food.jpg" alt="" class="aspect-video w-14 flex-none rounded-lg object-cover object-right" loading="lazy"><div class="min-w-0 flex-1"><p class="truncate font-medium">Night market tour</p><p class="text-meta text-muted">HLS stream · 4 qualities</p></div></li>
-          <li class="flex items-center gap-3 py-3"><span class="grid aspect-video w-14 flex-none place-items-center rounded-lg bg-[#FFEDE3] text-[#E5732E]" aria-hidden="true"><svg width="15" height="15"><use href="#i-music"/></svg></span><div class="min-w-0 flex-1"><p class="truncate font-medium">Grill sounds, 1 hour</p><p class="text-meta text-muted">Audio · 3.1 MB</p></div></li>
-        </ul>
-        <p class="mt-2 flex items-start gap-2 border-t border-line pt-4 text-small text-muted"><svg class="mt-0.5 flex-none text-brand" width="16" height="16" aria-hidden="true"><use href="#i-shield-fill"/></svg>Site not working? Allow its ads from the shield in the address bar.</p>
-      </article>
-
-      <article class="rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10 xl:col-span-5">
-        <h3 class="text-title font-semibold">At a glance</h3>
-        <ul class="mt-3 divide-y divide-line">
-          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-shield"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Ad blocker</p><p class="text-meta text-muted">EasyList filters, the ones AdBlock uses</p></div><span class="status ok"><svg width="12" height="12" aria-hidden="true"><use href="#i-check-circle"/></svg>On</span></li>
-          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-ban"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Ad redirects</p><p class="text-meta text-muted">Pop-ups stopped before they load</p></div><span class="status ok"><svg width="12" height="12" aria-hidden="true"><use href="#i-check-circle"/></svg>Blocked</span></li>
-          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-refresh"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Auto-resume</p><p class="text-meta text-muted">When a connection drops mid-download</p></div><span class="status brand"><svg width="12" height="12" aria-hidden="true"><use href="#i-zap"/></svg>Always</span></li>
-          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-finger"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Private folder</p><p class="text-meta text-muted">Opens with your PIN or fingerprint</p></div><span class="status neutral"><svg width="12" height="12" aria-hidden="true"><use href="#i-lock"/></svg>Locked</span></li>
-          <li class="flex items-center gap-3 py-4"><span class="grid h-9 w-9 flex-none place-items-center rounded-full bg-page text-ink" aria-hidden="true"><svg width="17" height="17"><use href="#i-dl"/></svg></span><div class="min-w-0 flex-1"><p class="text-small font-medium">Downloader</p><p class="text-meta text-muted">Checks for updates every day</p></div><span class="status ok"><svg width="12" height="12" aria-hidden="true"><use href="#i-check-circle"/></svg>Up to date</span></li>
-        </ul>
-      </article>
-
-      <article class="rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10 xl:col-span-7">
-        <div class="flex items-baseline justify-between gap-4">
-          <h3 class="text-title font-semibold">Activity</h3>
-          <span class="text-meta text-muted">Example · 5 items</span>
+        <div class="v4-panel gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-3" aria-labelledby="feat-tab-3">
+          <div><h3 class="text-h3 font-semibold">Your music, without a connection.</h3><p class="mt-4 text-body text-muted">Everything you saved as audio, in one player: queue, favourites, equalizer and a sleep timer.</p></div>
+          <img src="img/album.jpg" alt="" class="aspect-square w-full max-w-[320px] justify-self-center rounded-3xl object-cover" loading="lazy">
         </div>
-        <div class="mt-4 text-small" role="table" aria-label="Example downloads">
-          <div class="ledger border-b border-line pb-2 text-meta text-muted" role="row"><span role="columnheader">Item</span><span class="hidden sm:block" role="columnheader">Quality</span><span class="text-right" role="columnheader">Size</span><span class="text-right" role="columnheader">Status</span></div>
-          <div class="ledger border-b border-line py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/concert.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Live at the arena, full set</span><span class="block truncate text-meta text-muted">youtube.com</span></span></span><span class="hidden text-muted sm:block" role="cell">4K</span><span class="text-right tabular-nums" role="cell">2.1 GB</span><span class="text-right" role="cell"><span class="status ok">Saved</span></span></div>
-          <div class="ledger border-b border-line py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/food.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Street food tour of Old Dhaka</span><span class="block truncate text-meta text-muted">streeteats.example</span></span></span><span class="hidden text-muted sm:block" role="cell">1080p</span><span class="text-right tabular-nums" role="cell">186 MB</span><span class="text-right" role="cell"><span class="status brand tabular-nums">63%</span></span></div>
-          <div class="ledger border-b border-line py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/lecture.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Lecture 12: Heat engines</span><span class="block truncate text-meta text-muted">lectures.example</span></span></span><span class="hidden text-muted sm:block" role="cell">720p</span><span class="text-right tabular-nums" role="cell">412 MB</span><span class="text-right" role="cell"><span class="status warn">Resuming</span></span></div>
-          <div class="ledger border-b border-line py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/album.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Ghum Ghum</span><span class="block truncate text-meta text-muted">youtube.com</span></span></span><span class="hidden text-muted sm:block" role="cell">Audio</span><span class="text-right tabular-nums" role="cell">3.9 MB</span><span class="text-right" role="cell"><span class="status ok">Saved</span></span></div>
-          <div class="ledger py-3" role="row"><span class="flex min-w-0 items-center gap-3" role="cell"><img src="img/video.jpg" alt="" class="aspect-video w-12 flex-none rounded-md object-cover" loading="lazy"><span class="min-w-0"><span class="block truncate font-medium">Building a tiny house in 30 days</span><span class="block truncate text-meta text-muted">youtube.com</span></span></span><span class="hidden text-muted sm:block" role="cell">1080p</span><span class="text-right tabular-nums" role="cell">640 MB</span><span class="text-right" role="cell"><span class="status neutral">Private</span></span></div>
+        <div class="v4-panel gap-8 md:grid-cols-2 md:items-center" role="tabpanel" id="feat-panel-4" aria-labelledby="feat-tab-4">
+          <div><h3 class="text-h3 font-semibold">Some files are just yours.</h3><p class="mt-4 text-body text-muted">Move videos into the private folder and they disappear from the gallery. It opens only with your PIN or fingerprint.</p></div>
+          <div class="grid aspect-video place-items-center rounded-3xl bg-tint text-brand"><svg width="64" height="64"><use href="#i-finger"/></svg></div>
         </div>
-      </article>
+      </div>
     </div>
 
     <article class="mt-5 rounded-[32px] bg-white p-7 ring-1 ring-line sm:p-10">
@@ -697,6 +664,28 @@ const logos = document.querySelector('.logos');
 new IntersectionObserver(([entry], observer) => {
   if (entry.isIntersecting) { logos.classList.add('in'); observer.disconnect(); }
 }, { threshold: 1 }).observe(logos);
+</script>
+<script>
+(() => {
+  const tabs = [...document.querySelectorAll('#feat-tabs [role="tab"]')];
+  const show = t => tabs.forEach(x => {
+    const on = x === t;
+    x.setAttribute('aria-selected', String(on));
+    x.tabIndex = on ? 0 : -1;
+    document.getElementById(x.getAttribute('aria-controls')).classList.toggle('on', on);
+  });
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => show(t));
+    t.addEventListener('keydown', e => {
+      const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      const next = tabs[(i + step + tabs.length) % tabs.length];
+      next.focus();
+      show(next);
+    });
+  });
+})();
 </script>
 </body>
 </html>
