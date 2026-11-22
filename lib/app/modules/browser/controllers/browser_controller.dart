@@ -679,7 +679,13 @@ class BrowserController extends GetxController {
     // "Desktop site" off must name the phone's own one.
     final live = settings.copy()..userAgent = desktop.value ? desktopUserAgent : await _phoneUserAgent();
     await w.setSettings(settings: live);
-    await w.reload();
+    final wide = desktop.value ? desktopAddress(url.value) : null;
+    if (wide != null) {
+      // Mobile hosts (m.facebook.com) ignore the User-Agent: open the desktop host.
+      await w.loadUrl(urlRequest: URLRequest(url: WebUri(wide)));
+    } else {
+      await w.reload();
+    }
   }
 
   static String? _defaultUa;

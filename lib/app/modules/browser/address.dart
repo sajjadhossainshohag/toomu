@@ -113,5 +113,22 @@ List<Suggestion> mergeSuggestions(
 const desktopUserAgent =
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
 
+/// The desktop address of a page on a site's mobile host (m.facebook.com →
+/// www.facebook.com, en.m.wikipedia.org → en.wikipedia.org), or null when
+/// [url] isn't on one. A mobile host keeps serving the mobile site even to a
+/// desktop User-Agent, so "Desktop site" alone changed nothing there.
+String? desktopAddress(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) return null;
+  final labels = uri.host.toLowerCase().split('.');
+  for (var i = 0; i < 2 && i < labels.length; i++) {
+    if (!const {'m', 'mobile', 'touch'}.contains(labels[i])) continue;
+    if (labels.length - i <= 2) return null; // "m.co" is the site itself
+    final host = [if (i == 0) 'www', ...labels.take(i), ...labels.skip(i + 1)].join('.');
+    return uri.replace(host: host).toString();
+  }
+  return null;
+}
+
 /// Find in page's counter: "2/5", or "0/0" when nothing matches.
 String findCount(int active, int total) => total == 0 ? '0/0' : '$active/$total';
