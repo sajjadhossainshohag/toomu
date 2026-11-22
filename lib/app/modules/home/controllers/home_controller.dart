@@ -22,6 +22,9 @@ import '../../../services/floating_button_service.dart';
 import '../../../services/permission_service.dart';
 import '../../../services/settings_service.dart';
 import '../../../widgets/app_dialog.dart';
+import '../../../widgets/option_sheet.dart';
+import '../../../data/models/media_format.dart';
+import '../../../data/models/download_task.dart';
 import '../../youtube/controllers/youtube_controller.dart';
 import '../home_tabs.dart';
 import '../../../widgets/app_snackbar.dart';
@@ -203,8 +206,21 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  /// A TikTok link: straight to Downloads (no watermark).
+  /// A TikTok link: the video (no watermark) or just its sound, then Downloads.
   Future<void> _downloadTiktok(String url) async {
+    final format = await showOptionSheet<MediaFormat>(
+      title: 'Download TikTok',
+      options: [
+        for (final f in MediaFormat.tiktokOptions)
+          SheetOption(
+            value: f,
+            label: f.name,
+            subtitle: f.detail,
+            icon: f.kind == DownloadKind.audio ? Icons.music_note_outlined : Icons.movie_outlined,
+          ),
+      ],
+    );
+    if (format == null) return;
     showSnack(
       'TikTok',
       'Getting the video…',
@@ -219,7 +235,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       );
       return;
     }
-    await DownloadService.to.enqueueTiktok(item);
+    await DownloadService.to.enqueueTiktok(item, format: format);
     openTab(HomeTabs.downloads);
     showSnack(
       'Download started',

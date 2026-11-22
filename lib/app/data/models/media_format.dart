@@ -175,6 +175,39 @@ class MediaFormat {
     ),
   ];
 
+  /// A TikTok's choices: the video (one file with sound, H.264 first so it
+  /// plays everywhere) or just its sound.
+  static const tiktokOptions = <MediaFormat>[
+    MediaFormat(
+      kind: DownloadKind.video,
+      label: 'TikTok',
+      name: 'Video',
+      extension: 'mp4',
+      sizeBytes: 0,
+      detail: 'No watermark (MP4)',
+      selector: 'b[vcodec^=h264]/b[vcodec^=avc]/b',
+    ),
+    MediaFormat(
+      kind: DownloadKind.audio,
+      label: 'MP3 192 kbps',
+      name: 'MP3',
+      extension: 'mp3',
+      sizeBytes: 0,
+      detail: 'Audio only, plays everywhere',
+      selector: 'ba/b',
+      convert: 'mp3:192',
+    ),
+    MediaFormat(
+      kind: DownloadKind.audio,
+      label: 'M4A',
+      name: 'Original audio',
+      extension: 'm4a',
+      sizeBytes: 0,
+      detail: 'Audio only, best sound (M4A)',
+      selector: 'ba[ext=m4a]/ba/b',
+    ),
+  ];
+
   // YouTube's audio is ~130–160 kbps, so 192 already keeps all of it: a 320 kbps MP3 is only bigger.
   static List<MediaFormat> audioOptions(YtInfo info) {
     final audio = info.bestAudio;

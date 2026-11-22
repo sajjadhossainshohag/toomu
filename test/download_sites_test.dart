@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:toomu/app/data/models/download_task.dart';
+import 'package:toomu/app/data/models/media_format.dart';
 import 'package:toomu/app/data/models/tiktok_item.dart';
 import 'package:toomu/app/services/download_service.dart';
 
@@ -33,6 +34,41 @@ void main() {
       expect(c.args, contains('--user-agent'));
       expect(c.option('-f'), 'b[vcodec^=h264]/b[vcodec^=avc]/b');
       expect(t.filePath, '${h.root}/Video/@dancer - New moves.mp4');
+    });
+
+    test('a TikTok saved as MP3 goes to Audio, converted like YouTube audio', () async {
+      h.ytdlp.onRun = (c, _, _) async => FakeYtDlp.ok(c, ext: 'mp3');
+      final t = await s().enqueueTiktok(
+        const TiktokItem(id: '7303', authorId: 'singer', caption: 'Song'),
+        format: MediaFormat.tiktokOptions.firstWhere((f) => f.extension == 'mp3'),
+      );
+      await DownloadHarness.status(t, DownloadStatus.completed);
+      final c = calls().single;
+      expect(c.url, 'https://www.tiktok.com/@singer/video/7303');
+      expect(c.args, contains('--user-agent'));
+      expect(c.option('-f'), 'ba/b');
+      expect(c.args, containsAllInOrder(['-x', '--audio-format', 'mp3']));
+      expect(t.kind, DownloadKind.audio);
+      expect(t.filePath, '${h.root}/Audio/@singer - Song.mp3');
+    });
+
+    test('a TikTok saved as original audio is an M4A in Audio', () async {
+      h.ytdlp.onRun = (c, _, _) async => FakeYtDlp.ok(c, ext: 'm4a');
+      final t = await s().enqueueTiktok(
+        const TiktokItem(id: '7304', authorId: 'singer', caption: 'Song'),
+        format: MediaFormat.tiktokOptions.firstWhere((f) => f.extension == 'm4a'),
+      );
+      await DownloadHarness.status(t, DownloadStatus.completed);
+      expect(calls().single.args, containsAllInOrder(['-x', '--audio-format', 'm4a']));
+      expect(t.filePath, '${h.root}/Audio/@singer - Song.m4a');
+    });
+
+    test('TikTok offers video, MP3 and original audio', () {
+      expect(MediaFormat.tiktokOptions.map((f) => (f.kind, f.extension)), [
+        (DownloadKind.video, 'mp4'),
+        (DownloadKind.audio, 'mp3'),
+        (DownloadKind.audio, 'm4a'),
+      ]);
     });
 
     test('no caption: named after the video id', () async {

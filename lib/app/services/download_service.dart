@@ -251,9 +251,12 @@ class DownloadService extends GetxService {
     );
   }
 
-  /// A TikTok video (no watermark), saved with the videos.
-  Future<DownloadTask> enqueueTiktok(TiktokItem item) async {
+  /// A TikTok (no watermark): the video, saved with the videos, or with a
+  /// [format] from [MediaFormat.tiktokOptions], just its sound in Audio.
+  Future<DownloadTask> enqueueTiktok(TiktokItem item, {MediaFormat? format}) async {
     await _storageReady();
+    final f = format ?? MediaFormat.tiktokOptions.first;
+    final dir = f.kind == DownloadKind.audio ? _audioDir : _videoDir;
     final caption = item.caption.trim().isEmpty
         ? 'TikTok ${item.id}'
         : item.caption.trim();
@@ -270,12 +273,12 @@ class DownloadService extends GetxService {
         title: caption,
         author: '@${item.authorId}',
         thumbnailUrl: item.coverUrl ?? '',
-        // One file with sound; H.264 first (plays everywhere).
-        format: 'b[vcodec^=h264]/b[vcodec^=avc]/b',
-        kind: DownloadKind.video,
-        extension: 'mp4',
-        qualityLabel: 'TikTok',
-        filePath: _uniquePath(_videoDir.path, base, 'mp4'),
+        format: f.selector,
+        convert: f.convert,
+        kind: f.kind,
+        extension: f.extension,
+        qualityLabel: f.label,
+        filePath: _uniquePath(dir.path, base, f.extension),
         createdAt: DateTime.now(),
       ),
     );
