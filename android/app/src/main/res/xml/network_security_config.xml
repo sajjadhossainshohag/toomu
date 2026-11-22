@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- HTTPS everywhere, except just_audio's local proxy (used to stream
-     YouTube audio into the player), which runs on plain http://127.0.0.1. -->
+<!-- Plain http:// is allowed, as in Chrome: the in-app browser must open any
+     site (many still use http, or redirect through it), browser downloads can
+     be http links, and just_audio's local proxy runs on http://127.0.0.1.
+     Without this the WebView shows "net::ERR_CLEARTEXT_NOT_PERMITTED". -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">127.0.0.1</domain>
-        <domain includeSubdomains="false">localhost</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
