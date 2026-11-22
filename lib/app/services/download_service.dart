@@ -520,6 +520,14 @@ class DownloadService extends GetxService {
 
   bool get hasActiveDownloads => _running.isNotEmpty;
 
+  /// Completes once no download run is left (each one fully wound down).
+  @visibleForTesting
+  Future<void> whenIdle() async {
+    while (_runEnded.isNotEmpty) {
+      await Future.wait([for (final c in _runEnded.values.toList()) c.future]);
+    }
+  }
+
   void pause(DownloadTask task) {
     if (task.status.value == DownloadStatus.queued) {
       task.status.value = DownloadStatus.paused;
@@ -609,11 +617,10 @@ class DownloadService extends GetxService {
 
   /// Deletes leftover temp files/folders that no download in the list owns
   /// any more. Partial data of paused/failed downloads is kept for resume.
-  Future<int> cleanTemporaryFiles() {
-    final owned = <String>{for (final t in tasks) ..._tempPathsOf(t)};
+  Future<int> cleanTemporaryFiles() async {
     final dirs = [_videoDir, _audioDir, _filesDir, _videoDir.parent].map((d) => d.path).toList();
     final works = [_workRoot, YtDlpService.to.workRoot].where((w) => w.isNotEmpty).toList();
-    return Isolate.run(() {
+    final found = await Isolate.run(() {
       bool isTemp(String name) =>
           name.endsWith('.part') ||
           name.endsWith('.chunks') ||
@@ -622,7 +629,7 @@ class DownloadService extends GetxService {
           name == '.probe';
       List<FileSystemEntity> list(String dir) =>
           Directory(dir).existsSync() ? Directory(dir).listSync(followLinks: false) : const [];
-      final stale = [
+      return [
         for (final dir in dirs)
           for (final e in list(dir))
             if (isTemp(e.uri.pathSegments.where((s) => s.isNotEmpty).last)) e.path,
@@ -630,9 +637,14 @@ class DownloadService extends GetxService {
         for (final work in works)
           for (final e in list(work))
             if (!e.path.endsWith('/.nomedia')) e.path,
-      ].where((p) => !owned.contains(p));
-      return stale.fold<int>(0, (freed, p) => freed + _deleteSync(p));
+      ];
     });
+    // Which are in use is checked only now, after the listing: a download
+    // added while it ran (e.g. right at start-up) keeps its folder.
+    final owned = <String>{for (final t in tasks) ..._tempPathsOf(t)};
+    final stale = [for (final p in found) if (!owned.contains(p)) p];
+    if (stale.isEmpty) return 0;
+    return Isolate.run(() => stale.fold<int>(0, (freed, p) => freed + _deleteSync(p)));
   }
 
   // ------------------------------------------------------------------ engine

@@ -258,7 +258,8 @@ class DownloadHarness {
     for (final t in service.tasks.where((t) => t.isActive).toList()) {
       service.pause(t);
     }
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // Every run fully stopped: one still ending would use the services reset below.
+    await service.whenIdle().timeout(const Duration(seconds: 10));
     await flushBox(_downloadsBox);
     Get.reset();
     await deleteTempStorageDir(dir);
