@@ -13,6 +13,7 @@ Save videos and music from YouTube, TikTok, Instagram, Facebook and almost any w
 [![Build](https://img.shields.io/github/actions/workflow/status/sajjadhossainshohag/toomu/build.yml?branch=main)](https://github.com/sajjadhossainshohag/toomu/actions/workflows/build.yml)
 ![Android 7.0+](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)
 ![Windows 10 & 11](https://img.shields.io/badge/Windows-10%20%26%2011-0078D4)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 **[Website](https://sajjadhossainshohag.github.io/toomu/)** · **[Download for Android](https://github.com/sajjadhossainshohag/toomu/releases/latest/download/toomu-arm64-v8a.apk)** · **[Download for Windows](https://github.com/sajjadhossainshohag/toomu/releases/latest/download/toomu-windows-setup.exe)**
 
@@ -77,3 +78,7 @@ flutter build windows --release    # on Windows, with Visual Studio's C++ worklo
 ```
 
 Found a bug or missing a feature? [Open an issue](https://github.com/sajjadhossainshohag/toomu/issues).
+
+## License
+
+Toomu is free software, licensed under the [GNU General Public License v3.0](LICENSE). You may use, study, share and change it; if you share a changed version, it must stay under the GPL-3.0 with its source code available.
