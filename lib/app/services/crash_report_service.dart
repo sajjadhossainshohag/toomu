@@ -9,7 +9,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/utils/device_profile.dart';
 import '../core/values/app_constants.dart';
-import '../widgets/app_dialog.dart';
 import 'settings_service.dart';
 import 'storage_service.dart';
 import 'update_service.dart';
@@ -19,8 +18,8 @@ import 'usage_ping.dart';
 /// privately in its D1 database, one row per distinct crash).
 ///
 /// Each error is written to `<app support>/crash_reports/` the moment it happens (the app may be
-/// about to die); Android's native crashes land there too (`CrashFile.kt`). Reports are sent only
-/// once the user agreed (asked the first time, then Settings → Send crash reports), only from
+/// about to die); Android's native crashes land there too (`CrashFile.kt`). Reports are sent
+/// automatically (unless turned off in Settings → Send crash reports), only from
 /// release builds, and with links, file paths and e-mail addresses removed. The diagnostics log
 /// isn't sent: its lines name downloads.
 class CrashReporter {
@@ -174,14 +173,13 @@ class CrashReporter {
   }
 }
 
-/// Installs the error hooks and sends reports once the user agreed.
+/// Installs the error hooks and sends reports automatically (unless off in Settings).
 class CrashReportService extends GetxService {
   static CrashReportService get to => Get.find();
 
   static const _sentKey = 'crash_reports_sent';
 
   late final CrashReporter reporter;
-  bool _asked = false;
   Timer? _sendSoon;
 
   /// Release builds with a release tag and a relay to send to (dev builds would only add noise).
@@ -242,26 +240,11 @@ class CrashReportService extends GetxService {
     _handlePending(delay: const Duration(seconds: 2));
   }
 
-  /// Sends, drops or asks first, by the user's choice (several errors at once: one send).
+  /// Sends, or drops if crash reports are off in Settings (several errors at once: one send).
   void _handlePending({required Duration delay}) {
     _sendSoon?.cancel();
     _sendSoon = Timer(delay, () async {
-      final consent = SettingsService.to.crashReports.value;
-      if (consent == false) return reporter.dropPending();
-      if (consent == null) {
-        if (_asked) return;
-        _asked = true;
-        final yes = await showConfirmDialog(
-          title: 'Send a crash report?',
-          message: 'Toomu ran into a problem. A report helps fix it.\n\n'
-              "It's sent privately to Toomu's developer with the error, the app version and your phone model. "
-              "Links, file names and what you download aren't included. You can change this in Settings.",
-          confirmLabel: 'Send',
-          cancelLabel: "Don't send",
-        );
-        SettingsService.to.setCrashReports(yes);
-        if (!yes) return reporter.dropPending();
-      }
+      if (!SettingsService.to.crashReports.value) return reporter.dropPending();
       await sendNow();
     });
   }

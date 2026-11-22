@@ -204,9 +204,9 @@ class SettingsView extends GetView<SettingsController> {
                         icon: Icons.report_rounded,
                         tint: ColorConstants.tileAbout,
                         label: 'Send crash reports',
-                        toggled: controller.settings.crashReports.value ?? false,
+                        toggled: controller.settings.crashReports.value,
                         onTap: () => controller.settings
-                            .setCrashReports(!(controller.settings.crashReports.value ?? false)),
+                            .setCrashReports(!controller.settings.crashReports.value),
                       ),
                       AppRow(
                         icon: Icons.people_alt_rounded,

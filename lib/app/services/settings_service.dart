@@ -23,8 +23,8 @@ class SettingsService extends GetxService {
   final captureMedia = true.obs;
   final clipboardLinks = true.obs;
 
-  /// Send crash reports: null until the user is first asked (after a crash).
-  final crashReports = Rxn<bool>();
+  /// Send crash reports: on unless turned off in Settings (never asked).
+  final crashReports = true.obs;
 
   /// One anonymous "used today" ping a day (no ID), so the developer knows how many use Toomu.
   final usageCount = true.obs;
@@ -51,7 +51,7 @@ class SettingsService extends GetxService {
     videoAutoPip.value = _storage.read<bool>(AppConstants.kVideoAutoPip) ?? true;
     captureMedia.value = _storage.read<bool>(AppConstants.kCaptureMedia) ?? true;
     clipboardLinks.value = _storage.read<bool>(AppConstants.kClipboardLinks) ?? true;
-    crashReports.value = _storage.read<bool>(AppConstants.kCrashReports);
+    crashReports.value = _storage.read<bool>(AppConstants.kCrashReports) ?? true;
     usageCount.value = _storage.read<bool>(AppConstants.kUsageCount) ?? true;
     blockRedirects.value = _storage.read<bool>(AppConstants.kBlockRedirects) ?? true;
     blockAds.value = _storage.read<bool>(AppConstants.kBlockAds) ?? true;

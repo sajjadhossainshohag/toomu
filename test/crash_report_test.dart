@@ -4,7 +4,12 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:toomu/app/services/crash_report_service.dart';
+import 'package:toomu/app/services/settings_service.dart';
+import 'package:toomu/app/services/storage_service.dart';
+
+import 'support/temp_storage.dart';
 
 /// Crash reports: saved at once, scrubbed, sent to the crash relay (a local fake here).
 void main() {
@@ -136,11 +141,24 @@ void main() {
     expect(r.pending(), isEmpty);
   });
 
-  test('declining drops what was waiting', () {
+  test('turning crash reports off in Settings drops what was waiting', () {
     final r = reporter();
     r.save('dart', StateError('x'), null);
     r.dropPending();
     expect(r.pending(), isEmpty);
     expect(received, isEmpty);
+  });
+
+  test('crash reports are sent without asking: on by default for a new install', () async {
+    final storageDir = await useTempStorageDir();
+    addTearDown(() async {
+      await Get.deleteAll(force: true);
+      await deleteTempStorageDir(storageDir);
+    });
+    Get.put(StorageService(await tempBox('crash_default', storageDir)));
+    final settings = Get.put(SettingsService().init());
+    expect(settings.crashReports.value, isTrue);
+    settings.setCrashReports(false);
+    expect(SettingsService().init().crashReports.value, isFalse, reason: 'turning it off is remembered');
   });
 }
