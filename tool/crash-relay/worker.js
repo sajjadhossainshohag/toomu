@@ -1,23 +1,21 @@
 // Toomu crash relay and user count (Cloudflare Worker).
 //
-// POST /report  a crash report → a GitHub issue on the repo, or a comment on the issue already
-//               open for the same crash. The GitHub token lives here as a secret (GITHUB_TOKEN),
-//               never in the app: anything shipped in an APK can be read.
+// POST /report  a crash report → a row in D1's `crashes` table, one per distinct crash (its
+//               signature): the same crash again only bumps its count, last version and device.
+//               Private: read them in the Cloudflare dashboard (D1 → toomu-usage → Console), e.g.
+//               SELECT sig, title, count, last_version, last_seen FROM crashes ORDER BY last_seen DESC
 // POST /ping    the app's once-a-day "used today" ping, with no ID of any kind: just the platform,
 //               the version and whether it's its first ping this week / month. Counted in D1, so
 //               daily, weekly and monthly users are sums, not lookups of anyone.
 // GET  /stats   those counts (public: totals only).
 //
 // Settings (wrangler.toml / dashboard):
-//   GITHUB_TOKEN  secret: fine-grained token, this repo only, Issues: read and write
-//   REPO          "owner/name"
 //   APP_KEY       the key the app sends in X-Toomu-Key (not a secret: it only keeps out
 //                 random traffic; the size limits and rate limits do the rest)
-//   DB            D1 database binding for the user count (its table is created on first use)
+//   DB            D1 database binding for crashes and the user count (tables created on first use)
 
 const MAX_BODY = 32 * 1024;
 const PER_IP_PER_HOUR = 20;
-const MAX_COMMENTS = 30; // a crash seen this often needs no more "again" comments
 const KINDS = { flutter: 'Flutter error', dart: 'Uncaught Dart error', native: 'Android crash (Kotlin/Java)' };
 const PLATFORMS = ['android', 'windows'];
 
@@ -43,16 +41,22 @@ export default {
     const ip = request.headers.get('cf-connecting-ip') || 'unknown';
     if (await overLimit(`ip/${ip}`, PER_IP_PER_HOUR, 3600)) return json({ error: 'slow down' }, 429);
 
+    const d = await db(env);
+    if (!d) return json({ error: 'no database' }, 503);
     const sig = await signature(report);
-    const gh = github(env);
-    const known = (await recall(sig)) ?? (await gh.find(sig));
-    if (known) {
-      if (known.comments < MAX_COMMENTS) await gh.comment(known.number, againText(report));
-      return json({ ok: true, issue: known.number, url: known.html_url, duplicate: true });
-    }
-    const issue = await gh.create(title(report, sig), body(report, sig));
-    await remember(sig, issue);
-    return json({ ok: true, issue: issue.number, url: issue.html_url });
+    const now = new Date().toISOString();
+    const row = await d
+      .prepare(
+        `INSERT INTO crashes (sig, kind, platform, title, message, stack, first_version, last_version,
+           first_seen, last_seen, count, last_where, build)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?8, 1, ?9, ?10)
+         ON CONFLICT (sig) DO UPDATE SET count = count + 1, last_version = excluded.last_version,
+           last_seen = excluded.last_seen, last_where = excluded.last_where, build = excluded.build
+         RETURNING count`,
+      )
+      .bind(sig, report.kind, report.platform, title(report), report.message, report.stack, report.version, now, where(report), report.build)
+      .first();
+    return json({ ok: true, id: sig, duplicate: (row?.count ?? 1) > 1 });
   },
 };
 
@@ -107,49 +111,35 @@ export async function signature(r) {
   return [...new Uint8Array(digest)].slice(0, 5).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-const fence = (t) => t.replace(/```/g, 'ʼʼʼ');
 const where = (r) => [r.platform === 'android' ? 'Android' : 'Windows', r.os, r.device].filter(Boolean).join(' · ');
 
-export function title(r, sig) {
+/** The error's first line, short: "PathNotFoundException: Cannot open file…". */
+export function title(r) {
   const first = r.message.split('\n')[0].replace(/\s+/g, ' ').trim();
-  const short = first.length > 90 ? `${first.slice(0, 89)}…` : first;
-  return `Crash: ${short} [${sig}]`;
+  return first.length > 90 ? `${first.slice(0, 89)}…` : first;
 }
 
-export function body(r, sig) {
-  const lines = r.stack.split('\n');
-  const stack = lines.length > 60 ? [...lines.slice(0, 60), `… ${lines.length - 60} more lines`].join('\n') : r.stack;
-  return [
-    `**Toomu ${r.version}**${r.build ? ` (${r.build})` : ''} on ${where(r)}`,
-    `**Kind:** ${KINDS[r.kind]}`,
-    '',
-    '**Error**',
-    '```text',
-    fence(r.message),
-    '```',
-    ...(stack ? ['', '**Stack**', '```text', fence(stack), '```'] : []),
-    '',
-    `<sub>Sent by the app's crash reporter. Same crash again → a comment here. Signature \`${sig}\`.</sub>`,
-  ].join('\n');
-}
-
-export const againText = (r) => `Again in **${r.version}** on ${where(r)}.`;
-
-
-// ------------------------------------------------------------------ user count (D1)
+// ------------------------------------------------------------------ D1: crashes and user count
 
 const PINGS_PER_IP_PER_HOUR = 30; // a household or office shares one address
 
-const SCHEMA = `CREATE TABLE IF NOT EXISTS usage (
-  day TEXT NOT NULL, platform TEXT NOT NULL, version TEXT NOT NULL,
-  daily INTEGER NOT NULL DEFAULT 0, weekly INTEGER NOT NULL DEFAULT 0, monthly INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (day, platform, version))`;
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS usage (
+    day TEXT NOT NULL, platform TEXT NOT NULL, version TEXT NOT NULL,
+    daily INTEGER NOT NULL DEFAULT 0, weekly INTEGER NOT NULL DEFAULT 0, monthly INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, platform, version))`,
+  `CREATE TABLE IF NOT EXISTS crashes (
+    sig TEXT PRIMARY KEY, kind TEXT NOT NULL, platform TEXT NOT NULL, title TEXT NOT NULL,
+    message TEXT NOT NULL, stack TEXT NOT NULL, first_version TEXT NOT NULL, last_version TEXT NOT NULL,
+    first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 1,
+    last_where TEXT NOT NULL, build TEXT NOT NULL DEFAULT '')`,
+];
 
 let schemaReady = false;
 async function db(env) {
   if (!env.DB) return null;
   if (!schemaReady) {
-    await env.DB.prepare(SCHEMA).run();
+    await env.DB.batch(SCHEMA.map((sql) => env.DB.prepare(sql)));
     schemaReady = true;
   }
   return env.DB;
@@ -216,37 +206,7 @@ async function stats(env, url) {
   });
 }
 
-// ------------------------------------------------------------------ GitHub
-
-function github(env) {
-  const api = async (path, init = {}) => {
-    const res = await fetch(`https://api.github.com${path}`, {
-      ...init,
-      headers: {
-        authorization: `Bearer ${env.GITHUB_TOKEN}`,
-        accept: 'application/vnd.github+json',
-        'x-github-api-version': '2022-11-28',
-        'user-agent': 'toomu-crash-relay',
-        ...(init.body ? { 'content-type': 'application/json' } : {}),
-      },
-    });
-    if (!res.ok) throw new Error(`GitHub ${res.status} on ${path}: ${(await res.text()).slice(0, 200)}`);
-    return res.json();
-  };
-  return {
-    async find(sig) {
-      const q = encodeURIComponent(`${sig} in:title repo:${env.REPO} is:issue`);
-      const r = await api(`/search/issues?q=${q}&per_page=1`);
-      return r.items?.[0] ?? null;
-    },
-    create: (t, b) => api(`/repos/${env.REPO}/issues`, { method: 'POST', body: JSON.stringify({ title: t, body: b, labels: ['crash'] }) }),
-    comment: (n, b) => api(`/repos/${env.REPO}/issues/${n}/comments`, { method: 'POST', body: JSON.stringify({ body: b }) }),
-  };
-}
-
-// ------------------------------------------------------------------ small edge memory (Cache API)
-// GitHub's search lags a minute or so behind a new issue: the issue is remembered here too,
-// so a burst of the same crash doesn't open duplicates. Also holds the rate-limit counters.
+// ------------------------------------------------------------------ rate limits (Cache API)
 
 const cache = () => globalThis.caches?.default ?? null;
 const memoUrl = (k) => `https://toomu-crash-relay.internal/${k}`;
@@ -261,20 +221,6 @@ async function overLimit(key, max, seconds) {
   if (count >= max) return true;
   await c.put(req, new Response(String(count + 1), { headers: { 'cache-control': `max-age=${seconds}` } }));
   return false;
-}
-
-async function recall(sig) {
-  const hit = await cache()?.match(new Request(memoUrl(`sig/${sig}`)));
-  return hit ? hit.json() : null;
-}
-
-async function remember(sig, issue) {
-  await cache()?.put(
-    new Request(memoUrl(`sig/${sig}`)),
-    new Response(JSON.stringify({ number: issue.number, html_url: issue.html_url, comments: 0 }), {
-      headers: { 'cache-control': 'max-age=86400', 'content-type': 'application/json' },
-    }),
-  );
 }
 
 function json(data, status = 200) {

@@ -17,9 +17,9 @@ abstract class AppConstants {
 
   static const githubRepo = 'sajjadhossainshohag/toomu';
 
-  /// Crash relay and user count (`tool/crash-relay`, a Cloudflare Worker: /report opens GitHub
-  /// issues, /ping counts users). No trailing slash. Empty: nothing is sent.
-  static const relayUrl = '';
+  /// Crash relay and user count (`tool/crash-relay`, a Cloudflare Worker: /report stores crashes
+  /// in D1, /ping counts users). No trailing slash. Empty: nothing is sent.
+  static const relayUrl = 'https://toomu-crash-relay.sajjadhossainshohagbd.workers.dev';
 
   /// Sent as X-Toomu-Key. Not a secret (it ships in the app): it only keeps random traffic off the relay.
   static const crashReportKey = 'toomu-ec11073bba3ceb97e13b7ff5';

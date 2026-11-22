@@ -1,7 +1,6 @@
 # Toomu crash relay and user count (see worker.js). From this folder:
 #   once:   npx wrangler login
 #           npx wrangler d1 create toomu-usage        (put the printed database_id below)
-#           npx wrangler secret put GITHUB_TOKEN      (fine-grained token: this repo, Issues read/write)
 #   deploy: npx wrangler deploy
 #   tests:  node --test
 name = "toomu-crash-relay"
@@ -9,12 +8,11 @@ main = "worker.js"
 compatibility_date = "2026-11-01"
 
 [vars]
-REPO = "sajjadhossainshohag/toomu"
 # Sent by the app in X-Toomu-Key. Not a secret (it ships in the app): it only keeps out random traffic.
 APP_KEY = "toomu-ec11073bba3ceb97e13b7ff5"
 
-# User count (POST /ping, GET /stats). The table is created on first use.
+# Crashes (POST /report) and user count (POST /ping, GET /stats). Tables are created on first use.
 [[d1_databases]]
 binding = "DB"
 database_name = "toomu-usage"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "7bdaac40-9b44-45fc-86b4-f520f5db979f"

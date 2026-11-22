@@ -15,8 +15,8 @@ import 'storage_service.dart';
 import 'update_service.dart';
 import 'usage_ping.dart';
 
-/// Crashes and errors → GitHub issues, through the crash relay (`tool/crash-relay`, a Cloudflare
-/// Worker that holds the GitHub token; nothing secret ships in the app).
+/// Crashes and errors → the crash relay (`tool/crash-relay`, a Cloudflare Worker that keeps them
+/// privately in its D1 database, one row per distinct crash).
 ///
 /// Each error is written to `<app support>/crash_reports/` the moment it happens (the app may be
 /// about to die); Android's native crashes land there too (`CrashFile.kt`). Reports are sent only
@@ -254,7 +254,7 @@ class CrashReportService extends GetxService {
         final yes = await showConfirmDialog(
           title: 'Send a crash report?',
           message: 'Toomu ran into a problem. A report helps fix it.\n\n'
-              "It's posted publicly as a GitHub issue with the error, the app version and your phone model. "
+              "It's sent privately to Toomu's developer with the error, the app version and your phone model. "
               "Links, file names and what you download aren't included. You can change this in Settings.",
           confirmLabel: 'Send',
           cancelLabel: "Don't send",
