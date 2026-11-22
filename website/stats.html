@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toomu stats: users and crashes</title>
+<meta name="description" content="How many people use Toomu: daily, weekly and monthly users, counted anonymously.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#F6F4FA">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Geist', '"Segoe UI"', 'system-ui', 'sans-serif'] },
+      colors: {
+        ink: '#1C1B1F', page: '#F6F4FA', muted: '#625E78', line: '#E6E1F0',
+        brand: { DEFAULT: '#7C4DFF', deep: '#5B2BE0', tint: '#EFE9FF' },
+      },
+    },
+  },
+};
+</script>
+<style>
+html { -webkit-font-smoothing: antialiased }
+body { background: #F6F4FA }
+.card { background: #fff; border: 1px solid #E6E1F0; border-radius: 16px }
+.num { font-variant-numeric: tabular-nums }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; font-weight: 600; font-size: 13px; border: 1px solid #E6E1F0; background: #fff; color: #1C1B1F }
+.btn:hover { background: #F6F4FA }
+.btn:focus-visible, input:focus-visible { outline: 2px solid #7C4DFF; outline-offset: 2px }
+.btn[aria-pressed="true"] { background: #EFE9FF; border-color: #DCD3F5; color: #5B2BE0 }
+#chart .col { fill: #7C4DFF }
+#chart .hit:hover + .col, #chart .col.on { fill: #5B2BE0 }
+#tip { pointer-events: none; transition: opacity .1s }
+pre { white-space: pre-wrap; word-break: break-word }
+</style>
+</head>
+<body class="font-sans text-ink">
+
+<header class="border-b border-line bg-white/70 backdrop-blur">
+  <div class="mx-auto flex max-w-[1000px] items-center justify-between px-4 py-4 sm:px-6">
+    <a href="./" class="flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.02em]"><img src="icon-512.png" width="28" height="28" alt="" class="rounded-[8px]">Toomu</a>
+    <span class="text-[13px] font-semibold text-muted">Stats</span>
+  </div>
+</header>
+
+<main class="mx-auto max-w-[1000px] space-y-6 px-4 py-8 sm:px-6">
+  <div>
+    <h1 class="text-[30px] font-semibold tracking-[-0.03em]">Users</h1>
+    <p class="mt-1 text-[14px] text-muted">Each copy of the app sends one ping a day with no ID: just the platform and version. Days are UTC. Updates every few minutes.</p>
+  </div>
+
+  <p id="err" class="hidden rounded-[12px] border border-[#F3C7C7] bg-[#FDF1F1] px-4 py-3 text-[14px] text-[#9B1C1C]"></p>
+
+  <section class="grid gap-4 sm:grid-cols-3" aria-label="Totals">
+    <div class="card p-5"><p class="text-[13px] font-semibold text-muted">Today</p><p id="t-today" class="num mt-1 text-[40px] font-semibold leading-none tracking-[-0.03em]">–</p><p id="t-split" class="num mt-2 text-[13px] text-muted">&nbsp;</p></div>
+    <div class="card p-5"><p class="text-[13px] font-semibold text-muted">This week</p><p id="t-week" class="num mt-1 text-[40px] font-semibold leading-none tracking-[-0.03em]">–</p><p class="mt-2 text-[13px] text-muted">since Monday</p></div>
+    <div class="card p-5"><p class="text-[13px] font-semibold text-muted">This month</p><p id="t-month" class="num mt-1 text-[40px] font-semibold leading-none tracking-[-0.03em]">–</p><p id="t-monthname" class="mt-2 text-[13px] text-muted">&nbsp;</p></div>
+  </section>
+
+  <section class="card p-5" aria-labelledby="daily-h">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <h2 id="daily-h" class="text-[16px] font-semibold">Daily users, last 30 days</h2>
+        <p id="daily-sub" class="text-[13px] text-muted">&nbsp;</p>
+      </div>
+      <button id="as-table" type="button" class="btn" aria-pressed="false">Table</button>
+    </div>
+    <div id="chart-wrap" class="relative mt-4">
+      <svg id="chart" class="block w-full" viewBox="0 0 900 260" role="img" aria-label="Daily users, last 30 days"></svg>
+      <div id="tip" class="absolute left-0 top-0 rounded-[10px] border border-line bg-white px-3 py-2 text-[13px] opacity-0 shadow-lg"></div>
+    </div>
+    <div id="table-wrap" class="mt-4 hidden max-h-[320px] overflow-auto">
+      <table class="num w-full text-[14px]"><thead><tr class="text-left text-muted"><th class="py-1.5 font-semibold">Day</th><th class="py-1.5 text-right font-semibold">Users</th></tr></thead><tbody id="days-body"></tbody></table>
+    </div>
+  </section>
+
+  <section class="card p-5" aria-labelledby="ver-h">
+    <h2 id="ver-h" class="text-[16px] font-semibold">Today by version</h2>
+    <table class="num mt-3 w-full text-[14px]"><tbody id="ver-body"><tr><td class="py-1.5 text-muted">–</td></tr></tbody></table>
+  </section>
+
+  <section aria-labelledby="crash-h" class="space-y-4 pt-4">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 id="crash-h" class="text-[30px] font-semibold tracking-[-0.03em]">Crashes</h2>
+        <p class="mt-1 text-[14px] text-muted">Private: needs the admin key (the Worker's ADMIN_KEY secret). It stays in this browser only.</p>
+      </div>
+      <div id="crash-actions" class="hidden gap-2"><button id="crash-refresh" type="button" class="btn">Refresh</button><button id="crash-forget" type="button" class="btn">Forget key</button></div>
+    </div>
+    <form id="key-form" class="card flex flex-col gap-3 p-5 sm:flex-row">
+      <label class="sr-only" for="key">Admin key</label>
+      <input id="key" type="password" autocomplete="current-password" placeholder="Admin key" class="h-[40px] flex-1 rounded-[10px] border border-line px-3 text-[14px]">
+      <button type="submit" class="btn h-[40px] border-transparent bg-brand px-5 text-white hover:bg-brand-deep">Show crashes</button>
+    </form>
+    <p id="crash-msg" class="hidden text-[14px] text-muted"></p>
+    <div id="crash-list" class="space-y-3"></div>
+  </section>
+</main>
+
+<script>
+const RELAY = 'https://toomu-crash-relay.sajjadhossainshohagbd.workers.dev';
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => n.toLocaleString('en-US');
+const dayLabel = (d, opts = { month: 'short', day: 'numeric' }) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', ...opts });
+
+// ---------------------------------------------------------------- users
+
+function last30(days) {
+  const out = [];
+  const now = new Date();
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i)).toISOString().slice(0, 10);
+    out.push({ day: d, users: days[d] ?? 0 });
+  }
+  return out;
+}
+
+function niceMax(v) {
+  if (v <= 4) return 4;
+  const p = 10 ** Math.floor(Math.log10(v));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+}
+
+function drawChart(series) {
+  const svg = $('chart');
+  const W = 900, H = 260, L = 44, R = 8, T = 12, B = 28;
+  const max = niceMax(Math.max(...series.map((s) => s.users)));
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const band = (W - L - R) / series.length;
+  const bw = Math.min(24, band - 2);
+  const ns = 'http://www.w3.org/2000/svg';
+  const el = (name, attrs, text) => {
+    const e = document.createElementNS(ns, name);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  svg.replaceChildren();
+  for (let i = 0; i <= 4; i++) {
+    const v = (max / 4) * i;
+    svg.append(el('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: i ? '#EFEBF6' : '#D9D3E6', 'stroke-width': 1 }));
+    svg.append(el('text', { x: L - 8, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 12, fill: '#625E78', class: 'num' }, fmt(Math.round(v))));
+  }
+  const tip = $('tip');
+  const wrap = $('chart-wrap');
+  series.forEach((s, i) => {
+    const x = L + band * i + (band - bw) / 2;
+    const h = Math.max(0, y(0) - y(s.users));
+    const r = Math.min(4, h, bw / 2);
+    // Rounded top, square at the baseline.
+    const d = h <= 0 ? '' : `M${x},${y(0)} V${y(s.users) + r} Q${x},${y(s.users)} ${x + r},${y(s.users)} H${x + bw - r} Q${x + bw},${y(s.users)} ${x + bw},${y(s.users) + r} V${y(0)} Z`;
+    const hit = el('rect', { x: L + band * i, y: T, width: band, height: H - T - B, fill: 'transparent', class: 'hit' });
+    const col = el('path', { d, class: 'col' });
+    const show = () => {
+      tip.innerHTML = '';
+      const a = document.createElement('div'); a.className = 'text-muted'; a.textContent = dayLabel(s.day, { weekday: 'short', month: 'short', day: 'numeric' });
+      const b = document.createElement('div'); b.className = 'num font-semibold'; b.textContent = `${fmt(s.users)} user${s.users === 1 ? '' : 's'}`;
+      tip.append(a, b);
+      const box = wrap.getBoundingClientRect();
+      const px = ((L + band * i + band / 2) / W) * box.width;
+      const left = Math.min(Math.max(px - tip.offsetWidth / 2, 0), box.width - tip.offsetWidth);
+      tip.style.transform = `translate(${left}px, ${((y(s.users) / H) * box.height) - tip.offsetHeight - 10}px)`;
+      tip.style.opacity = 1;
+    };
+    hit.addEventListener('mouseenter', show);
+    hit.addEventListener('mouseleave', () => (tip.style.opacity = 0));
+    svg.append(hit, col);
+    if (i % 5 === 4 || i === series.length - 1) {
+      svg.append(el('text', { x: L + band * i + band / 2, y: H - 8, 'text-anchor': 'middle', 'font-size': 12, fill: '#625E78' }, dayLabel(s.day)));
+    }
+  });
+}
+
+async function loadStats() {
+  try {
+    const res = await fetch(`${RELAY}/stats`);
+    if (!res.ok) throw new Error(`the relay answered ${res.status}`);
+    const s = await res.json();
+    $('t-today').textContent = fmt(s.today);
+    $('t-week').textContent = fmt(s.week);
+    $('t-month').textContent = fmt(s.month);
+    $('t-split').textContent = `${fmt(s.platforms.android)} Android · ${fmt(s.platforms.windows)} Windows`;
+    $('t-monthname').textContent = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const series = last30(s.days);
+    const total = series.reduce((n, d) => n + d.users, 0);
+    const peak = series.reduce((a, b) => (b.users > a.users ? b : a), series[0]);
+    $('daily-sub').textContent = total ? `Busiest day: ${dayLabel(peak.day)}, ${fmt(peak.users)} users` : 'No pings yet. They start once a release with the relay is installed.';
+    drawChart(series);
+    $('days-body').replaceChildren(...[...series].reverse().map((d) => {
+      const tr = document.createElement('tr'); tr.className = 'border-t border-line';
+      tr.innerHTML = '<td class="py-1.5"></td><td class="py-1.5 text-right"></td>';
+      tr.children[0].textContent = dayLabel(d.day, { weekday: 'short', month: 'short', day: 'numeric' });
+      tr.children[1].textContent = fmt(d.users);
+      return tr;
+    }));
+    const versions = Object.entries(s.versionsToday).sort((a, b) => b[1] - a[1]);
+    $('ver-body').replaceChildren(...(versions.length ? versions : [['No pings today yet', null]]).map(([v, n]) => {
+      const tr = document.createElement('tr'); tr.className = 'border-t border-line first:border-0';
+      tr.innerHTML = '<td class="py-1.5"></td><td class="py-1.5 text-right font-semibold"></td>';
+      tr.children[0].textContent = v;
+      if (n == null) tr.children[0].className = 'py-1.5 text-muted'; else tr.children[1].textContent = fmt(n);
+      return tr;
+    }));
+  } catch (e) {
+    $('err').textContent = `Couldn't load the stats: ${e.message}.`;
+    $('err').classList.remove('hidden');
+  }
+}
+
+$('as-table').addEventListener('click', (e) => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', on);
+  $('chart-wrap').classList.toggle('hidden', on);
+  $('table-wrap').classList.toggle('hidden', !on);
+});
+
+// ---------------------------------------------------------------- crashes
+
+const KEY = 'toomu-admin-key';
+const when = (iso) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+function crashText(c) {
+  return [
+    `${c.title}  [${c.sig}]`,
+    `Kind: ${c.kindLabel}`,
+    `Seen ${c.count}×, first in ${c.first_version} (${c.first_seen}), last in ${c.last_version} (${c.last_seen})`,
+    `Last on: ${c.last_where}${c.build ? ` · build ${c.build}` : ''}`,
+    '',
+    'Error:',
+    c.message,
+    ...(c.stack ? ['', 'Stack:', c.stack] : []),
+  ].join('\n');
+}
+
+async function copy(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const t = document.createElement('textarea'); t.value = text; document.body.append(t); t.select(); document.execCommand('copy'); t.remove();
+  }
+  const old = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => (btn.textContent = old), 1500);
+}
+
+function crashCard(c) {
+  const card = document.createElement('article');
+  card.className = 'card p-5';
+  card.innerHTML = `
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h3 class="break-words text-[15px] font-semibold" data-f="title"></h3>
+        <p class="num mt-1 text-[13px] text-muted" data-f="meta"></p>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        <span class="num rounded-full bg-brand-tint px-2.5 py-1 text-[13px] font-semibold text-brand-deep" data-f="count"></span>
+        <button type="button" class="btn" data-f="copy">Copy</button>
+      </div>
+    </div>
+    <details class="mt-3">
+      <summary class="cursor-pointer text-[13px] font-semibold text-muted">Error and stack</summary>
+      <pre class="mt-2 max-h-[420px] overflow-auto rounded-[10px] bg-page p-3 text-[12px] leading-relaxed" data-f="body"></pre>
+    </details>`;
+  const f = (k) => card.querySelector(`[data-f="${k}"]`);
+  f('title').textContent = c.title;
+  f('meta').textContent = `${c.platform === 'windows' ? 'Windows' : 'Android'} · ${c.kindLabel} · last ${when(c.last_seen)} in ${c.last_version} · ${c.last_where}`;
+  f('count').textContent = `${fmt(c.count)}×`;
+  f('body').textContent = crashText(c);
+  f('copy').addEventListener('click', (e) => copy(crashText(c), e.currentTarget));
+  return card;
+}
+
+async function loadCrashes() {
+  const key = localStorage.getItem(KEY);
+  const msg = $('crash-msg');
+  $('key-form').classList.toggle('hidden', !!key);
+  $('crash-actions').classList.toggle('hidden', !key);
+  $('crash-actions').classList.toggle('flex', !!key);
+  $('crash-list').replaceChildren();
+  if (!key) return msg.classList.add('hidden');
+  msg.textContent = 'Loading…'; msg.classList.remove('hidden');
+  try {
+    const res = await fetch(`${RELAY}/crashes`, { headers: { 'x-admin-key': key } });
+    if (res.status === 403) {
+      localStorage.removeItem(KEY);
+      await loadCrashes();
+      msg.textContent = 'That key was refused.'; msg.classList.remove('hidden');
+      return;
+    }
+    if (!res.ok) throw new Error(`the relay answered ${res.status}`);
+    const { crashes } = await res.json();
+    msg.textContent = crashes.length ? `${crashes.length} distinct crash${crashes.length === 1 ? '' : 'es'}, most recent first.` : 'No crashes reported.';
+    $('crash-list').replaceChildren(...crashes.map(crashCard));
+  } catch (e) {
+    msg.textContent = `Couldn't load crashes: ${e.message}.`;
+  }
+}
+
+$('key-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('key').value.trim();
+  if (!v) return;
+  localStorage.setItem(KEY, v);
+  $('key').value = '';
+  loadCrashes();
+});
+$('crash-refresh').addEventListener('click', loadCrashes);
+$('crash-forget').addEventListener('click', () => { localStorage.removeItem(KEY); loadCrashes(); });
+
+loadStats();
+loadCrashes();
+</script>
+</body>
+</html>

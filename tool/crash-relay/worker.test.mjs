@@ -122,6 +122,7 @@ function fakeD1() {
           return {};
         },
         async all() {
+          if (sql.includes('FROM crashes')) return { results: [...crashes.values()].sort((a, b) => (a.last_seen < b.last_seen ? 1 : -1)) };
           return { results: [...rows.values()].filter((r) => r.day >= args[0]) };
         },
       });
@@ -152,4 +153,31 @@ test('pings without the app key or with junk are refused and not counted', async
   assert.equal((await ping(e, { platform: 'mac', version: 'v1' })).status, 400);
   assert.equal((await ping(e, { platform: 'android' })).status, 400);
   assert.equal(e.DB.rows.size, 0);
+});
+
+// ------------------------------------------------------------------ crash list
+
+const list = (e, headers = {}, method = 'GET') => worker.fetch(new Request('https://relay.example/crashes', { method, headers }), e);
+
+test('the crash list needs the admin key; the app key or no key is refused', async () => {
+  const e = { ...env, ADMIN_KEY: 'admin-secret', DB: fakeD1() };
+  await post(report(), undefined, e);
+  assert.equal((await list(e)).status, 403);
+  assert.equal((await list(e, { 'x-admin-key': 'k' })).status, 403);
+  assert.equal((await list(e, { 'x-admin-key': 'admin-secret-but-longer' })).status, 403);
+  const res = await list(e, { 'x-admin-key': 'admin-secret' });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('access-control-allow-origin'), '*');
+  const { crashes } = await res.json();
+  assert.equal(crashes.length, 1);
+  assert.match(crashes[0].stack, /DownloadService\._downloadYtDlp/);
+  assert.equal(crashes[0].kindLabel, 'Uncaught Dart error');
+});
+
+test('without ADMIN_KEY set the crash list is off, and the browser preflight is answered', async () => {
+  const e = { ...env, DB: fakeD1() };
+  assert.equal((await list(e, { 'x-admin-key': '' })).status, 403);
+  const pre = await list(e, {}, 'OPTIONS');
+  assert.equal(pre.status, 204);
+  assert.match(pre.headers.get('access-control-allow-headers'), /x-admin-key/);
 });

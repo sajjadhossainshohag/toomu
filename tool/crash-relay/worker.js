@@ -8,10 +8,13 @@
 //               the version and whether it's its first ping this week / month. Counted in D1, so
 //               daily, weekly and monthly users are sums, not lookups of anyone.
 // GET  /stats   those counts (public: totals only).
+// GET  /crashes the stored crashes, newest first, for the website's stats page. Needs the
+//               X-Admin-Key header to match ADMIN_KEY (a secret): crash reports are private.
 //
 // Settings (wrangler.toml / dashboard):
 //   APP_KEY       the key the app sends in X-Toomu-Key (not a secret: it only keeps out
 //                 random traffic; the size limits and rate limits do the rest)
+//   ADMIN_KEY     secret: the key the stats page sends to read /crashes (unset: /crashes is off)
 //   DB            D1 database binding for crashes and the user count (tables created on first use)
 
 const MAX_BODY = 32 * 1024;
@@ -25,6 +28,7 @@ export default {
     if (url.pathname === '/' && request.method === 'GET') return json({ ok: true, service: 'toomu crash relay' });
     if (url.pathname === '/stats' && request.method === 'GET') return stats(env, url);
     if (url.pathname === '/ping') return ping(request, env);
+    if (url.pathname === '/crashes') return crashes(request, env);
     if (url.pathname !== '/report') return json({ error: 'not found' }, 404);
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
     if (!env.APP_KEY || request.headers.get('x-toomu-key') !== env.APP_KEY) return json({ error: 'forbidden' }, 403);
@@ -206,6 +210,42 @@ async function stats(env, url) {
   });
 }
 
+// ------------------------------------------------------------------ crash list (stats page)
+
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-headers': 'x-admin-key',
+  'access-control-max-age': '86400',
+};
+
+/** Equal-time string compare, so the key can't be guessed a character at a time. */
+function sameKey(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function crashes(request, env) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  if (request.method !== 'GET') return json({ error: 'GET only' }, 405, CORS);
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  if (await overLimit(`admin/${ip}`, 60, 3600)) return json({ error: 'slow down' }, 429, CORS);
+  if (!env.ADMIN_KEY || !sameKey(request.headers.get('x-admin-key'), env.ADMIN_KEY)) return json({ error: 'forbidden' }, 403, CORS);
+  const d = await db(env);
+  if (!d) return json({ error: 'no database' }, 503, CORS);
+  const rows = (
+    await d
+      .prepare(
+        `SELECT sig, kind, platform, title, message, stack, first_version, last_version, first_seen, last_seen,
+           count, last_where, build FROM crashes ORDER BY last_seen DESC LIMIT 200`,
+      )
+      .all()
+  ).results;
+  return json({ crashes: rows.map((r) => ({ ...r, kindLabel: KINDS[r.kind] ?? r.kind })) }, 200, { ...CORS, 'cache-control': 'no-store' });
+}
+
 // ------------------------------------------------------------------ rate limits (Cache API)
 
 const cache = () => globalThis.caches?.default ?? null;
@@ -223,6 +263,6 @@ async function overLimit(key, max, seconds) {
   return false;
 }
 
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+function json(data, status = 200, headers = {}) {
+  return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', ...headers } });
 }
