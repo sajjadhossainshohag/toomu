@@ -63,19 +63,8 @@ class VideoSessionService extends GetxService {
   void Function(MethodCall call)? _screen;
 
   final List<StreamSubscription<dynamic>> _subs = [];
-  Timer? _releaseTimer;
-  AppLifecycleListener? _lifecycle;
 
   VideoSessionService init() {
-    // Hidden a while with nothing playing: mpv's memory goes back. Not at once (a quick app switch would pay
-    // for a new player) and never on screen (media_kit destroys a disposed mpv on the UI thread, a stall).
-    _lifecycle = AppLifecycleListener(
-      onHide: () {
-        _releaseTimer?.cancel();
-        _releaseTimer = Timer(const Duration(minutes: 1), _releasePlayer);
-      },
-      onShow: () => _releaseTimer?.cancel(),
-    );
     // Buttons from the PiP window / background notification land here even
     // when no player screen is open.
     _platform.setMethodCallHandler((call) async {
@@ -153,28 +142,9 @@ class VideoSessionService extends GetxService {
     return false;
   }
 
-  @override
-  void onClose() {
-    _releaseTimer?.cancel();
-    _lifecycle?.dispose();
-    super.onClose();
-  }
-
-  void _releasePlayer() {
-    final p = _player;
-    if (p == null || _active || _screen != null) return;
-    for (final s in _subs) {
-      s.cancel();
-    }
-    _subs.clear();
-    _player = null;
-    _video = null;
-    _videoOff = false; // a new player starts with video on
-    unawaited(p.dispose());
-    debugPrint('[Video] player released (app in the background)');
-  }
-
   void _ensurePlayer() {
+    // Never disposed: media_kit destroys mpv on the UI thread, which froze the app ("not responding")
+    // when the player was released in the background.
     if (_player != null) return;
     // mpv's warnings and errors go to the diagnostics log (why a file or
     // stream won't open).
@@ -192,13 +162,8 @@ class VideoSessionService extends GetxService {
     );
     _video = VideoController(_player!);
     _configure(_player!);
-    String? lastLog;
     _subs.addAll([
-      player.stream.log.listen((l) {
-        final line = '[mpv] ${l.level} ${l.prefix}: ${l.text.trim()}';
-        if (line != lastLog) debugPrint(line);
-        lastLog = line;
-      }),
+      player.stream.log.listen((l) => mpvLog('[mpv] ${l.level} ${l.prefix}: ${l.text.trim()}')),
       player.stream.playing.listen((v) {
         playing.value = _active && v;
         syncMedia();
@@ -290,6 +255,40 @@ class VideoSessionService extends GetxService {
     final debug = debugVideoTrack;
     if (debug != null) return debug(on);
     player.setVideoTrack(on ? VideoTrack.auto() : VideoTrack.no());
+  }
+
+  String? _lastMpvLog;
+  int _badTimestamps = 0;
+  static const _softwareAfter = 30;
+  String? _hwdecBefore;
+
+  @visibleForTesting
+  void Function(String hwdec)? debugHwdec;
+
+  @visibleForTesting
+  void mpvLog(String line) {
+    // Repeated frame timestamps: Android's hardware decoder breaks on some videos (picture lags or goes black,
+    // audio plays on). Reopening only helps until it breaks again.
+    if (line.contains('Invalid video timestamp')) {
+      if (++_badTimestamps == _softwareAfter) unawaited(_softwareDecode());
+      if (_badTimestamps > 3) return;
+    }
+    if (line != _lastMpvLog) debugPrint(line);
+    _lastMpvLog = line;
+  }
+
+  Future<void> _softwareDecode() async {
+    debugPrint('[Video] $_softwareAfter broken frame timestamps: software decoding for this video');
+    final debug = debugHwdec;
+    if (debug != null) return debug('no');
+    final mpv = _player?.platform;
+    if (mpv is! NativePlayer) return;
+    try {
+      _hwdecBefore = await mpv.getProperty('hwdec');
+      await mpv.setProperty('hwdec', 'no');
+    } catch (e) {
+      debugPrint('[Video] software decoding: $e');
+    }
   }
 
   /// Next / previous video with no player screen open.
@@ -402,7 +401,11 @@ class VideoSessionService extends GetxService {
           '(${exists ? '${(file.lengthSync() / 1048576).toStringAsFixed(1)} MB' : 'MISSING'})');
     }
     final mpv = p.platform;
+    _badTimestamps = 0;
+    final hwdec = _hwdecBefore;
+    _hwdecBefore = null;
     if (mpv is NativePlayer) {
+      if (hwdec != null) await mpv.setProperty('hwdec', hwdec).catchError((Object e) => debugPrint('[Video] hwdec: $e'));
       try {
         // mpv keeps sub-files for every later file, so it is reset per open.
         await mpv.command(['change-list', 'sub-files', 'clr', '']);
